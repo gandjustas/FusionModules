@@ -112,7 +112,21 @@ the host. That is the cost of the approach and it is worth knowing before you ad
 
 ## Status
 
-Early development, pre-1.0. The API surface is not locked, and the package id is not yet claimed.
+Early development, pre-1.0. The public surface is one class and six members, locked by
+`PublicAPI.Shipped.txt` so that adding to it is a reviewable change.
+
+Not published: the package id on nuget.org is not claimed, and claiming it has no undo while the
+name is still open — `Modulith` is crowded there and collides with Spring Modulith. `release.yml`
+packs, validates and attaches the artefact to a GitHub release; wiring up the push is one job
+away and one decision away. Install from a local feed in the meantime:
+
+```bash
+dotnet pack src/Modulith/Modulith.csproj -c Release -o local-feed
+```
+
+[`gandjustas/dotnext-2026`](https://github.com/gandjustas/dotnext-2026) does exactly that on its
+`modulith-packages` branch, which is where this package gets used by something it did not grow up
+inside.
 
 ## Origin
 

@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Publishing is deliberately not wired up. The package id is not claimed on nuget.org, and
+# claiming it is a decision with no undo — see the naming note in the repository README. Until
+# then this job packs, validates and attaches the result to the release, so the artefact exists
+# and can be installed from a local feed.
+#
+# To start publishing: add a `publish` job gated on a repository environment, using Trusted
+# Publishing if the account has it and NUGET_API_KEY otherwise.
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer derives the version from tags.
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: dotnet build Modulith.slnx -c Release -warnaserror
+
+      - run: dotnet test Modulith.slnx -c Release --no-build
+
+      - name: The generated skill outputs match their source
+        run: |
+          dotnet run --project tools/skillgen
+          git diff --exit-code -- skill/
+
+      - name: Pack and consume the package as a stranger would
+        run: bash eng/pack-validate.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            local-feed/*.nupkg
+            local-feed/*.snupkg
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
