@@ -3,5 +3,6 @@
     <Project Path="01-minimal-api/Host/Host.csproj" />
     <Project Path="01-minimal-api/Modules/Weather/WeatherModule.csproj" />
     <Project Path="01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
+    <Project Path="01-minimal-api/Tests/Tests.csproj" />
   </Folder>
 </Solution>

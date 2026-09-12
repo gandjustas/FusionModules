@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Sample.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Host\Host.csproj" />
+  </ItemGroup>
+
+  <!--
+    Declared here as well as in the host so that KnownModules is generated for this project too:
+    tests are the main place module names are written down, and the main place a typo would
+    otherwise go unnoticed until deployment.
+  -->
+  <ItemGroup>
+    <ModulithModule Include="..\Modules\Weather\WeatherModule.csproj" />
+    <ModulithModule Include="..\Modules\Greeting\GreetingModule.csproj" />
+  </ItemGroup>
+
+</Project>
