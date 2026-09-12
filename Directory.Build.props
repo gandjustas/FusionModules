@@ -1,16 +1,5 @@
 <Project>
 
-  <!--
-    The product name lives here and nowhere else.
-    Renaming the product = change ModulithName, then run eng/rename.ps1 to rewrite the
-    literal occurrences in C# namespace declarations and docs. Diagnostic ids are permanent
-    once published: ModulithDiagnosticPrefix must not change after the first nuget push.
-  -->
-  <PropertyGroup>
-    <ModulithName>Modulith</ModulithName>
-    <ModulithDiagnosticPrefix>MOD</ModulithDiagnosticPrefix>
-  </PropertyGroup>
-
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

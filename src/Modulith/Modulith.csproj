@@ -2,9 +2,9 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <PackageId>$(ModulithName)</PackageId>
-    <AssemblyName>$(ModulithName)</AssemblyName>
-    <RootNamespace>$(ModulithName)</RootNamespace>
+    <PackageId>Modulith</PackageId>
+    <AssemblyName>Modulith</AssemblyName>
+    <RootNamespace>Modulith</RootNamespace>
     <Description>A modular monolith for ASP.NET Core with no framework: one base class over IHostingStartup and IStartupFilter, plus analyzers that keep the architecture from leaking. Modules are ordinary class libraries activated by the HOSTINGSTARTUPASSEMBLIES environment variable, so deployment topology becomes configuration rather than a rebuild.</Description>
   </PropertyGroup>
 
@@ -42,24 +42,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="build\Modulith.props" Pack="true" PackagePath="buildTransitive\$(PackageId).props" />
     <None Include="build\Modulith.targets" Pack="true" PackagePath="buildTransitive\$(PackageId).targets" />
   </ItemGroup>
 
-  <Target Name="ResolveAnalyzerPackFiles" BeforeTargets="_GetPackageFiles">
-    <MSBuild Projects="..\Modulith.Analyzers\Modulith.Analyzers.csproj"
-             Targets="GetAnalyzerPackFiles"
-             Properties="Configuration=$(Configuration)">
-      <Output TaskParameter="TargetOutputs" ItemName="_AnalyzerPackFile" />
-    </MSBuild>
-    <MSBuild Projects="..\Modulith.CodeFixes\Modulith.CodeFixes.csproj"
-             Targets="GetCodeFixPackFiles"
-             Properties="Configuration=$(Configuration)">
-      <Output TaskParameter="TargetOutputs" ItemName="_AnalyzerPackFile" />
-    </MSBuild>
-    <ItemGroup>
-      <None Include="@(_AnalyzerPackFile)" Pack="true" PackagePath="%(_AnalyzerPackFile.PackagePath)" Visible="false" />
-    </ItemGroup>
-  </Target>
+  <!--
+    The analyzer and its code fixes ship inside this package. Static paths rather than a target
+    that re-invokes those projects: the ProjectReference above already built them, and pack runs
+    after build. eng/pack-validate.sh asserts both land in the package.
+  -->
+  <ItemGroup>
+    <None Include="..\Modulith.Analyzers\bin\$(Configuration)\netstandard2.0\Modulith.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="..\Modulith.CodeFixes\bin\$(Configuration)\netstandard2.0\Modulith.CodeFixes.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
 
 </Project>

@@ -105,7 +105,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
                     syntaxContext.ReportDiagnostic(Diagnostic.Create(
                         Diagnostics.PackageNotReferenced,
                         attributeSyntax.GetLocation(),
-                        ModulithConstants.PackageName));
+                        "Modulith"));
                     return;
                 }
 
@@ -125,7 +125,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
                     Diagnostics.HostingStartupTypeMustBeModule,
                     typeOf.Type.GetLocation(),
                     moduleType.Name,
-                    ModulithConstants.ModuleBaseMetadataName));
+                    ModuleFacts.ModuleBaseMetadataName));
             },
             SyntaxKind.Attribute);
     }

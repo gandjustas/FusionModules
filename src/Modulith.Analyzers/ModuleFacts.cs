@@ -16,13 +16,14 @@ internal static class ModuleFacts
     public const string ViewComponentAttributeMetadataName = "Microsoft.AspNetCore.Mvc.ViewComponentAttribute";
     public const string TagHelperMetadataName = "Microsoft.AspNetCore.Razor.TagHelpers.ITagHelper";
     public const string EntityTypeConfigurationMetadataName = "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1";
+    public const string ModuleBaseMetadataName = "Modulith.ModuleBase";
 
     /// <summary>
     /// Resolves <c>Modulith.ModuleBase</c>. Uses the plural lookup because the type can legitimately
     /// appear more than once — from the package and from a vendored copy, say.
     /// </summary>
     public static INamedTypeSymbol? GetModuleBaseType(Compilation compilation) =>
-        compilation.GetTypesByMetadataName(ModulithConstants.ModuleBaseMetadataName).FirstOrDefault();
+        compilation.GetTypesByMetadataName(ModuleBaseMetadataName).FirstOrDefault();
 
     public static bool InheritsFrom(ITypeSymbol? symbol, ITypeSymbol baseType)
     {

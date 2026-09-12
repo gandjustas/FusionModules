@@ -2,11 +2,6 @@
 
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
-  <!--
-    Every project under src/ is a shipping package. Each one derives its identity from
-    $(ModulithName) in its own csproj — the property has to be read after the project body has
-    had a chance to add a suffix, so it cannot be computed here.
-  -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

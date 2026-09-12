@@ -32,8 +32,4 @@
     <PackageReference Include="Modulith" Version="$(ModulithVersion)" />
   </ItemGroup>
 
-  <!-- In package mode NuGet imports this from buildTransitive/. -->
-  <Import Project="$(MSBuildThisFileDirectory)../src/Modulith/build/Modulith.props"
-          Condition="'$(ModulithUseProjectReferences)' == 'true'" />
-
 </Project>

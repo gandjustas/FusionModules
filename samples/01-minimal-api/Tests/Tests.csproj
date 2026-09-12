@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>Sample.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
@@ -15,14 +18,10 @@
     <ProjectReference Include="..\Host\Host.csproj" />
   </ItemGroup>
 
-  <!--
-    Declared here as well as in the host so that KnownModules is generated for this project too:
-    tests are the main place module names are written down, and the main place a typo would
-    otherwise go unnoticed until deployment.
-  -->
+  <!-- The modules under test, so their assemblies land in this project's output. -->
   <ItemGroup>
-    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" />
+    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" />
   </ItemGroup>
 
 </Project>

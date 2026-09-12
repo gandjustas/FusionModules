@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <PackageId>$(ModulithName).CodeFixes</PackageId>
+    <PackageId>Modulith.CodeFixes</PackageId>
     <AssemblyName>$(PackageId)</AssemblyName>
     <RootNamespace>$(PackageId)</RootNamespace>
 
@@ -23,10 +23,5 @@
     <ProjectReference Include="..\Modulith.Analyzers\Modulith.Analyzers.csproj" />
   </ItemGroup>
 
-  <Target Name="GetCodeFixPackFiles" DependsOnTargets="Build" Returns="@(ModulithCodeFixPackFile)">
-    <ItemGroup>
-      <ModulithCodeFixPackFile Include="$(TargetPath)" PackagePath="analyzers/dotnet/cs" />
-    </ItemGroup>
-  </Target>
 
 </Project>

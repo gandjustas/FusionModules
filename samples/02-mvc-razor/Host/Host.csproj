@@ -7,8 +7,8 @@
     ignoring HOSTINGSTARTUPASSEMBLIES entirely. See docs/rules/MOD0004.md.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\Modules\Dashboard\DashboardModule.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\Status\StatusModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Dashboard\DashboardModule.csproj" />
+    <ProjectReference Include="..\Modules\Status\StatusModule.csproj" />
   </ItemGroup>
 
 </Project>

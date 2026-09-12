@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <!--
-    Plain project references, with no ModulithModule metadata and no host in sight. Nothing here
+    Plain project references, and no host in sight. Nothing here
     goes through HOSTINGSTARTUPASSEMBLIES: these assemblies are referenced and used like any
     other library, which is the whole point of testing business logic separately.
   -->

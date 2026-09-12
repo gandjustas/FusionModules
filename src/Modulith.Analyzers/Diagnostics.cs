@@ -3,24 +3,24 @@ using Microsoft.CodeAnalysis;
 namespace Modulith.Analyzers;
 
 /// <summary>
-/// The rule catalogue. Diagnostic ids are permanent once published; the prefix comes from
-/// <c>ModulithDiagnosticPrefix</c> so that only a pre-release rename can change it.
+/// The rule catalogue. Diagnostic ids are permanent once published, and the resource keys in
+/// Resources.resx are spelled to match them, so changing one means changing both.
 /// </summary>
 internal static class Diagnostics
 {
-    private const string DesignCategory = ModulithConstants.PackageName + ".Design";
-    private const string UsageCategory = ModulithConstants.PackageName + ".Usage";
+    private const string DesignCategory = "Modulith.Design";
+    private const string UsageCategory = "Modulith.Usage";
     private const string HelpLinkFormat = "https://github.com/gandjustas/modulith/blob/main/docs/rules/{0}.md";
 
-    public const string ModuleMustNotExposePublicTypesId = ModulithConstants.DiagnosticPrefix + "0001";
-    public const string HostingStartupTypeMustBeModuleId = ModulithConstants.DiagnosticPrefix + "0002";
-    public const string HostMustNotUseModuleTypesId = ModulithConstants.DiagnosticPrefix + "0003";
-    public const string ApplicationPartMustNotNameModuleId = ModulithConstants.DiagnosticPrefix + "0004";
-    public const string ModuleMustBeRegisteredId = ModulithConstants.DiagnosticPrefix + "0005";
-    public const string ModuleMustNotReplacePipelineId = ModulithConstants.DiagnosticPrefix + "0006";
-    public const string RedundantStartupFilterId = ModulithConstants.DiagnosticPrefix + "0007";
-    public const string HostedServiceInModuleId = ModulithConstants.DiagnosticPrefix + "0008";
-    public const string PackageNotReferencedId = ModulithConstants.DiagnosticPrefix + "0020";
+    public const string ModuleMustNotExposePublicTypesId = "MOD0001";
+    public const string HostingStartupTypeMustBeModuleId = "MOD0002";
+    public const string HostMustNotUseModuleTypesId = "MOD0003";
+    public const string ApplicationPartMustNotNameModuleId = "MOD0004";
+    public const string ModuleMustBeRegisteredId = "MOD0005";
+    public const string ModuleMustNotReplacePipelineId = "MOD0006";
+    public const string RedundantStartupFilterId = "MOD0007";
+    public const string HostedServiceInModuleId = "MOD0008";
+    public const string PackageNotReferencedId = "MOD0020";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
         Create(ModuleMustNotExposePublicTypesId, DiagnosticSeverity.Error);

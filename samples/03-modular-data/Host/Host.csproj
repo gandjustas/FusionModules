@@ -9,10 +9,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Modules\Orders\Orders.Entities.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\Customers\Customers.Entities.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\CustomersApi\CustomersModule.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\Billing\BillingModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Orders\Orders.Entities.csproj" />
+    <ProjectReference Include="..\Modules\Customers\Customers.Entities.csproj" />
+    <ProjectReference Include="..\Modules\CustomersApi\CustomersModule.csproj" />
+    <ProjectReference Include="..\Modules\Billing\BillingModule.csproj" />
   </ItemGroup>
 
 </Project>

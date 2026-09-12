@@ -39,7 +39,9 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.2" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" Version="1.1.2" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <!-- Sample 01 multi-targets so net8 is exercised at runtime; this package is TFM-specific. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.31" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" Condition="'$(TargetFramework)' != 'net8.0'" />
     <PackageVersion Include="TUnit" Version="1.67.0" />
   </ItemGroup>
 

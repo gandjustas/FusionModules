@@ -1,13 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
+    The package multi-targets, and this sample is where that is actually exercised at runtime:
+    HostingStartup activation and Program's accessibility both differ across these.
+  -->
+  <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <!--
     The host references its modules so that the build orders them and copies them next to the
     executable. It never uses their types — MOD0003 makes sure of that — so at compile time it
     has no idea what they contain.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" ModulithModule="true" />
-    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" />
+    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" />
   </ItemGroup>
 
 </Project>

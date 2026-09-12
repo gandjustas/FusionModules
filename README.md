@@ -2,8 +2,6 @@
 
 A modular monolith for ASP.NET Core — with no framework.
 
-[Русская версия](README.ru.md)
-
 A module is an ordinary class library. It is activated by naming its assembly in
 `HOSTINGSTARTUPASSEMBLIES`. One image, any deployment topology, chosen by an environment variable
 rather than a rebuild. ASP.NET Core has had every mechanism for this for years; this package is
@@ -77,8 +75,6 @@ Because the approach has sharp edges, and every one of them fails quietly:
 | [MOD0008](docs/rules/MOD0008.md) | A hosted service in a module runs in every replica that loads it |
 | [MOD0020](docs/rules/MOD0020.md) | The Modulith package is not referenced |
 
-Diagnostics are available in English and Russian.
-
 ## Samples
 
 | | |
@@ -130,7 +126,7 @@ inside.
 
 ## Origin
 
-Extracted from the DotNext talk *«Модульность без микросервисов»*
+Extracted from the DotNext talk *Modularity without Microservices*
 ([sources](https://github.com/gandjustas/dotnext-2026)).
 
 ## License

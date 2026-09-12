@@ -37,6 +37,10 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         return new ApplicationDbContext(options, configuration);
     }
 
+    /// <summary>Every module, as HOSTINGSTARTUPASSEMBLIES spells them.</summary>
+    private static readonly string[] AllModules =
+        ["Orders.Entities", "Customers.Entities", "CustomersModule", "BillingModule"];
+
     /// <summary>
     /// Every module, unless HOSTINGSTARTUPASSEMBLIES says otherwise — which it should only do
     /// when you are deliberately inspecting one topology's model.
@@ -44,5 +48,5 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
     private static string[] MigrationModules() =>
         Environment.GetEnvironmentVariable("HOSTINGSTARTUPASSEMBLIES") is { Length: > 0 } requested
             ? requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : KnownModules.All;
+            : AllModules;
 }
