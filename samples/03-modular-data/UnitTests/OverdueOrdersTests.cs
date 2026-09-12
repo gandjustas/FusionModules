@@ -1,7 +1,6 @@
 using BillingModule;
 using Customers;
 using Orders;
-using Xunit;
 
 namespace Billing.UnitTests;
 
@@ -34,64 +33,67 @@ public class OverdueOrdersTests
     private static Order Order(int id, DateTime placedOn, DateTime? paidOn = null) =>
         new() { Id = id, CustomerId = 1, PlacedOn = placedOn, PaidOn = paidOn, Amount = 100m };
 
-    [Fact]
-    public void AnUnpaidOrderPastTheGracePeriodIsOverdue()
+    [Test]
+    public async Task AnUnpaidOrderPastTheGracePeriodIsOverdue()
     {
         using var db = CreateContext();
         Seed(db, Order(1, Now.AddDays(-OverdueOrders.GraceDays - 1)));
 
         var overdue = OverdueOrders.From(db, Now).ToList();
 
-        Assert.Equal(1, Assert.Single(overdue).OrderId);
+        await Assert.That(overdue).HasSingleItem();
+        await Assert.That(overdue[0].OrderId).IsEqualTo(1);
     }
 
-    [Fact]
-    public void AnOrderInsideTheGracePeriodIsNot()
+    [Test]
+    public async Task AnOrderInsideTheGracePeriodIsNot()
     {
         using var db = CreateContext();
         Seed(db, Order(1, Now.AddDays(-OverdueOrders.GraceDays + 1)));
 
-        Assert.Empty(OverdueOrders.From(db, Now));
+        await Assert.That(OverdueOrders.From(db, Now)).IsEmpty();
     }
 
-    [Fact]
-    public void APaidOrderIsNot()
+    [Test]
+    public async Task APaidOrderIsNot()
     {
         using var db = CreateContext();
         Seed(db, Order(1, Now.AddDays(-30), paidOn: Now.AddDays(-29)));
 
-        Assert.Empty(OverdueOrders.From(db, Now));
+        await Assert.That(OverdueOrders.From(db, Now)).IsEmpty();
     }
 
-    [Fact]
-    public void TheCustomerIsCarriedThrough()
+    [Test]
+    public async Task TheCustomerIsCarriedThrough()
     {
         using var db = CreateContext();
         Seed(db, Order(1, Now.AddDays(-10)));
 
-        var overdue = Assert.Single(OverdueOrders.From(db, Now).ToList());
+        var overdue = OverdueOrders.From(db, Now).ToList();
 
-        Assert.Equal("Ada", overdue.CustomerName);
-        Assert.Equal("ada@example.com", overdue.CustomerEmail);
+        await Assert.That(overdue).HasSingleItem();
+        await Assert.That(overdue[0].CustomerName).IsEqualTo("Ada");
+        await Assert.That(overdue[0].CustomerEmail).IsEqualTo("ada@example.com");
     }
 
-    [Fact]
-    public void OldestFirst()
+    [Test]
+    public async Task OldestFirst()
     {
         using var db = CreateContext();
         Seed(db, Order(1, Now.AddDays(-10)), Order(2, Now.AddDays(-30)), Order(3, Now.AddDays(-20)));
 
-        Assert.Equal([2, 3, 1], OverdueOrders.From(db, Now).Select(order => order.OrderId).ToList());
+        await Assert.That(OverdueOrders.From(db, Now).Select(order => order.OrderId).ToList())
+            .IsEquivalentTo(new[] { 2, 3, 1 });
     }
 
-    [Fact]
-    public void WithoutTheComposingAssembly_TheJoinHasNothingToJoinTo()
+    [Test]
+    public async Task WithoutTheComposingAssembly_TheJoinHasNothingToJoinTo()
     {
         // Leaving BillingModule's own assembly out of the composition is the unit-test equivalent
         // of leaving the module out of a topology: the relationship it declares is simply not
         // there, and the test says so instead of quietly passing.
         using var db = TestDbContext.Create(typeof(Order).Assembly, typeof(Customer).Assembly);
 
-        Assert.Empty(db.Model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
+        await Assert.That(db.Model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys())).IsEmpty();
     }
 }

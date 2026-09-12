@@ -4,7 +4,7 @@ public class ModuleUsageAnalyzerTests
 {
     // MOD0006 — a module must not replace the pipeline.
 
-    [Fact]
+    [Test]
     public Task ConfigureOnTheWebHostBuilder_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
@@ -16,7 +16,7 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task UseStartup_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
@@ -28,7 +28,7 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task ConfigureOnSomethingElse_IsFine() =>
         // The method name is common. Only IWebHostBuilder's counts.
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
@@ -41,7 +41,7 @@ public class ModuleUsageAnalyzerTests
 
     // MOD0007 — ModuleBase already registers the module as a startup filter.
 
-    [Fact]
+    [Test]
     public Task RegisteringTheModuleAsAStartupFilterAgain_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
@@ -54,7 +54,7 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task RegisteringAStartupFilterOutsideAModule_IsFine() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
@@ -68,7 +68,7 @@ public class ModuleUsageAnalyzerTests
 
     // MOD0008 — a hosted service in a module runs in more places than it used to.
 
-    [Fact]
+    [Test]
     public Task AHostedServiceInAModule_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.Extensions.DependencyInjection;
@@ -83,7 +83,7 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task OrdinaryServiceRegistrations_AreFine() =>
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.Extensions.DependencyInjection;
@@ -99,7 +99,7 @@ public class ModuleUsageAnalyzerTests
 
     // None of these apply outside a module assembly.
 
-    [Fact]
+    [Test]
     public Task TheSameCodeInAHost_IsFine() =>
         AnalyzerTest.VerifyHostAsync<ModuleUsageAnalyzer>("""
             using Microsoft.Extensions.DependencyInjection;

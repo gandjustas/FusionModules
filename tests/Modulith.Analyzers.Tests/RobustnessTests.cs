@@ -6,24 +6,24 @@ namespace Modulith.Analyzers.Tests;
 /// </summary>
 public class RobustnessTests
 {
-    [Fact]
+    [Test]
     public Task EmptyCompilation_IsFine() =>
         AnalyzerTest.VerifyAsync<ModuleAnalyzer>(string.Empty);
 
-    [Fact]
+    [Test]
     public Task CompilationWithoutAspNetCore_IsFine() =>
         // GetTypeByMetadataName returns null for every lookup. The rules must go quiet, not crash.
         AnalyzerTest.VerifyWithoutAspNetCoreAsync<ModuleAnalyzer>("""
             public class Ordinary { }
             """);
 
-    [Fact]
+    [Test]
     public Task HostAnalyzerWithoutAspNetCore_IsFine() =>
         AnalyzerTest.VerifyWithoutAspNetCoreAsync<HostAnalyzer>("""
             public class Ordinary { }
             """);
 
-    [Fact]
+    [Test]
     public Task HostingStartupWithoutArguments_IsFine() =>
         // ConstructorArguments.Single() threw here in the demo analyzer.
         AnalyzerTest.VerifyAsync<ModuleAnalyzer>("""
@@ -32,7 +32,7 @@ public class RobustnessTests
             [assembly: {|CS7036:HostingStartup|}]
             """);
 
-    [Fact]
+    [Test]
     public Task HostingStartupNamingAnUnknownType_IsFine() =>
         AnalyzerTest.VerifyAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;

@@ -9,7 +9,7 @@ public class HostAnalyzerTests
             .WithNoLocation()
             .WithArguments(assemblyName);
 
-    [Fact]
+    [Test]
     public Task HostReferencingAModuleWithoutUsingIt_IsFine() =>
         // This is the arrangement the model depends on: the reference exists so the build orders
         // the projects and copies the module next to the host, and nothing more.
@@ -20,7 +20,7 @@ public class HostAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task HostUsingAModuleType_IsReported() =>
         AnalyzerTest.VerifyHostAsync<HostAnalyzer>("""
             class Host
@@ -33,7 +33,7 @@ public class HostAnalyzerTests
             """,
             Expect(Diagnostics.HostMustNotUseModuleTypesId, "OrdersModule"));
 
-    [Fact]
+    [Test]
     public Task HostDeclaringAnApplicationPartForAModule_IsReported() =>
         AnalyzerTest.VerifyHostAsync<HostAnalyzer>("""
             using Microsoft.AspNetCore.Mvc.ApplicationParts;
@@ -47,7 +47,7 @@ public class HostAnalyzerTests
             """,
             Expect(Diagnostics.ApplicationPartMustNotNameModuleId, "OrdersModule"));
 
-    [Fact]
+    [Test]
     public Task HostWithUnrelatedCompileErrors_IsNotReported() =>
         // With errors in the compilation the compiler cannot work out which references are used
         // and falls back to reporting all of them, so every module the host merely references
@@ -63,7 +63,7 @@ public class HostAnalyzerTests
             }
             """);
 
-    [Fact]
+    [Test]
     public Task LibraryUsingAModuleType_IsFine() =>
         // Only the host is held to this. A module may use another module's types — that is what
         // the runtime's reference check is for.

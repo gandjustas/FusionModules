@@ -13,7 +13,7 @@ namespace Modulith.Analyzers.Tests;
 /// </summary>
 public class CodeFixTests
 {
-    [Fact]
+    [Test]
     public Task MakeInternal_RewritesOneType() =>
         VerifyFixAsync<ModuleAnalyzer, MakeTypeInternalCodeFixProvider>(
             """
@@ -23,7 +23,7 @@ public class CodeFixTests
             internal class Leaked { }
             """);
 
-    [Fact]
+    [Test]
     public Task MakeInternal_KeepsTheDocCommentAttached() =>
         // Removing and re-adding the modifier loses the leading trivia, which is a silent way to
         // delete every doc comment in a project during a Fix All.
@@ -37,7 +37,7 @@ public class CodeFixTests
             internal class Order { }
             """);
 
-    [Fact]
+    [Test]
     public Task MakeInternal_HandlesEveryTypeKind() =>
         VerifyFixAsync<ModuleAnalyzer, MakeTypeInternalCodeFixProvider>(
             """
@@ -57,7 +57,7 @@ public class CodeFixTests
             internal record F(int Value);
             """);
 
-    [Fact]
+    [Test]
     public Task MakeInternal_KeepsOtherModifiers() =>
         VerifyFixAsync<ModuleAnalyzer, MakeTypeInternalCodeFixProvider>(
             """
@@ -67,7 +67,7 @@ public class CodeFixTests
             internal sealed partial class Leaked { }
             """);
 
-    [Fact]
+    [Test]
     public Task RegisterModule_AddsTheAttribute() =>
         VerifyFixAsync<ModuleAnalyzer, RegisterModuleCodeFixProvider>(
             """
@@ -103,6 +103,6 @@ public class CodeFixTests
         test.FixedState.Sources.Add(AnalyzerTest.RegisteredModule);
         test.FixedState.Sources.Add(fixedSource);
 
-        return test.RunAsync(TestContext.Current.CancellationToken);
+        return test.RunAsync(CancellationToken.None);
     }
 }

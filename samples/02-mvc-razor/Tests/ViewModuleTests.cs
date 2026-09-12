@@ -1,12 +1,14 @@
 using System.Net;
-using Xunit;
 
 namespace Sample.Mvc.Tests;
 
 public class ViewModuleTests
 {
-    [Fact]
-    public async Task NoModules_ServesNoControllersAndNoPages()
+    private const string DashboardModule = "DashboardModule";
+    private const string StatusModule = "StatusModule";
+
+    [Test]
+    public async Task NoModules_ServesNoControllersAndNoPages(CancellationToken cancellationToken)
     {
         // The load-bearing test for MOD0004. Application Part Discovery would have wired the
         // modules' controllers and pages into the host at build time, entirely behind
@@ -15,50 +17,50 @@ public class ViewModuleTests
         using var factory = new ModularWebApplicationFactory();
         var client = factory.CreateClient();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/Dashboard", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/status", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/Dashboard", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task MvcModule_ServesItsAreaAndOnlyItsArea()
+    [Test]
+    public async Task MvcModule_ServesItsAreaAndOnlyItsArea(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(KnownModules.DashboardModule);
+        using var factory = new ModularWebApplicationFactory(DashboardModule);
         var client = factory.CreateClient();
 
-        Assert.Contains("<h1>Dashboard</h1>", await client.GetStringAsync("/Dashboard", TestContext.Current.CancellationToken), StringComparison.Ordinal);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/status", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That(await client.GetStringAsync("/Dashboard", cancellationToken)).Contains("<h1>Dashboard</h1>");
+        await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task RazorPagesModule_ServesItsPages()
+    [Test]
+    public async Task RazorPagesModule_ServesItsPages(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(KnownModules.StatusModule);
+        using var factory = new ModularWebApplicationFactory(StatusModule);
         var client = factory.CreateClient();
 
-        Assert.Contains("<h1>Status</h1>", await client.GetStringAsync("/status", TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        await Assert.That(await client.GetStringAsync("/status", cancellationToken)).Contains("<h1>Status</h1>");
     }
 
-    [Fact]
-    public async Task AModulesStaticAssetsAreServedUnderItsOwnPath()
+    [Test]
+    public async Task AModulesStaticAssetsAreServedUnderItsOwnPath(CancellationToken cancellationToken)
     {
         // Razor class library semantics put a module's wwwroot under _content/<AssemblyName>/,
         // so two modules can both ship site.css without knowing about each other.
-        using var factory = new ModularWebApplicationFactory(KnownModules.StatusModule);
+        using var factory = new ModularWebApplicationFactory(StatusModule);
         var client = factory.CreateClient();
 
-        var css = await client.GetAsync("/_content/StatusModule/status.css", TestContext.Current.CancellationToken);
+        var css = await client.GetAsync("/_content/StatusModule/status.css", cancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, css.StatusCode);
-        Assert.Contains(".ok", await css.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        await Assert.That(css.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(await css.Content.ReadAsStringAsync(cancellationToken)).Contains(".ok");
     }
 
-    [Fact]
-    public async Task BothModules_Coexist()
+    [Test]
+    public async Task BothModules_Coexist(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(KnownModules.All);
+        using var factory = new ModularWebApplicationFactory(DashboardModule, StatusModule);
         var client = factory.CreateClient();
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Dashboard", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/status", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/Dashboard", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
     }
 }

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <AssemblyName>Billing.UnitTests</AssemblyName>
     <RootNamespace>Billing.UnitTests</RootNamespace>
     <IsTestProject>true</IsTestProject>
@@ -8,9 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit.v3" />
-    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="TUnit" />
   </ItemGroup>
 
   <!--

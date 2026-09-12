@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using Modulith.Analyzers;
 
 namespace Modulith.CodeFixes;
@@ -77,9 +78,11 @@ public sealed class RegisterModuleCodeFixProvider : CodeFixProvider
                                         SyntaxFactory.ParseTypeName(type.ToDisplayString()))))))))
             .WithTarget(SyntaxFactory.AttributeTargetSpecifier(SyntaxFactory.Token(SyntaxKind.AssemblyKeyword)))
             .NormalizeWhitespace(elasticTrivia: true)
-            // Set after normalisation, which discards trivia applied before it. One line feed:
+            // Set after normalisation, which discards trivia applied before it. One line break:
             // whatever separated the usings from the first declaration is still there below.
-            .WithTrailingTrivia(SyntaxFactory.LineFeed);
+            // Taken from the document rather than hard-coded: injecting a line feed into a file
+            // that uses carriage-return line feed leaves a mixed-ending line nobody asked for.
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(root)));
 
         // After the usings, before everything else, which is where a reader expects it.
         var updated = unit.AttributeLists.Any()
@@ -87,5 +90,14 @@ public sealed class RegisterModuleCodeFixProvider : CodeFixProvider
             : unit.WithAttributeLists(SyntaxFactory.SingletonList(attribute));
 
         return document.WithSyntaxRoot(updated);
+    }
+
+    private static string LineBreakOf(SyntaxNode root)
+    {
+        var text = root.GetText();
+
+        return text.Lines.Count > 1
+            ? text.ToString(TextSpan.FromBounds(text.Lines[0].End, text.Lines[0].EndIncludingLineBreak))
+            : Environment.NewLine;
     }
 }

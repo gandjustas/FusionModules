@@ -2,7 +2,6 @@ using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Modulith;
-using Xunit;
 
 namespace Sample.Tests;
 
@@ -12,69 +11,70 @@ namespace Sample.Tests;
 /// </summary>
 public class TopologyTests
 {
-    [Fact]
-    public async Task NoModules_ServesOnlyTheHost()
+    private const string WeatherModule = "WeatherModule";
+    private const string GreetingModule = "GreetingModule";
+
+    [Test]
+    public async Task NoModules_ServesOnlyTheHost(CancellationToken cancellationToken)
     {
         using var factory = new ModularWebApplicationFactory();
         var client = factory.CreateClient();
 
-        Assert.Equal("host", await client.GetStringAsync("/", TestContext.Current.CancellationToken));
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/weather", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/greeting", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That(await client.GetStringAsync("/", cancellationToken)).IsEqualTo("host");
+        await Assert.That((await client.GetAsync("/weather", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        await Assert.That((await client.GetAsync("/greeting", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task OneModule_ServesOnlyThatModule()
+    [Test]
+    public async Task OneModule_ServesOnlyThatModule(CancellationToken cancellationToken)
     {
-        // KnownModules is generated from the <ModulithModule> items, so a rename is a compile
-        // error here rather than a 404 in production.
-        using var factory = new ModularWebApplicationFactory(KnownModules.WeatherModule);
+        using var factory = new ModularWebApplicationFactory(WeatherModule);
         var client = factory.CreateClient();
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/weather", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/greeting", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/weather", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That((await client.GetAsync("/greeting", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task AllModules_ServeEverything()
+    [Test]
+    public async Task AllModules_ServeEverything(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(KnownModules.All);
+        using var factory = new ModularWebApplicationFactory(WeatherModule, GreetingModule);
         var client = factory.CreateClient();
 
-        Assert.Equal("host", await client.GetStringAsync("/", TestContext.Current.CancellationToken));
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/weather", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal("Hello from a module", await client.GetStringAsync("/greeting", TestContext.Current.CancellationToken));
+        await Assert.That(await client.GetStringAsync("/", cancellationToken)).IsEqualTo("host");
+        await Assert.That((await client.GetAsync("/weather", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(await client.GetStringAsync("/greeting", cancellationToken)).IsEqualTo("Hello from a module");
     }
 
-    [Fact]
-    public void TheRegistryReportsExactlyWhatWasActivated()
+    [Test]
+    public async Task TheRegistryReportsExactlyWhatWasActivated()
     {
-        using var factory = new ModularWebApplicationFactory(KnownModules.WeatherModule);
+        using var factory = new ModularWebApplicationFactory(WeatherModule);
         var configuration = factory.Services.GetRequiredService<IConfiguration>();
 
         var loaded = ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name).ToArray();
 
         // The host itself is a hosting startup assembly, so it may appear; the point is that a
         // module which was not asked for is not here, however many other hosts this process ran.
-        Assert.Contains(KnownModules.WeatherModule, loaded);
-        Assert.DoesNotContain(KnownModules.GreetingModule, loaded);
+        await Assert.That(loaded).Contains(WeatherModule);
+        await Assert.That(loaded).DoesNotContain(GreetingModule);
     }
 
-    [Fact]
-    public void ATypoInTheModuleListFailsStartup()
+    [Test]
+    public async Task ATypoInTheModuleListFailsStartup()
     {
         // Stock ASP.NET Core logs a critical message for an assembly it cannot load and carries
         // on, so the application comes up, passes its readiness probe and serves 404s.
-        using var factory = new ModularWebApplicationFactory(KnownModules.GreetingModule, "WeatherModul");
+        using var factory = new ModularWebApplicationFactory(GreetingModule, "WeatherModul");
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
-        Assert.Contains("WeatherModul", error.Message, StringComparison.Ordinal);
-        Assert.Contains("HOSTINGSTARTUPASSEMBLIES", error.Message, StringComparison.Ordinal);
+        await Assert.That(error!.Message).Contains("WeatherModul");
+        await Assert.That(error.Message).Contains("HOSTINGSTARTUPASSEMBLIES");
     }
 
-    [Fact]
-    public async Task ATypoInEveryModuleNameIsNotCaught()
+    [Test]
+    public async Task ATypoInEveryModuleNameIsNotCaught(CancellationToken cancellationToken)
     {
         // The limit of the check, recorded so it is a known shape rather than a surprise: it runs
         // from the modules that did load, so when none of them did there is nobody left to
@@ -84,6 +84,6 @@ public class TopologyTests
         using var factory = new ModularWebApplicationFactory("WeatherModul");
         var client = factory.CreateClient();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/weather", TestContext.Current.CancellationToken)).StatusCode);
+        await Assert.That((await client.GetAsync("/weather", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 }

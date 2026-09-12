@@ -125,7 +125,7 @@ internal static class AnalyzerTest
 
     public static Task VerifyAsync<TAnalyzer>(params string[] sources)
         where TAnalyzer : DiagnosticAnalyzer, new() =>
-        Build<TAnalyzer>(withModuleBase: true, sources).RunAsync(TestContext.Current.CancellationToken);
+        Build<TAnalyzer>(withModuleBase: true, sources).RunAsync(CancellationToken.None);
 
     /// <summary>Verifies a snippet in an assembly that is a module: a registered module, then the code.</summary>
     public static Task VerifyModuleAsync<TAnalyzer>(string source)
@@ -135,7 +135,7 @@ internal static class AnalyzerTest
     /// <summary>Verifies a snippet compiled without the runtime package present.</summary>
     public static Task VerifyWithoutModuleBaseAsync<TAnalyzer>(string source)
         where TAnalyzer : DiagnosticAnalyzer, new() =>
-        Build<TAnalyzer>(withModuleBase: false, [source]).RunAsync(TestContext.Current.CancellationToken);
+        Build<TAnalyzer>(withModuleBase: false, [source]).RunAsync(CancellationToken.None);
 
     /// <summary>Verifies a snippet compiled with no ASP.NET Core types in scope at all.</summary>
     public static Task VerifyWithoutAspNetCoreAsync<TAnalyzer>(string source)
@@ -144,7 +144,7 @@ internal static class AnalyzerTest
         var test = new CSharpAnalyzerTest<TAnalyzer, DefaultVerifier> { ReferenceAssemblies = ReferenceAssemblies.Default };
         test.TestState.Sources.Add(source);
 
-        return test.RunAsync(TestContext.Current.CancellationToken);
+        return test.RunAsync(CancellationToken.None);
     }
 
     public static Task VerifyWithOptionAsync<TAnalyzer>(string key, string value, string source)
@@ -156,7 +156,7 @@ internal static class AnalyzerTest
             {key} = {value}
             """));
 
-        return test.RunAsync(TestContext.Current.CancellationToken);
+        return test.RunAsync(CancellationToken.None);
     }
 
     /// <summary>
@@ -202,7 +202,7 @@ internal static class AnalyzerTest
         test.TestState.Sources.Add(source);
         test.TestState.ExpectedDiagnostics.AddRange(expected);
 
-        return test.RunAsync(TestContext.Current.CancellationToken);
+        return test.RunAsync(CancellationToken.None);
     }
 
     private static CSharpAnalyzerTest<TAnalyzer, DefaultVerifier> Build<TAnalyzer>(bool withModuleBase, string[] sources)

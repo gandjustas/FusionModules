@@ -36,7 +36,7 @@ jobs:
 
       - run: dotnet build Modulith.slnx -c Release -warnaserror
 
-      - run: dotnet test Modulith.slnx -c Release --no-build
+      - run: dotnet test --solution Modulith.slnx -c Release --no-build
 
       - name: The generated skill outputs match their source
         run: |

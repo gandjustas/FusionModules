@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
 namespace ModularData.Tests;
 
@@ -27,25 +26,24 @@ public class EndpointInventoryTests
             .Order(StringComparer.Ordinal)];
     }
 
-    [Fact]
-    public void TheHostAloneServesOnlyItsOwnRoute() =>
-        Assert.Equal(["/"], RoutesFor());
+    [Test]
+    public async Task TheHostAloneServesOnlyItsOwnRoute() =>
+        await Assert.That(RoutesFor()).IsEquivalentTo(new[] { "/" });
 
-    [Fact]
-    public void EntityModulesContributeTablesAndNoRoutes() =>
+    [Test]
+    public async Task EntityModulesContributeTablesAndNoRoutes() =>
         // A topology of nothing but entity modules is a database schema with a web server
         // attached, which is a legitimate thing to deploy and a surprising thing to discover.
-        Assert.Equal(["/"], RoutesFor(KnownModules.Orders_Entities, KnownModules.Customers_Entities));
+        await Assert.That(RoutesFor(Modules.OrdersEntities, Modules.CustomersEntities))
+            .IsEquivalentTo(new[] { "/" });
 
-    [Fact]
-    public void AFeatureModuleBringsItsOwnRoutesAndNobodyElses() =>
-        Assert.Equal(
-            ["/", "/customers"],
-            RoutesFor(KnownModules.Customers_Entities, KnownModules.CustomersModule));
+    [Test]
+    public async Task AFeatureModuleBringsItsOwnRoutesAndNobodyElses() =>
+        await Assert.That(RoutesFor(Modules.CustomersEntities, Modules.CustomersApi))
+            .IsEquivalentTo(new[] { "/", "/customers" });
 
-    [Fact]
-    public void TheFullTopologyServesEveryModulesRoutes() =>
-        Assert.Equal(
-            ["/", "/billing/overdue", "/billing/seed", "/customers"],
-            RoutesFor(KnownModules.All));
+    [Test]
+    public async Task TheFullTopologyServesEveryModulesRoutes() =>
+        await Assert.That(RoutesFor(Modules.All))
+            .IsEquivalentTo(new[] { "/", "/billing/overdue", "/billing/seed", "/customers" });
 }

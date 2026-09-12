@@ -10,3 +10,4 @@ artifacts/
 *.snupkg
 TestResults/
 local-feed/
+TestResults/

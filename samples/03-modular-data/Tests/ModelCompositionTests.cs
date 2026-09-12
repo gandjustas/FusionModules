@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
 namespace ModularData.Tests;
 
@@ -30,61 +29,61 @@ public class ModelCompositionTests
             .Select(entity => $"{entity.GetSchema()}.{entity.GetTableName()}")
             .Order(StringComparer.Ordinal)];
 
-    [Fact]
-    public void OrdersAlone_BringsOnlyItsOwnTable() =>
-        Assert.Equal(["Sales.Orders"], TablesIn(ModelFor(KnownModules.Orders_Entities)));
+    [Test]
+    public async Task OrdersAlone_BringsOnlyItsOwnTable() =>
+        await Assert.That(TablesIn(ModelFor(Modules.OrdersEntities))).IsEquivalentTo(new[] { "Sales.Orders" });
 
-    [Fact]
-    public void EachModuleOwnsItsSchema() =>
-        Assert.Equal(
-            ["Marketing.Customers", "Sales.Orders"],
-            TablesIn(ModelFor(KnownModules.Orders_Entities, KnownModules.Customers_Entities)));
+    [Test]
+    public async Task EachModuleOwnsItsSchema() =>
+        await Assert.That(TablesIn(ModelFor(Modules.OrdersEntities, Modules.CustomersEntities)))
+            .IsEquivalentTo(new[] { "Marketing.Customers", "Sales.Orders" });
 
-    [Fact]
-    public void WithoutTheComposingModule_ThereIsNoRelationship()
+    [Test]
+    public async Task WithoutTheComposingModule_ThereIsNoRelationship()
     {
         // Orders and Customers in one database with no foreign key between them: the two modules
         // do not know about each other, and in this topology nothing else does either.
-        var model = ModelFor(KnownModules.Orders_Entities, KnownModules.Customers_Entities);
+        var model = ModelFor(Modules.OrdersEntities, Modules.CustomersEntities);
 
-        Assert.Empty(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
+        await Assert.That(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys())).IsEmpty();
     }
 
-    [Fact]
-    public void TheComposingModuleAddsTheRelationship()
+    [Test]
+    public async Task TheComposingModuleAddsTheRelationship()
     {
-        var model = ModelFor(KnownModules.All);
+        var model = ModelFor(Modules.All);
 
-        var foreignKey = Assert.Single(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
+        var foreignKeys = model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()).ToArray();
 
-        Assert.Equal("Sales", foreignKey.DeclaringEntityType.GetSchema());
-        Assert.Equal("Marketing", foreignKey.PrincipalEntityType.GetSchema());
-        Assert.Equal("CustomerId", Assert.Single(foreignKey.Properties).Name);
+        await Assert.That(foreignKeys).HasSingleItem();
+        await Assert.That(foreignKeys[0].DeclaringEntityType.GetSchema()).IsEqualTo("Sales");
+        await Assert.That(foreignKeys[0].PrincipalEntityType.GetSchema()).IsEqualTo("Marketing");
+        await Assert.That(foreignKeys[0].Properties.Single().Name).IsEqualTo("CustomerId");
     }
 
-    [Fact]
-    public void TopologiesInOneProcessDoNotShareAModel()
+    [Test]
+    public async Task TopologiesInOneProcessDoNotShareAModel()
     {
         // The reason ModuleAwareModelCacheKeyFactory exists. EF Core caches a built model in an
         // internal service provider shared by every context with the same options, keyed by
         // context type — so without it the second topology here silently gets the first one's
         // model, complete with tables it was never meant to have.
-        var monolith = TablesIn(ModelFor(KnownModules.All));
-        var ordersOnly = TablesIn(ModelFor(KnownModules.Orders_Entities));
+        var monolith = TablesIn(ModelFor(Modules.All));
+        var ordersOnly = TablesIn(ModelFor(Modules.OrdersEntities));
 
-        Assert.Contains("Marketing.Customers", monolith);
-        Assert.DoesNotContain("Marketing.Customers", ordersOnly);
+        await Assert.That(monolith).Contains("Marketing.Customers");
+        await Assert.That(ordersOnly).DoesNotContain("Marketing.Customers");
     }
 
-    [Fact]
-    public void AModuleWhoseDependenciesAreMissingFailsStartup()
+    [Test]
+    public async Task AModuleWhoseDependenciesAreMissingFailsStartup()
     {
         // BillingModule uses types from both entity modules, so the compiler records references
         // to them, so ModuleBase requires them to be activated. Nothing had to be declared.
-        using var factory = new ModularWebApplicationFactory(KnownModules.Orders_Entities, KnownModules.BillingModule);
+        using var factory = new ModularWebApplicationFactory(Modules.OrdersEntities, Modules.Billing);
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
-        Assert.Contains("Customers.Entities", error.Message, StringComparison.Ordinal);
+        await Assert.That(error!.Message).Contains("Customers.Entities");
     }
 }
