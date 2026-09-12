@@ -1,0 +1,46 @@
+<Project>
+
+  <!--
+    The product name lives here and nowhere else.
+    Renaming the product = change ModulithName, then run eng/rename.ps1 to rewrite the
+    literal occurrences in C# namespace declarations and docs. Diagnostic ids are permanent
+    once published: ModulithDiagnosticPrefix must not change after the first nuget push.
+  -->
+  <PropertyGroup>
+    <ModulithName>Modulith</ModulithName>
+    <ModulithDiagnosticPrefix>MOD</ModulithDiagnosticPrefix>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Stanislav Vyshchepan</Authors>
+    <Company>Stanislav Vyshchepan</Company>
+    <Copyright>Copyright (c) Stanislav Vyshchepan</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/gandjustas/modulith</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/gandjustas/modulith</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>modular-monolith;aspnetcore;hostingstartup;modules;architecture</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <!-- Reproducible, debuggable packages. -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+</Project>

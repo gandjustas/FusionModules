@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <PackageId>$(ModulithName)</PackageId>
+    <AssemblyName>$(ModulithName)</AssemblyName>
+    <RootNamespace>$(ModulithName)</RootNamespace>
+    <Description>A modular monolith for ASP.NET Core with no framework: one base class over IHostingStartup and IStartupFilter, plus analyzers that keep the architecture from leaking. Modules are ordinary class libraries activated by the HOSTINGSTARTUPASSEMBLIES environment variable, so deployment topology becomes configuration rather than a rebuild.</Description>
+  </PropertyGroup>
+
+  <!--
+    Deliberately NOT Microsoft.NET.Sdk.Web: the only ASP.NET types used here
+    (IWebHostBuilder, IStartupFilter, IApplicationBuilder) live in the shared framework.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    One PackageReference gives a consumer the base class, the rules and the conventions.
+    The analyzer ships inside this package rather than beside it: every rule needs the ModuleBase
+    type to be present, so an analyzer-only package would have nothing to say.
+    ReferenceOutputAssembly is false because the analyzer targets netstandard2.0 and is not
+    something the runtime assembly compiles against.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Modulith.Analyzers\Modulith.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="build\Modulith.props" Pack="true" PackagePath="buildTransitive\$(PackageId).props" />
+    <None Include="build\Modulith.targets" Pack="true" PackagePath="buildTransitive\$(PackageId).targets" />
+  </ItemGroup>
+
+  <Target Name="ResolveAnalyzerPackFiles" BeforeTargets="_GetPackageFiles">
+    <MSBuild Projects="..\Modulith.Analyzers\Modulith.Analyzers.csproj"
+             Targets="GetAnalyzerPackFiles"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AnalyzerPackFile" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(_AnalyzerPackFile)" Pack="true" PackagePath="%(_AnalyzerPackFile.PackagePath)" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+</Project>

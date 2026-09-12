@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <data name="MOD0001_Title" xml:space="preserve">
+    <value>A module must not expose public types</value>
+  </data>
+  <data name="MOD0001_Message" xml:space="preserve">
+    <value>Type '{0}' is public in a module assembly</value>
+  </data>
+  <data name="MOD0001_Description" xml:space="preserve">
+    <value>A module's types are an implementation detail: nothing outside it may reference them, and the analyzer that keeps the host free of module references depends on that. Make the type internal. Types that ASP.NET Core or EF Core must discover through reflection are exempt: controllers, page models, view components, tag helpers, and entity types configured by an IEntityTypeConfiguration in the same assembly. For anything else that genuinely has to be public, list it in modulith_allowed_public_types in .editorconfig.</value>
+  </data>
+
+  <data name="MOD0002_Title" xml:space="preserve">
+    <value>The type named by HostingStartup must be a module</value>
+  </data>
+  <data name="MOD0002_Message" xml:space="preserve">
+    <value>Type '{0}' is named by [assembly: HostingStartup] but does not derive from '{1}'</value>
+  </data>
+  <data name="MOD0002_Description" xml:space="preserve">
+    <value>ASP.NET Core will instantiate this type and cast it to IHostingStartup. Deriving from ModuleBase is what gives the module its configuration registry entry and its check that referenced modules were activated.</value>
+  </data>
+
+  <data name="MOD0003_Title" xml:space="preserve">
+    <value>The host must not use types from a module</value>
+  </data>
+  <data name="MOD0003_Message" xml:space="preserve">
+    <value>The host uses types from module assembly '{0}'</value>
+  </data>
+  <data name="MOD0003_Description" xml:space="preserve">
+    <value>The point of the model is that the host has no compile-time knowledge of any module, so that deployment topology can be chosen at startup. A project reference is fine — it only orders the build and copies the module to the output directory — but using the module's types couples the two. Move the shared type to a contracts assembly that is not itself a module.</value>
+  </data>
+
+  <data name="MOD0004_Title" xml:space="preserve">
+    <value>The host must not declare an ApplicationPart for a module</value>
+  </data>
+  <data name="MOD0004_Message" xml:space="preserve">
+    <value>The host declares [assembly: ApplicationPart] for module assembly '{0}'</value>
+  </data>
+  <data name="MOD0004_Description" xml:space="preserve">
+    <value>Application Part Discovery does not know about HostingStartup: it loads the module's controllers and pages without ever running the module's own code. Set GenerateMvcApplicationPartsAssemblyAttributes to false in the host project and let each module call AddApplicationPart for itself.</value>
+  </data>
+
+  <data name="MOD0005_Title" xml:space="preserve">
+    <value>A module must be named by an assembly-level HostingStartup attribute</value>
+  </data>
+  <data name="MOD0005_Message" xml:space="preserve">
+    <value>Module '{0}' is never named by an [assembly: HostingStartup] attribute and will not be loaded</value>
+  </data>
+  <data name="MOD0005_Description" xml:space="preserve">
+    <value>Without the attribute the module fails silently: the assembly is listed in HOSTINGSTARTUPASSEMBLIES, ASP.NET Core loads it, finds no attribute and moves on, so the module's services and endpoints simply do not exist and nothing is logged. Add [assembly: HostingStartup(typeof(YourModule))].</value>
+  </data>
+
+  <data name="MOD0020_Title" xml:space="preserve">
+    <value>The Modulith package is not referenced</value>
+  </data>
+  <data name="MOD0020_Message" xml:space="preserve">
+    <value>This assembly declares a HostingStartup but does not reference '{0}', so module rules cannot be verified</value>
+  </data>
+  <data name="MOD0020_Description" xml:space="preserve">
+    <value>The analyzers are running without the runtime package, which means the ModuleBase type cannot be found and the rules that depend on it are silently inactive. Add a reference to the Modulith package.</value>
+  </data>
+</root>

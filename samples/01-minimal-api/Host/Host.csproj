@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The host references its modules so that the build orders them and copies them next to the
+    executable. It never uses their types — MOD0003 makes sure of that — so at compile time it
+    has no idea what they contain.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" />
+    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" />
+  </ItemGroup>
+
+</Project>

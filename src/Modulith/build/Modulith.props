@@ -1,0 +1,13 @@
+<Project>
+
+  <!--
+    Imported at the TOP of every project that references Modulith, before the project body has
+    run. Only things that do not depend on the project's own properties belong here; project-kind
+    detection needs $(OutputType) and therefore lives in Modulith.targets.
+  -->
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ModulithProjectKind" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+
+  <!-- In package mode NuGet imports this from buildTransitive/. -->
+  <Import Project="$(MSBuildThisFileDirectory)../src/Modulith/build/Modulith.targets"
+          Condition="'$(ModulithUseProjectReferences)' == 'true'" />
+
+</Project>

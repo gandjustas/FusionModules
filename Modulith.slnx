@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Modulith/Modulith.csproj" />
+    <Project Path="src/Modulith.Analyzers/Modulith.Analyzers.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/01-minimal-api/Host/Host.csproj" />
+    <Project Path="samples/01-minimal-api/Modules/Weather/WeatherModule.csproj" />
+    <Project Path="samples/01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
+  </Folder>
+  <Folder Name="/solution items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="README.md" />
+  </Folder>
+</Solution>
