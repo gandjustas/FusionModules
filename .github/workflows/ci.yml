@@ -31,17 +31,7 @@ jobs:
 
       - run: dotnet build Modulith.slnx -c Release -warnaserror
 
-      - name: Test
-        # The modular-data sample tests against a real PostgreSQL through Testcontainers, because
-        # the rules under test are expressed in schemas and query translation and an in-memory
-        # provider would let them agree with a database they do not describe. Linux containers are
-        # not available on the Windows runner, so that sample runs on Linux only.
-        run: >
-          dotnet test Modulith.slnx -c Release --no-build
-          --logger "trx;LogFileName=tests.trx"
-          ${{ matrix.os == 'windows-latest'
-              && '--filter "FullyQualifiedName!~ModularData&FullyQualifiedName!~Billing.UnitTests"'
-              || '' }}
+      - run: dotnet test Modulith.slnx -c Release --no-build --logger "trx;LogFileName=tests.trx"
 
       - uses: actions/upload-artifact@v4
         if: failure()

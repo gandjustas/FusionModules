@@ -60,10 +60,10 @@ namespace ModularData.Host.Migrations
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
-                    b.Property<DateTimeOffset?>("PaidOn")
+                    b.Property<DateTime?>("PaidOn")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTimeOffset>("PlacedOn")
+                    b.Property<DateTime>("PlacedOn")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");

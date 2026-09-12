@@ -20,7 +20,7 @@ sealed class Module : Modulith.ModuleBase
 
             // The module takes a dependency on DbContext, not on the host's concrete context
             // type: it needs a place to put its tables, not knowledge of the application.
-            billing.MapGet("/overdue", (DbContext db) => OverdueOrders.From(db, DateTimeOffset.UtcNow));
+            billing.MapGet("/overdue", (DbContext db) => OverdueOrders.From(db, DateTime.UtcNow));
 
             billing.MapPost("/seed", async (DbContext db, CancellationToken cancellationToken) =>
             {
@@ -37,7 +37,7 @@ sealed class Module : Modulith.ModuleBase
                 db.Set<Order>().AddRange(Enumerable.Range(0, 1000).Select(_ => new Order
                 {
                     CustomerId = customers[Random.Shared.Next(customers.Length)].Id,
-                    PlacedOn = DateTimeOffset.UtcNow.AddMinutes(-Random.Shared.Next(10_000)),
+                    PlacedOn = DateTime.UtcNow.AddMinutes(-Random.Shared.Next(10_000)),
                     Amount = Random.Shared.Next(1, 1000),
                 }));
 

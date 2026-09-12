@@ -14,18 +14,15 @@ namespace ModularData.Tests;
 /// that wants a module's types is testing that module's business logic, and belongs beside it
 /// without a host: see the Billing.UnitTests project.
 /// </remarks>
-public class ModelCompositionTests(PostgresFixture postgres)
+public class ModelCompositionTests
 {
-    private async Task<(ModularWebApplicationFactory Factory, IModel Model)> BootAsync(params string[] modules)
+    private static IModel ModelFor(params string[] modules)
     {
-        var factory = new ModularWebApplicationFactory(
-            await postgres.CreateDatabaseAsync(TestContext.Current.CancellationToken),
-            modules);
-
+        using var factory = new ModularWebApplicationFactory(modules);
         using var scope = factory.Services.CreateScope();
 
         // Modules depend on DbContext, so a test can too, and never needs the host's context type.
-        return (factory, scope.ServiceProvider.GetRequiredService<DbContext>().Model);
+        return scope.ServiceProvider.GetRequiredService<DbContext>().Model;
     }
 
     private static string[] TablesIn(IModel model) =>
@@ -34,102 +31,57 @@ public class ModelCompositionTests(PostgresFixture postgres)
             .Order(StringComparer.Ordinal)];
 
     [Fact]
-    public async Task OrdersAlone_BringsOnlyItsOwnTable()
-    {
-        var (factory, model) = await BootAsync(KnownModules.Orders_Entities);
-        using (factory)
-        {
-            Assert.Equal(["Sales.Orders"], TablesIn(model));
-        }
-    }
+    public void OrdersAlone_BringsOnlyItsOwnTable() =>
+        Assert.Equal(["Sales.Orders"], TablesIn(ModelFor(KnownModules.Orders_Entities)));
 
     [Fact]
-    public async Task EachModuleOwnsItsSchema()
-    {
-        var (factory, model) = await BootAsync(KnownModules.Orders_Entities, KnownModules.Customers_Entities);
-        using (factory)
-        {
-            Assert.Equal(["Marketing.Customers", "Sales.Orders"], TablesIn(model));
-        }
-    }
+    public void EachModuleOwnsItsSchema() =>
+        Assert.Equal(
+            ["Marketing.Customers", "Sales.Orders"],
+            TablesIn(ModelFor(KnownModules.Orders_Entities, KnownModules.Customers_Entities)));
 
     [Fact]
-    public async Task WithoutTheComposingModule_ThereIsNoRelationship()
+    public void WithoutTheComposingModule_ThereIsNoRelationship()
     {
         // Orders and Customers in one database with no foreign key between them: the two modules
         // do not know about each other, and in this topology nothing else does either.
-        var (factory, model) = await BootAsync(KnownModules.Orders_Entities, KnownModules.Customers_Entities);
-        using (factory)
-        {
-            Assert.Empty(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
-        }
+        var model = ModelFor(KnownModules.Orders_Entities, KnownModules.Customers_Entities);
+
+        Assert.Empty(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
     }
 
     [Fact]
-    public async Task TheComposingModuleAddsTheRelationship()
+    public void TheComposingModuleAddsTheRelationship()
     {
-        var (factory, model) = await BootAsync(KnownModules.All);
-        using (factory)
-        {
-            var foreignKey = Assert.Single(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
+        var model = ModelFor(KnownModules.All);
 
-            Assert.Equal("Sales", foreignKey.DeclaringEntityType.GetSchema());
-            Assert.Equal("Marketing", foreignKey.PrincipalEntityType.GetSchema());
-            Assert.Equal("CustomerId", Assert.Single(foreignKey.Properties).Name);
-        }
+        var foreignKey = Assert.Single(model.GetEntityTypes().SelectMany(entity => entity.GetForeignKeys()));
+
+        Assert.Equal("Sales", foreignKey.DeclaringEntityType.GetSchema());
+        Assert.Equal("Marketing", foreignKey.PrincipalEntityType.GetSchema());
+        Assert.Equal("CustomerId", Assert.Single(foreignKey.Properties).Name);
     }
 
     [Fact]
-    public async Task TopologiesInOneProcessDoNotShareAModel()
+    public void TopologiesInOneProcessDoNotShareAModel()
     {
         // The reason ModuleAwareModelCacheKeyFactory exists. EF Core caches a built model in an
         // internal service provider shared by every context with the same options, keyed by
         // context type — so without it the second topology here silently gets the first one's
         // model, complete with tables it was never meant to have.
-        var (monolithFactory, monolith) = await BootAsync(KnownModules.All);
-        using (monolithFactory)
-        {
-            var (ordersFactory, ordersOnly) = await BootAsync(KnownModules.Orders_Entities);
-            using (ordersFactory)
-            {
-                Assert.Contains("Marketing.Customers", TablesIn(monolith));
-                Assert.DoesNotContain("Marketing.Customers", TablesIn(ordersOnly));
-            }
-        }
+        var monolith = TablesIn(ModelFor(KnownModules.All));
+        var ordersOnly = TablesIn(ModelFor(KnownModules.Orders_Entities));
+
+        Assert.Contains("Marketing.Customers", monolith);
+        Assert.DoesNotContain("Marketing.Customers", ordersOnly);
     }
 
     [Fact]
-    public async Task MigrationsCreateTheWholeSchemaWhateverTheTopology()
-    {
-        // Migrations are generated against the union of every module, so a subset topology gets
-        // tables it does not use rather than a database that only half exists. That is the point:
-        // one migration history, whatever the replica happens to be running.
-        var (factory, _) = await BootAsync(KnownModules.Orders_Entities);
-        using (factory)
-        {
-            using var scope = factory.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<DbContext>();
-
-            var customers = await db.Database
-                .SqlQuery<int>($"""
-                    SELECT COUNT(*)::int AS "Value" FROM information_schema.tables
-                    WHERE table_schema = 'Marketing' AND table_name = 'Customers'
-                    """)
-                .SingleAsync(TestContext.Current.CancellationToken);
-
-            Assert.Equal(1, customers);
-        }
-    }
-
-    [Fact]
-    public async Task AModuleWhoseDependenciesAreMissingFailsStartup()
+    public void AModuleWhoseDependenciesAreMissingFailsStartup()
     {
         // BillingModule uses types from both entity modules, so the compiler records references
         // to them, so ModuleBase requires them to be activated. Nothing had to be declared.
-        using var factory = new ModularWebApplicationFactory(
-            await postgres.CreateDatabaseAsync(TestContext.Current.CancellationToken),
-            KnownModules.Orders_Entities,
-            KnownModules.BillingModule);
+        using var factory = new ModularWebApplicationFactory(KnownModules.Orders_Entities, KnownModules.BillingModule);
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 

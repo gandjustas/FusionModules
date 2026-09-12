@@ -86,21 +86,31 @@ migrations; the others take the database as they find it.
 
 Two kinds, and the difference is the point.
 
-**[`Tests/`](Tests) — integration.** Modules appear only as the names handed to
-`ModularWebApplicationFactory`, exactly as they appear in a deployment. The assertions are HTTP
-responses and table names, never entity types: a test reaching for a module's types is testing
-that module, not the topology.
+**[`Tests/`](Tests) — topology.** Modules appear only as the names handed to
+`ModularWebApplicationFactory`, exactly as a deployment names them. The assertions are the model's
+tables and the route table, never entity types: a test that reaches for a module's types is
+testing that module, not the composition. No database is involved — building an EF model needs a
+provider, not a connection.
+
+Route presence is read off `EndpointDataSource` rather than probed over HTTP, because an HTTP
+probe of an endpoint that queries the database cannot tell "not deployed" from "deployed and
+broken". That inventory is also the snapshot worth keeping when migrating an existing service
+into a module: a mechanical migration that preserves the route table is very likely correct, and
+one that does not gives you a reviewable diff.
 
 **[`UnitTests/`](UnitTests) — business logic, no host.** Nothing goes through
 `HOSTINGSTARTUPASSEMBLIES`. The module assemblies are referenced and used like any other library,
 the test composes the model itself by calling `ApplyConfigurationsFromAssembly` for each assembly
 it names, and the rule under test is reached through `InternalsVisibleTo` — because MOD0001 means
-everything worth testing in a module is internal.
+everything worth testing in a module is internal. SQLite in memory: what counts as an overdue
+order does not need a database server to answer.
 
-Both run against a real PostgreSQL through **Testcontainers**, one container per test assembly and
-a fresh database per test. The rules under test are expressed in schemas, decimal precision and
-query translation; a provider that quietly ignores `ToTable("Orders", "Sales")` would let these
-tests agree with a production database they do not describe.
+That choice has a visible cost, and it is worth seeing rather than hiding. The SQLite provider
+cannot translate `DateTimeOffset` comparisons, so `Order` uses UTC `DateTime`. It is a defensible
+domain choice on its own, but it *was* the test provider reaching back into the model, which is
+what you pay for not testing against the real one.
 
-**Docker is required.** Without it these two projects fail to start; the other samples' tests do
-not need it.
+The unit tests hit the model cache trap too — same context type, different assembly sets — and
+solve it the same way the host does. Two places, one lesson.
+
+`dotnet test` is enough; nothing here needs Docker.

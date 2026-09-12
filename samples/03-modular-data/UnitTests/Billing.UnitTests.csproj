@@ -7,11 +7,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Testcontainers.PostgreSql" />
-    <PackageReference Include="SSH.NET" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <!--
+    CVE-2025-6965, in the native SQLite that SQLitePCLRaw carries. No patched release of that
+    package exists yet, and reaching the vulnerability needs attacker-controlled SQL: this is a
+    test project running fixed queries against an in-memory database it creates itself.
+    Suppressed by advisory rather than with NoWarn, so a different advisory still fails the build.
+  -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
   </ItemGroup>
 
   <!--

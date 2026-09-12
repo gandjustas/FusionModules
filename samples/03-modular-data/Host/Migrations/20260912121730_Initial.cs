@@ -41,8 +41,8 @@ namespace ModularData.Host.Migrations
                     Id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     CustomerId = table.Column<int>(type: "integer", nullable: false),
-                    PlacedOn = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    PaidOn = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    PlacedOn = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    PaidOn = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false)
                 },
                 constraints: table =>

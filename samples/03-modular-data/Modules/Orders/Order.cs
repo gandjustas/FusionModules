@@ -12,9 +12,9 @@ public class Order
     // — see the Billing module, which is what adds the relationship.
     public int CustomerId { get; set; }
 
-    public DateTimeOffset PlacedOn { get; set; }
+    public DateTime PlacedOn { get; set; }
 
-    public DateTimeOffset? PaidOn { get; set; }
+    public DateTime? PaidOn { get; set; }
 
     public decimal Amount { get; set; }
 }

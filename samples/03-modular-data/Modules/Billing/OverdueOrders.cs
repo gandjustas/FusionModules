@@ -17,7 +17,7 @@ internal static class OverdueOrders
 {
     public const int GraceDays = 3;
 
-    public static IQueryable<OverdueOrder> From(DbContext db, DateTimeOffset asOf) =>
+    public static IQueryable<OverdueOrder> From(DbContext db, DateTime asOf) =>
         from order in db.Set<Order>()
         join customer in db.Set<Customer>() on order.CustomerId equals customer.Id
         where order.PaidOn == null && order.PlacedOn < asOf.AddDays(-GraceDays)
@@ -27,7 +27,7 @@ internal static class OverdueOrders
 
 internal readonly record struct OverdueOrder(
     int OrderId,
-    DateTimeOffset PlacedOn,
+    DateTime PlacedOn,
     decimal Amount,
     string CustomerName,
     string CustomerEmail);
