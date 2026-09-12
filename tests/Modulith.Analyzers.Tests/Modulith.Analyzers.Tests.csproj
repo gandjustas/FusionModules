@@ -6,6 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      The testing library declares only a floor on Roslyn, so without these the graph resolves to
+      Microsoft.CodeAnalysis 1.0.1 and restore fails on a .NET Framework asset.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />

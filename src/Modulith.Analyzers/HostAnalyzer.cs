@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -28,10 +29,16 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         context.RegisterCompilationAction(OnCompilation);
     }
 
+    private const string ProjectKindOption = "build_property.ModulithProjectKind";
+
     private static void OnCompilation(CompilationAnalysisContext context)
     {
         var compilation = context.Compilation;
-        if (compilation.GetEntryPoint(context.CancellationToken) is null)
+
+        // An entry point is how a host is recognised, but a test project has one too — and a test
+        // that arranges data through a module's entity types is doing the right thing. MSBuild
+        // classifies the project; this only reads the answer.
+        if (compilation.GetEntryPoint(context.CancellationToken) is null || IsTestProject(context))
         {
             return;
         }
@@ -54,20 +61,40 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
     {
         // GetUsedAssemblyReferences, not References: a project reference that exists only to order
         // the build and copy the module to the output directory is exactly what we want people to have.
-        foreach (var reference in context.Compilation.GetUsedAssemblyReferences(context.CancellationToken))
-        {
-            if (context.Compilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly ||
-                !ModuleFacts.IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase))
-            {
-                continue;
-            }
+        var used = context.Compilation.GetUsedAssemblyReferences(context.CancellationToken);
 
+        var violations = used
+            .Select(context.Compilation.GetAssemblyOrModuleSymbol)
+            .OfType<IAssemblySymbol>()
+            .Where(assembly => ModuleFacts.IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase))
+            .ToArray();
+
+        // A compilation with errors cannot be analysed for used references — the compiler falls
+        // back to reporting all of them — so every module the host merely references would be
+        // reported, and the fix that suggests itself is to delete the references the model needs.
+        // Checked only when something is about to be reported, which is not the normal path.
+        if (violations.Length == 0 || HasErrors(context))
+        {
+            return;
+        }
+
+        foreach (var assembly in violations)
+        {
             context.ReportDiagnostic(Diagnostic.Create(
                 Diagnostics.HostMustNotUseModuleTypes,
                 Location.None,
                 assembly.Name));
         }
     }
+
+    private static bool IsTestProject(CompilationAnalysisContext context) =>
+        context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(ProjectKindOption, out var kind) &&
+        string.Equals(kind, "Test", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasErrors(CompilationAnalysisContext context) =>
+        context.Compilation
+            .GetDiagnostics(context.CancellationToken)
+            .Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id.StartsWith("CS", StringComparison.Ordinal));
 
     private static void CheckApplicationParts(
         CompilationAnalysisContext context,

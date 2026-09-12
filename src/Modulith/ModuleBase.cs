@@ -119,6 +119,49 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
             .ToArray();
     }
 
+    /// <summary>
+    /// Builds the configuration entries that <see cref="GetLoadedModules"/> reads, for code that
+    /// runs without a web host.
+    /// </summary>
+    /// <param name="moduleAssemblyNames">Module assembly names, in the order they would be activated.</param>
+    /// <returns>Entries to add to a configuration, via <c>AddInMemoryCollection</c>.</returns>
+    /// <remarks>
+    /// The registry is written by the modules themselves as they are activated, so anything that
+    /// builds the application's services without starting the host sees an empty one. The case
+    /// that matters is <c>dotnet ef</c>: a design-time factory that does not do this produces an
+    /// empty migration, silently, because the model it built had no modules in it.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var configuration = new ConfigurationBuilder()
+    ///     .AddJsonFile("appsettings.json")
+    ///     .AddInMemoryCollection(ModuleBase.CreateModuleRegistry("Orders.Entities", "Customers.Entities"))
+    ///     .Build();
+    /// </code>
+    /// </example>
+    public static IEnumerable<KeyValuePair<string, string?>> CreateModuleRegistry(params string[] moduleAssemblyNames)
+    {
+        ArgumentNullException.ThrowIfNull(moduleAssemblyNames);
+
+        var entries = new List<KeyValuePair<string, string?>>(moduleAssemblyNames.Length + 1)
+        {
+            // So that activation order is available to GetLoadedModules, exactly as at runtime.
+            new(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', moduleAssemblyNames)),
+        };
+
+        foreach (var name in moduleAssemblyNames)
+        {
+            var assembly = Assembly.Load(new AssemblyName(name));
+            if (assembly.GetCustomAttribute<HostingStartupAttribute>() is { } attribute)
+            {
+                entries.Add(new($"{ConfigurationSection}:{assembly.GetName().Name}",
+                    attribute.HostingStartupType.AssemblyQualifiedName));
+            }
+        }
+
+        return entries;
+    }
+
     void IHostingStartup.Configure(IWebHostBuilder builder)
     {
         builder.ConfigureServices((context, services) =>

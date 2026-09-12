@@ -48,6 +48,22 @@ public class HostAnalyzerTests
             Expect(Diagnostics.ApplicationPartMustNotNameModuleId, "OrdersModule"));
 
     [Fact]
+    public Task HostWithUnrelatedCompileErrors_IsNotReported() =>
+        // With errors in the compilation the compiler cannot work out which references are used
+        // and falls back to reporting all of them, so every module the host merely references
+        // would be flagged — and the obvious fix would be to delete the references the model
+        // needs. Fix the real error first; MOD0003 will have its say afterwards.
+        AnalyzerTest.VerifyHostAsync<HostAnalyzer>("""
+            class Host
+            {
+                static void Main()
+                {
+                    {|CS0246:Nonexistent|} x = null;
+                }
+            }
+            """);
+
+    [Fact]
     public Task LibraryUsingAModuleType_IsFine() =>
         // Only the host is held to this. A module may use another module's types — that is what
         // the runtime's reference check is for.

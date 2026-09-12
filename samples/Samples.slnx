@@ -11,4 +11,12 @@
     <Project Path="02-mvc-razor/Modules/Status/StatusModule.csproj" />
     <Project Path="02-mvc-razor/Tests/Tests.csproj" />
   </Folder>
+  <Folder Name="/03-modular-data/">
+    <Project Path="03-modular-data/Host/Host.csproj" />
+    <Project Path="03-modular-data/Modules/Orders/Orders.Entities.csproj" />
+    <Project Path="03-modular-data/Modules/Customers/Customers.Entities.csproj" />
+    <Project Path="03-modular-data/Modules/CustomersApi/CustomersModule.csproj" />
+    <Project Path="03-modular-data/Modules/Billing/BillingModule.csproj" />
+    <Project Path="03-modular-data/Tests/Tests.csproj" />
+  </Folder>
 </Solution>

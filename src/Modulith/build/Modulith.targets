@@ -6,7 +6,13 @@
   -->
 
   <PropertyGroup Condition="'$(ModulithProjectKind)' == ''">
-    <ModulithProjectKind Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">Host</ModulithProjectKind>
+    <!--
+      Test projects are checked first because they have an entry point too, and would otherwise
+      be held to the host's rules. A test legitimately reaches for a module's types: arranging
+      data through an entity is the normal way to write an integration test.
+    -->
+    <ModulithProjectKind Condition="'$(IsTestProject)' == 'true'">Test</ModulithProjectKind>
+    <ModulithProjectKind Condition="'$(ModulithProjectKind)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">Host</ModulithProjectKind>
     <ModulithProjectKind Condition="'$(ModulithProjectKind)' == ''">Module</ModulithProjectKind>
   </PropertyGroup>
 

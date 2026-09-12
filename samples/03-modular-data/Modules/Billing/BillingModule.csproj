@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A composing module: it owns no entities of its own, it joins two other modules' entities.
+      Load it and the foreign key exists; leave it out and Orders and Customers are independent
+      tables that happen to live in the same database.
+    -->
+    <AssemblyName>BillingModule</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    Using the types from these modules is what makes them dependencies. The compiler only emits a
+    reference for an assembly whose types are actually used, so this list is exact, and ModuleBase
+    fails startup if a topology loads this module without them.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Orders\Orders.Entities.csproj" />
+    <ProjectReference Include="..\Customers\Customers.Entities.csproj" />
+  </ItemGroup>
+
+</Project>

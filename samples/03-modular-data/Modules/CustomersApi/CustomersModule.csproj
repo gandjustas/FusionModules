@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A feature module, separate from the entity module it reads. Splitting them is what lets a
+      topology take the tables without the endpoints, or the endpoints without the composing
+      module that joins them to somebody else's tables.
+    -->
+    <AssemblyName>CustomersModule</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Customers\Customers.Entities.csproj" />
+  </ItemGroup>
+
+</Project>

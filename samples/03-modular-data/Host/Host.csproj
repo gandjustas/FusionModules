@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>ModularData.Host</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ModulithModule Include="..\Modules\Orders\Orders.Entities.csproj" />
+    <ModulithModule Include="..\Modules\Customers\Customers.Entities.csproj" />
+    <ModulithModule Include="..\Modules\CustomersApi\CustomersModule.csproj" />
+    <ModulithModule Include="..\Modules\Billing\BillingModule.csproj" />
+  </ItemGroup>
+
+</Project>

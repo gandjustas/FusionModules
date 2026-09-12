@@ -2,11 +2,28 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <!--
+      Transitive pinning is off: it forced the Roslyn version used for analyzer authoring onto
+      unrelated graphs, and EF Core's design-time tooling pins Roslyn itself.
+    -->
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageVersion Include="MinVer" Version="6.0.0" />
+  </ItemGroup>
+
+  <!-- Samples only. -->
+  <ItemGroup>
+    <!--
+      One version for every EF package the sample touches. Left to transitive resolution, the
+      host (which references the Design package) and its test project end up with different
+      EF assembly versions, and the test process fails to load the host at all.
+    -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.4" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
   </ItemGroup>
 
   <!-- Analyzer authoring -->

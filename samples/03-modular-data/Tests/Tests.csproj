@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ModularData.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Host\Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ModulithModule Include="..\Modules\Orders\Orders.Entities.csproj" />
+    <ModulithModule Include="..\Modules\Customers\Customers.Entities.csproj" />
+    <ModulithModule Include="..\Modules\CustomersApi\CustomersModule.csproj" />
+    <ModulithModule Include="..\Modules\Billing\BillingModule.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A module that owns a slice of the data model and nothing else. It has no endpoints and no
+      services: it contributes entity configurations, and any module that needs its tables
+      references it and so forces it to be loaded.
+    -->
+    <AssemblyName>Customers.Entities</AssemblyName>
+  </PropertyGroup>
+
+</Project>
