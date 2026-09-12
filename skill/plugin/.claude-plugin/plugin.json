@@ -1,0 +1,13 @@
+{
+  "name": "modulith",
+  "description": "Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Stanislav Vyshchepan",
+    "url": "https://github.com/gandjustas"
+  },
+  "homepage": "https://github.com/gandjustas/modulith",
+  "repository": "https://github.com/gandjustas/modulith",
+  "license": "MIT",
+  "keywords": ["dotnet", "aspnetcore", "modular-monolith", "microservices", "architecture"]
+}

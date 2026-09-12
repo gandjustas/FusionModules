@@ -1,0 +1,54 @@
+# One image, one Dockerfile, as many services as there are topologies.
+#
+# The only difference between these is an environment variable. Nothing was compiled for a
+# particular shape, and the binaries are identical — which is the whole argument.
+
+services:
+  monolith:
+    image: app
+    build: &build
+      context: .
+      dockerfile: Host/Dockerfile
+    ports: ["5010:8080"]
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=app;Username=app;Password=app;Maximum Pool Size=90
+      HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;CustomersModule;BillingModule
+      Deployment__ExpectedModules: Orders.Entities;Customers.Entities;CustomersModule;BillingModule
+    depends_on: [postgres]
+
+  customers:
+    image: app
+    build: *build
+    ports: ["5011:8080"]
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=app;Username=app;Password=app;Maximum Pool Size=45
+      HOSTINGSTARTUPASSEMBLIES: Customers.Entities;CustomersModule
+      Deployment__ExpectedModules: Customers.Entities;CustomersModule
+      # Exactly one replica runs migrations; the rest take the database as they find it.
+      Database__Migrate: "false"
+    depends_on: [postgres, monolith]
+
+  billing:
+    image: app
+    build: *build
+    ports: ["5012:8080"]
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=app;Username=app;Password=app;Maximum Pool Size=45
+      # BillingModule joins orders to customers, so it needs both entity modules and startup fails
+      # without them. It goes LAST: its entity configuration extends the two above, and EF applies
+      # configurations in activation order.
+      HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;BillingModule
+      Deployment__ExpectedModules: Orders.Entities;Customers.Entities;BillingModule
+      Database__Migrate: "false"
+    depends_on: [postgres, monolith]
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      retries: 20

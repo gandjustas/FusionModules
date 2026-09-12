@@ -1,0 +1,101 @@
+# When it fails quietly
+
+Almost every failure mode of this approach is silent. The application starts, the probe passes,
+and something is simply missing. Work from the symptom.
+
+## An endpoint returns 404 in a topology that should have it
+
+In order of likelihood:
+
+1. **The module's assembly is not in `HOSTINGSTARTUPASSEMBLIES`.** Check the actual environment
+   variable in the running container, not the compose file you think it came from.
+2. **The module has no `[assembly: HostingStartup(typeof(...))]`.** ASP.NET Core loads the
+   assembly, finds no attribute, and moves on without a word. MOD0005 catches this at build time —
+   if it did not fire, the build was not run with the analyzers.
+3. **The host does not call `UseRouting()`.** Modules map endpoints into the host's routing;
+   without it there is nothing to map into.
+4. **The module's `Configure` maps into a group or area whose prefix you have forgotten.**
+5. **Two modules mapped the same template** and load order decided it.
+
+Confirm what actually loaded rather than reasoning about it:
+
+```csharp
+ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name)
+```
+
+## The application starts but a module's services are missing
+
+The module activated but `ConfigureServices` did not register what the endpoint needs — usually
+because the registration stayed behind in the original `Program.cs`. Compare against the service
+list captured in Phase 0.
+
+If the endpoint exists and throws on resolution, that is this. If the endpoint does not exist at
+all, it is the previous section.
+
+## A migration comes out empty
+
+`dotnet ef` never starts the host, so no module activates, so the registry the model is built
+from is empty. The design-time factory must populate it with
+`ModuleBase.CreateModuleRegistry(...)`. There is no error — `Up` is just empty. See
+[data.md](data.md).
+
+## A topology has tables it should not, or is missing tables it should have
+
+EF Core's model cache, keyed by context type, shared across hosts in one process. The second
+topology in a test run gets the first one's model. Nothing throws. Fix with an
+`IModelCacheKeyFactory` that includes the module set — [data.md](data.md).
+
+If it happens at runtime rather than in tests, check that the model is being composed from
+`GetLoadedModules` and not from `AppDomain.CurrentDomain.GetAssemblies()`.
+
+## Controllers or pages appear in a topology that excluded their module
+
+Application Part Discovery. The host has
+`GenerateMvcApplicationPartsAssemblyAttributes` unset or true, so the SDK wired the module's
+controllers in at build time, behind `HOSTINGSTARTUPASSEMBLIES`' back. MOD0004 reports it; the
+fix is the property plus each module calling `AddApplicationPart` for itself.
+
+## Startup fails: "requires X, which was not activated"
+
+Correct behaviour. The module uses types from another module, so it depends on it. Either add
+that module to the topology, or — if the dependency is only a shared DTO — move the type into a
+contracts library so the reference goes away.
+
+Do not silence this by removing the project reference: the module would then fail to load at all.
+
+## Startup fails: "listed in HOSTINGSTARTUPASSEMBLIES but could not be loaded"
+
+A typo, or the assembly is not deployed next to the host. Check for
+`ReferenceOutputAssembly="false"` on the project reference — it stops the module being copied to
+the output, which looks like a routing problem until you look in the folder.
+
+## Nothing at all happens and no module loads
+
+If *every* name in the variable is wrong, there is no module left to notice, and the check cannot
+run. Look at the log for ASP.NET Core's own critical message about the first name it could not
+load.
+
+## Behaviour changed after merging, in a way nobody can pin down
+
+The usual suspects, in order:
+
+1. **Middleware order.** Each service had its own; now there is one. Phase 0's diff table says
+   which ones differed.
+2. **A configuration key defined by two modules** with different values. Last write wins.
+3. **A non-`TryAdd` DI registration in two modules.** The winner depends on the order of the
+   environment variable, which means it can differ between topologies.
+4. **A hosted service now running in more replicas than before**, or more than once per topology.
+5. **A retry or circuit breaker around what is now a local call**, changing failure behaviour.
+
+## The diagnostics
+
+| | |
+|---|---|
+| MOD0001 | A module must not expose public types. Make it internal, or move it to a contracts library, or allow it in `.editorconfig` with a reason. |
+| MOD0002 | The type in `[assembly: HostingStartup]` must derive from `ModuleBase`. |
+| MOD0003 | The host uses a module's types. Move the type to a contracts library. Keep the project reference — the model needs it. |
+| MOD0004 | The host declares an `[ApplicationPart]` for a module. Set `GenerateMvcApplicationPartsAssemblyAttributes` to false. |
+| MOD0005 | A module nothing names in `[assembly: HostingStartup]`. It would load and do nothing. |
+| MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+
+Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

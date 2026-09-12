@@ -39,6 +39,26 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: '**/*.trx'
 
+  skill:
+    # The plugin and the portable file are generated from skill/src. Regenerating them here and
+    # failing on a diff is what stops the three shapes drifting apart, which they would otherwise
+    # do quietly and only be noticed by whoever used the stale one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - run: dotnet run --project tools/skillgen
+
+      - name: Generated skill outputs are up to date
+        run: git diff --exit-code -- skill/
+
+      - name: The inventory script runs
+        run: pwsh skill/src/assets/scripts/assess.ps1 -Path samples -Output /tmp/assessment.json
+
   pack-validate:
     # Consumes the built package from a scratch project outside the repository. Analyzer and
     # MSBuild assets are wired up by project reference in-repo, so nothing else proves that the
