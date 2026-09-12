@@ -3,6 +3,9 @@
     <Project Path="src/Modulith/Modulith.csproj" />
     <Project Path="src/Modulith.Analyzers/Modulith.Analyzers.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Modulith.Analyzers.Tests/Modulith.Analyzers.Tests.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/01-minimal-api/Host/Host.csproj" />
     <Project Path="samples/01-minimal-api/Modules/Weather/WeatherModule.csproj" />

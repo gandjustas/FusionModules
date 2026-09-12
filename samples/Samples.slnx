@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/01-minimal-api/">
+    <Project Path="01-minimal-api/Host/Host.csproj" />
+    <Project Path="01-minimal-api/Modules/Weather/WeatherModule.csproj" />
+    <Project Path="01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
+  </Folder>
+</Solution>

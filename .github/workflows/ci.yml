@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer derives the version from tags.
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: dotnet build Modulith.slnx -c Release -warnaserror
+
+      - run: dotnet test Modulith.slnx -c Release --no-build --logger "trx;LogFileName=tests.trx"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: '**/*.trx'
+
+  pack-validate:
+    # Consumes the built package from a scratch project outside the repository. Analyzer and
+    # MSBuild assets are wired up by project reference in-repo, so nothing else proves that the
+    # package layout is right — and when it is wrong the build stays green and the rules go quiet.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: bash eng/pack-validate.sh
+
+      - name: Samples build against the package, not the projects
+        # The inner loop uses project references. This is the configuration a reader of the
+        # samples actually gets, and it fails differently.
+        run: |
+          version=$(basename local-feed/Modulith.*.nupkg .nupkg | grep -v symbols | head -1)
+          version=${version#Modulith.}
+          dotnet restore samples/Samples.slnx \
+            -p:ModulithUseProjectReferences=false -p:ModulithVersion=$version \
+            --source ./local-feed --source https://api.nuget.org/v3/index.json
+          dotnet build samples/Samples.slnx -c Release --no-restore \
+            -p:ModulithUseProjectReferences=false -p:ModulithVersion=$version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: local-feed/*.nupkg
