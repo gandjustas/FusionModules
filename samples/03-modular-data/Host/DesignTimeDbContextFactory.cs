@@ -14,9 +14,11 @@ namespace ModularData.Host;
 /// deployment that loads a subset of the modules simply has tables it does not use; a migration
 /// per topology would give you a database whose shape depends on which replica reached it first.
 /// <para>
-/// <c>dotnet ef</c> never starts the host, so no module ever activates and the registry the model
-/// is built from would be empty — which produces an empty migration and no error at all.
-/// <see cref="ModuleBase.CreateModuleRegistry"/> fills it in.
+/// <c>dotnet ef</c> does build the host, so <c>HostingStartup</c> runs and the model would follow
+/// <c>HOSTINGSTARTUPASSEMBLIES</c> as it stands in the shell that ran the command — an empty
+/// migration and no error at all when it is unset, one topology's tables when it is not.
+/// <see cref="ModuleBase.CreateModuleRegistry"/> names every module here instead, so the migration
+/// is the same on every machine and in CI.
 /// </para>
 /// </remarks>
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
@@ -26,7 +28,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(MigrationModules()))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -37,16 +39,12 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         return new ApplicationDbContext(options, configuration);
     }
 
-    /// <summary>Every module, as HOSTINGSTARTUPASSEMBLIES spells them.</summary>
+    /// <summary>
+    /// Every module, as HOSTINGSTARTUPASSEMBLIES spells them. Deliberately not read from the
+    /// environment: migrations are generated against the union and applied whole, and a variable
+    /// left over from debugging one topology would otherwise produce a migration for that topology
+    /// without saying so.
+    /// </summary>
     private static readonly string[] AllModules =
         ["Orders.Entities", "Customers.Entities", "CustomersModule", "BillingModule"];
-
-    /// <summary>
-    /// Every module, unless HOSTINGSTARTUPASSEMBLIES says otherwise — which it should only do
-    /// when you are deliberately inspecting one topology's model.
-    /// </summary>
-    private static string[] MigrationModules() =>
-        Environment.GetEnvironmentVariable("HOSTINGSTARTUPASSEMBLIES") is { Length: > 0 } requested
-            ? requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : AllModules;
 }

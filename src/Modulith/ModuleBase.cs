@@ -126,10 +126,12 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// <param name="moduleAssemblyNames">Module assembly names, in the order they would be activated.</param>
     /// <returns>Entries to add to a configuration, via <c>AddInMemoryCollection</c>.</returns>
     /// <remarks>
-    /// The registry is written by the modules themselves as they are activated, so anything that
-    /// builds the application's services without starting the host sees an empty one. The case
-    /// that matters is <c>dotnet ef</c>: a design-time factory that does not do this produces an
-    /// empty migration, silently, because the model it built had no modules in it.
+    /// <c>dotnet ef</c> does build the application's host, so the modules named in
+    /// <c>HOSTINGSTARTUPASSEMBLIES</c> activate and write themselves to the registry as usual. That
+    /// is the hazard rather than the relief: the generated schema then depends on what the variable
+    /// held in the shell that ran the command — empty when it is unset, one topology's tables when
+    /// it names one, and no error in either case. Naming the modules here instead makes the
+    /// migration the same on every machine and in CI.
     /// </remarks>
     /// <example>
     /// <code>

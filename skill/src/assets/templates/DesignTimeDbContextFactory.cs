@@ -1,8 +1,9 @@
 // Builds a context for `dotnet ef` against the union of every module.
 //
-// dotnet ef never starts the host, so no module activates and the registry the model is built
-// from is empty — which produces an empty migration and no error at all. CreateModuleRegistry
-// fills it in. If your generated migration's Up() is empty, this is why.
+// dotnet ef DOES build the host, so HostingStartup runs and the model would follow
+// HOSTINGSTARTUPASSEMBLIES as it stands in the shell that ran the command: empty when it is unset,
+// one topology's tables when it is not, and no error either way. Naming every module here instead
+// makes the migration the same on every machine and in CI.
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
@@ -18,7 +19,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(MigrationModules()))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -29,15 +30,9 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         return new ApplicationDbContext(options, configuration);
     }
 
-    /// <summary>Every module, as HOSTINGSTARTUPASSEMBLIES spells them.</summary>
+    // Every module, as HOSTINGSTARTUPASSEMBLIES spells them. Deliberately not read from the
+    // environment: migrations are generated against the union and applied whole, and a variable
+    // left over from debugging one topology would otherwise produce a migration for that topology
+    // without saying so.
     private static readonly string[] AllModules = ["Orders.Entities", "Customers.Entities", "OrdersModule"];
-
-    // Every module, unless HOSTINGSTARTUPASSEMBLIES says otherwise — which it should only do when
-    // you are deliberately inspecting one topology's model. Migrations are always generated
-    // against the union and applied whole; a topology loading a subset simply has tables it does
-    // not use.
-    private static string[] MigrationModules() =>
-        Environment.GetEnvironmentVariable("HOSTINGSTARTUPASSEMBLIES") is { Length: > 0 } requested
-            ? requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : AllModules;
 }

@@ -266,9 +266,13 @@ be loaded in the process, which includes assemblies that were referenced but nev
 in a test process it reports every module of every host that has run. The registry reports
 exactly the modules that ran, in the order they ran.
 
-For code that runs without a host — a `dotnet ef` design-time factory, chiefly — the registry is
-empty, because no module ever activated. `ModuleBase.CreateModuleRegistry(params string[])`
-builds the entries. Skipping this produces an **empty migration and no error at all**.
+`dotnet ef` does build the host, so `HostingStartup` runs and the registry is populated the usual
+way — from `HOSTINGSTARTUPASSEMBLIES` as it stands in the shell that ran the command. That is the
+hazard rather than the relief: unset, only the entry assembly activates and you get an **empty
+migration with no error at all**; set to one topology, you get that topology's tables, also with
+no error. `ModuleBase.CreateModuleRegistry(params string[])` builds the entries for a design-time
+factory that names the modules in code, so the schema stops depending on whose shell produced
+it.
 
 ### Dependencies between modules
 
@@ -450,8 +454,10 @@ the compose file, not just in a commit message.
 a subset has tables it does not use. Generating a migration per topology gives you a database
 whose shape depends on which replica reached it first.
 
-`dotnet ef` never starts the host, so no module activates and the registry is empty — which
-produces an **empty migration and no error at all**. The design-time factory has to fill it in:
+`dotnet ef` builds the host to find the context, so `HostingStartup` runs and the model follows
+`HOSTINGSTARTUPASSEMBLIES` as set in that shell. So the schema depends on the machine it was
+generated on: unset gives an **empty migration and no error at all**, one topology's value gives
+that topology's tables and no error either. The design-time factory names the modules in code:
 
 ```csharp
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
@@ -996,12 +1002,13 @@ list captured in Phase 0.
 If the endpoint exists and throws on resolution, that is this. If the endpoint does not exist at
 all, it is the previous section.
 
-### A migration comes out empty
+### A migration comes out empty, or covers the wrong modules
 
-`dotnet ef` never starts the host, so no module activates, so the registry the model is built
-from is empty. The design-time factory must populate it with
-`ModuleBase.CreateModuleRegistry(...)`. There is no error — `Up` is just empty. See
-[data.md](data.md).
+`dotnet ef` builds the host, so `HostingStartup` runs and the model follows
+`HOSTINGSTARTUPASSEMBLIES` as set in the shell that ran the command: unset gives an empty model,
+one topology's value gives that topology's tables. There is no error either way — `Up` is just
+empty, or short. Generate migrations through a design-time factory that names every module with
+`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](data.md).
 
 ### A topology has tables it should not, or is missing tables it should have
 

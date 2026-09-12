@@ -66,9 +66,13 @@ be loaded in the process, which includes assemblies that were referenced but nev
 in a test process it reports every module of every host that has run. The registry reports
 exactly the modules that ran, in the order they ran.
 
-For code that runs without a host — a `dotnet ef` design-time factory, chiefly — the registry is
-empty, because no module ever activated. `ModuleBase.CreateModuleRegistry(params string[])`
-builds the entries. Skipping this produces an **empty migration and no error at all**.
+`dotnet ef` does build the host, so `HostingStartup` runs and the registry is populated the usual
+way — from `HOSTINGSTARTUPASSEMBLIES` as it stands in the shell that ran the command. That is the
+hazard rather than the relief: unset, only the entry assembly activates and you get an **empty
+migration with no error at all**; set to one topology, you get that topology's tables, also with
+no error. `ModuleBase.CreateModuleRegistry(params string[])` builds the entries for a design-time
+factory that names the modules in code, so the schema stops depending on whose shell produced
+it.
 
 ## Dependencies between modules
 

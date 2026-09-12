@@ -65,10 +65,11 @@ dotnet ef migrations add Initial
 A deployment that loads a subset simply has tables it does not use. Generating a migration per
 topology would give you a database whose shape depends on which replica reached it first.
 
-`dotnet ef` never starts the host, so no module activates and the registry the model is built
-from is empty — which produces an **empty migration and no error at all**.
-[`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) fills it in with
-`ModuleBase.CreateModuleRegistry`.
+`dotnet ef` builds the host to find the context, so `HostingStartup` runs and the model follows
+`HOSTINGSTARTUPASSEMBLIES` as it stands in your shell — an **empty migration and no error at all**
+when it is unset, one topology's tables when it is not.
+[`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) names every module with
+`ModuleBase.CreateModuleRegistry`, so the migration is the same on every machine.
 
 ## Running it
 

@@ -111,8 +111,10 @@ the compose file, not just in a commit message.
 a subset has tables it does not use. Generating a migration per topology gives you a database
 whose shape depends on which replica reached it first.
 
-`dotnet ef` never starts the host, so no module activates and the registry is empty — which
-produces an **empty migration and no error at all**. The design-time factory has to fill it in:
+`dotnet ef` builds the host to find the context, so `HostingStartup` runs and the model follows
+`HOSTINGSTARTUPASSEMBLIES` as set in that shell. So the schema depends on the machine it was
+generated on: unset gives an **empty migration and no error at all**, one topology's value gives
+that topology's tables and no error either. The design-time factory names the modules in code:
 
 ```csharp
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>

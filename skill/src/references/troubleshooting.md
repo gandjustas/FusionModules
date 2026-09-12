@@ -42,12 +42,13 @@ list captured in Phase 0.
 If the endpoint exists and throws on resolution, that is this. If the endpoint does not exist at
 all, it is the previous section.
 
-## A migration comes out empty
+## A migration comes out empty, or covers the wrong modules
 
-`dotnet ef` never starts the host, so no module activates, so the registry the model is built
-from is empty. The design-time factory must populate it with
-`ModuleBase.CreateModuleRegistry(...)`. There is no error — `Up` is just empty. See
-[data.md](data.md).
+`dotnet ef` builds the host, so `HostingStartup` runs and the model follows
+`HOSTINGSTARTUPASSEMBLIES` as set in the shell that ran the command: unset gives an empty model,
+one topology's value gives that topology's tables. There is no error either way — `Up` is just
+empty, or short. Generate migrations through a design-time factory that names every module with
+`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](data.md).
 
 ## A topology has tables it should not, or is missing tables it should have
 
