@@ -84,6 +84,17 @@ Diagnostics are available in English and Russian.
 | [02 — MVC and Razor Pages](samples/02-mvc-razor) | Views, areas, page models and per-module static assets |
 | [03 — Modular data model](samples/03-modular-data) | One EF Core model composed from modules; three topologies from one image |
 
+## Migrating an existing system
+
+[`skill/`](skill) holds instructions for an AI agent doing the migration: assess, host, modules,
+data, transports, deployment, and a verification loop that runs after every phase rather than at
+the end. Authored once and generated into a Claude Code plugin, a portable
+[`SKILL.md`](skill/dist/SKILL.md) for any other tool, and a short always-on rules file.
+
+It is also worth reading as prose if you are doing it by hand — particularly
+[troubleshooting](skill/src/references/troubleshooting.md), which lists the failure modes of this
+approach by symptom, because every one of them is silent.
+
 ## What is deliberately not here
 
 An EF Core package, a testing package, project templates, a messaging abstraction. Each of them
