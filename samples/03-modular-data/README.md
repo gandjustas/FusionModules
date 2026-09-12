@@ -82,7 +82,25 @@ curl -X POST localhost:5010/billing/seed && curl localhost:5010/billing/overdue
 Same image in all three, differing only by `HOSTINGSTARTUPASSEMBLIES`. Only one replica runs
 migrations; the others take the database as they find it.
 
-## Without a database
+## Tests
 
-The tests build models and never open a connection, because that is all EF needs a provider for.
-`dotnet test` is enough.
+Two kinds, and the difference is the point.
+
+**[`Tests/`](Tests) — integration.** Modules appear only as the names handed to
+`ModularWebApplicationFactory`, exactly as they appear in a deployment. The assertions are HTTP
+responses and table names, never entity types: a test reaching for a module's types is testing
+that module, not the topology.
+
+**[`UnitTests/`](UnitTests) — business logic, no host.** Nothing goes through
+`HOSTINGSTARTUPASSEMBLIES`. The module assemblies are referenced and used like any other library,
+the test composes the model itself by calling `ApplyConfigurationsFromAssembly` for each assembly
+it names, and the rule under test is reached through `InternalsVisibleTo` — because MOD0001 means
+everything worth testing in a module is internal.
+
+Both run against a real PostgreSQL through **Testcontainers**, one container per test assembly and
+a fresh database per test. The rules under test are expressed in schemas, decimal precision and
+query translation; a provider that quietly ignores `ToTable("Orders", "Sales")` would let these
+tests agree with a production database they do not describe.
+
+**Docker is required.** Without it these two projects fail to start; the other samples' tests do
+not need it.

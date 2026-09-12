@@ -17,8 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ModulithModule Include="..\Modules\Dashboard\DashboardModule.csproj" />
-    <ModulithModule Include="..\Modules\Status\StatusModule.csproj" />
+    <ProjectReference Include="..\Modules\Dashboard\DashboardModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Status\StatusModule.csproj" ModulithModule="true" />
   </ItemGroup>
 
 </Project>

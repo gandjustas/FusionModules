@@ -30,5 +30,6 @@
     <Project Path="samples/03-modular-data/Modules/CustomersApi/CustomersModule.csproj" />
     <Project Path="samples/03-modular-data/Modules/Billing/BillingModule.csproj" />
     <Project Path="samples/03-modular-data/Tests/Tests.csproj" />
+    <Project Path="samples/03-modular-data/UnitTests/Billing.UnitTests.csproj" />
   </Folder>
 </Solution>

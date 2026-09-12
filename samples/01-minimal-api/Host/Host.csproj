@@ -6,8 +6,8 @@
     has no idea what they contain.
   -->
   <ItemGroup>
-    <ModulithModule Include="..\Modules\Weather\WeatherModule.csproj" />
-    <ModulithModule Include="..\Modules\Greeting\GreetingModule.csproj" />
+    <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Greeting\GreetingModule.csproj" ModulithModule="true" />
   </ItemGroup>
 
 </Project>

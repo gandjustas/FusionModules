@@ -20,17 +20,7 @@ sealed class Module : Modulith.ModuleBase
 
             // The module takes a dependency on DbContext, not on the host's concrete context
             // type: it needs a place to put its tables, not knowledge of the application.
-            billing.MapGet("/overdue", (DbContext db) =>
-                from order in db.Set<Order>()
-                join customer in db.Set<Customer>() on order.CustomerId equals customer.Id
-                where order.PaidOn == null && order.PlacedOn < DateTimeOffset.UtcNow.AddDays(-3)
-                select new
-                {
-                    OrderId = order.Id,
-                    order.PlacedOn,
-                    order.Amount,
-                    Customer = new { customer.Id, customer.Name, customer.Email },
-                });
+            billing.MapGet("/overdue", (DbContext db) => OverdueOrders.From(db, DateTimeOffset.UtcNow));
 
             billing.MapPost("/seed", async (DbContext db, CancellationToken cancellationToken) =>
             {

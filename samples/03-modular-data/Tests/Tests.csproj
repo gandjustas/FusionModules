@@ -7,6 +7,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="SSH.NET" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -17,10 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ModulithModule Include="..\Modules\Orders\Orders.Entities.csproj" />
-    <ModulithModule Include="..\Modules\Customers\Customers.Entities.csproj" />
-    <ModulithModule Include="..\Modules\CustomersApi\CustomersModule.csproj" />
-    <ModulithModule Include="..\Modules\Billing\BillingModule.csproj" />
+    <ProjectReference Include="..\Modules\Orders\Orders.Entities.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Customers\Customers.Entities.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\CustomersApi\CustomersModule.csproj" ModulithModule="true" />
+    <ProjectReference Include="..\Modules\Billing\BillingModule.csproj" ModulithModule="true" />
   </ItemGroup>
 
 </Project>

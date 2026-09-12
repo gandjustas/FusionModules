@@ -4,20 +4,19 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace ModularData.Tests;
 
 /// <summary>
-/// Boots the host with a chosen set of modules and no database.
+/// Boots the host with a chosen set of modules against a chosen database.
 /// </summary>
 /// <remarks>
-/// Building an EF Core model needs a provider, not a connection, so everything here runs against
-/// a connection string that is never opened. Migrations are switched off through configuration
-/// for the same reason.
+/// The only place a module name appears in these tests. A topology here is the same thing as a
+/// topology in the compose file: a list of assembly names and a connection string.
 /// </remarks>
-internal sealed class ModularWebApplicationFactory(params string[] modules) : WebApplicationFactory<Program>
+internal sealed class ModularWebApplicationFactory(string connectionString, params string[] modules)
+    : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', modules));
-        builder.UseSetting("Database:Migrate", "false");
-        builder.UseSetting("ConnectionStrings:Postgres", "Host=localhost;Database=never-opened;Username=none;Password=none");
+        builder.UseSetting("ConnectionStrings:Postgres", connectionString);
         base.ConfigureWebHost(builder);
     }
 }

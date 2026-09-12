@@ -134,6 +134,77 @@ else
     fail "diagnostics did not come out in Russian"
 fi
 
+log "net8.0 consumers work too"
+# The package multi-targets, and nothing else here would notice if the older target framework
+# stopped working — HostingStartup behaviour and Program's accessibility both differ across them.
+mkdir -p "$work/consumer/Net8Module" "$work/consumer/Net8Host"
+sed 's|net10.0|net8.0|' <<XML > "$work/consumer/Net8Module/Net8Module.csproj"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Modulith" Version="$version" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/Net8Module/Module.cs" <<'CS'
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Routing;
+using Modulith;
+
+[assembly: HostingStartup(typeof(Module))]
+
+sealed class Module : ModuleBase
+{
+    protected override void Configure(IApplicationBuilder app) =>
+        app.UseEndpoints(endpoints => endpoints.MapGet("/net8", () => "net8"));
+}
+CS
+sed 's|net10.0|net8.0|' <<XML > "$work/consumer/Net8Host/Net8Host.csproj"
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Modulith" Version="$version" />
+    <ProjectReference Include="../Net8Module/Net8Module.csproj" ModulithModule="true" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/Net8Host/Program.cs" <<'CS'
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.UseRouting();
+app.MapGet("/", () => "host");
+await app.RunAsync();
+CS
+if dotnet build "$work/consumer/Net8Host" --nologo -v q > "$work/net8.log" 2>&1; then
+    pass "net8.0 host and module build"
+    if [ -f "$work/consumer/Net8Host/obj/Debug/net8.0/ModulithKnownModules.g.cs" ]; then
+        pass "KnownModules generated on net8.0"
+    else
+        fail "KnownModules not generated on net8.0"
+    fi
+    HOSTINGSTARTUPASSEMBLIES=Net8Module timeout 40 dotnet run --project "$work/consumer/Net8Host" \
+        --no-build --urls http://localhost:5199 > "$work/net8.run.log" 2>&1 &
+    net8_pid=$!
+    net8_body=""
+    for _ in $(seq 1 30); do
+        net8_body="$(curl -s --max-time 2 http://localhost:5199/net8 2>/dev/null)" && [ -n "$net8_body" ] && break
+    done
+    kill "$net8_pid" 2>/dev/null || true
+    wait "$net8_pid" 2>/dev/null || true
+    [ "$net8_body" = "net8" ] && pass "module activates at runtime on net8.0" || fail "net8.0 module did not serve its endpoint"
+else
+    fail "net8.0 did not build"; cat "$work/net8.log"
+fi
+
 log "A host builds clean"
 if dotnet build "$work/consumer/Host" --nologo -v q > "$work/host.log" 2>&1; then
     pass "builds"

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Billing.UnitTests</AssemblyName>
+    <RootNamespace>Billing.UnitTests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="SSH.NET" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <!--
+    Plain project references, with no ModulithModule metadata and no host in sight. Nothing here
+    goes through HOSTINGSTARTUPASSEMBLIES: these assemblies are referenced and used like any
+    other library, which is the whole point of testing business logic separately.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Billing\BillingModule.csproj" />
+    <ProjectReference Include="..\Modules\Orders\Orders.Entities.csproj" />
+    <ProjectReference Include="..\Modules\Customers\Customers.Entities.csproj" />
+  </ItemGroup>
+
+</Project>

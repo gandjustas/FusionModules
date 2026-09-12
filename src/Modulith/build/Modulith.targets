@@ -36,13 +36,21 @@
   </PropertyGroup>
 
   <!--
-    <ModulithModule Include="..\Modules\Weather\WeatherModule.csproj" /> is an ordinary project
-    reference, kept with ReferenceOutputAssembly true so the module's assembly is copied next to
-    the host and into the test output. Setting it to false looks like hardening but stops the
-    module being deployed at all; MOD0003 is what enforces the boundary.
+    Modules are marked on an ordinary project reference:
+
+      <ProjectReference Include="..\Modules\Weather\WeatherModule.csproj" ModulithModule="true" />
+
+    Deliberately metadata on a real reference rather than an item of our own that expands into
+    one. Restore has to know the project graph before it can generate the imports that bring this
+    file in, so a reference invented here would be invisible to the first restore — the project
+    would simply fail to build with "assets file not found".
+
+    Keep ReferenceOutputAssembly at its default: the module's assembly has to be copied next to
+    the host and into the test output. Setting it to false looks like hardening and instead stops
+    the module being deployed at all. MOD0003 is what enforces the boundary.
   -->
   <ItemGroup>
-    <ProjectReference Include="@(ModulithModule)" IsModulithModule="true" />
+    <ModulithModule Include="@(ProjectReference->WithMetadataValue('ModulithModule', 'true'))" />
   </ItemGroup>
 
   <!--

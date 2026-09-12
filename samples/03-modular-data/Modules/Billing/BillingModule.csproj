@@ -19,4 +19,13 @@
     <ProjectReference Include="..\Customers\Customers.Entities.csproj" />
   </ItemGroup>
 
+  <!--
+    Unit tests reach this module's internals directly, without loading it as a module. A business
+    rule should not need a host to exercise, and MOD0001 means everything worth testing is
+    internal.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Billing.UnitTests" />
+  </ItemGroup>
+
 </Project>
