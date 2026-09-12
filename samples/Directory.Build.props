@@ -26,6 +26,10 @@
     <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Modulith.Analyzers/Modulith.Analyzers.csproj"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
+    <!-- Both, so the inner loop runs the set the package actually ships. -->
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Modulith.CodeFixes/Modulith.CodeFixes.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(ModulithUseProjectReferences)' != 'true'">

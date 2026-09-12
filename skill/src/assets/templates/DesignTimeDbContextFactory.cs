@@ -29,6 +29,9 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         return new ApplicationDbContext(options, configuration);
     }
 
+    /// <summary>Every module, as HOSTINGSTARTUPASSEMBLIES spells them.</summary>
+    private static readonly string[] AllModules = ["Orders.Entities", "Customers.Entities", "OrdersModule"];
+
     // Every module, unless HOSTINGSTARTUPASSEMBLIES says otherwise — which it should only do when
     // you are deliberately inspecting one topology's model. Migrations are always generated
     // against the union and applied whole; a topology loading a subset simply has tables it does
@@ -36,5 +39,5 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
     private static string[] MigrationModules() =>
         Environment.GetEnvironmentVariable("HOSTINGSTARTUPASSEMBLIES") is { Length: > 0 } requested
             ? requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : KnownModules.All;
+            : AllModules;
 }

@@ -13,21 +13,24 @@ dotnet run --project ../tools/skillgen
 
 | | |
 |---|---|
-| [`src/`](src) | The authored form. Also the plugin's shape, so the plugin build is a copy. |
-| [`plugin/`](plugin) | A Claude Code plugin: the skill plus five slash commands. |
+| [`src/`](src) | The authored form, and the only committed copy. |
+| `plugin/` | A Claude Code plugin: the skill plus five slash commands. Generated — `plugin/skills/` is not committed, and the release attaches it as a zip. |
 | [`dist/SKILL.md`](dist/SKILL.md) | One portable file, references inlined and cross-links rewritten as anchors. For anything that takes a single markdown instruction file. |
 | [`dist/modulith-rules.md`](dist/modulith-rules.md) | The routing layer alone, ~70 lines. For a Cursor rule or a `copilot-instructions.md`, where everything is always in context and length is the whole cost. |
 
-CI runs the generator and fails if anything changed, so the outputs cannot drift.
+CI regenerates and fails if `dist/` changed, so the portable copies cannot drift. `plugin/skills/`
+is generated but not committed: it was a byte-for-byte copy of `src/`, and the only thing keeping
+two identical trees in git bought was a way to edit the wrong one.
 
 `plugin/.claude-plugin/plugin.json` and `plugin/commands/` are hand-written and survive
-regeneration; only `plugin/skills/modulith/` is rebuilt.
+regeneration.
 
 ## Using it
 
-**Claude Code** — add the plugin directory as a marketplace or copy `plugin/skills/modulith/`
-into `.claude/skills/`. Commands: `/modulith:assess`, `/modulith:migrate`, `/modulith:verify`,
-`/modulith:new-module`, `/modulith:explain`.
+**Claude Code** — run the generator, then add `plugin/` as a marketplace or copy
+`plugin/skills/modulith/` into `.claude/skills/`. Releases attach it as a zip. Commands:
+`/modulith:assess`, `/modulith:migrate`, `/modulith:verify`, `/modulith:new-module`,
+`/modulith:explain`.
 
 **Anything else** — hand it `dist/SKILL.md`, or drop `dist/modulith-rules.md` into the tool's
 always-on rules file.

@@ -27,11 +27,11 @@ would otherwise break every deployment silently.
 Then register it with the host and with the test project:
 
 ```xml
-<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" ModulithModule="true" />
+<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" />
 ```
 
-Both, not just the host: the metadata is what generates `KnownModules`, and tests are where
-module names are written down most often.
+In the test project as well as the host, so the module's assembly lands in the test output and
+can be loaded there.
 
 ## Program.cs into Module.cs
 

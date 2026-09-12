@@ -3,27 +3,26 @@
 Read-only. Change nothing. The output is `modulith-assessment.md` and one batch of questions.
 
 The risk in this phase is not being wrong, it is being inconsistent — looking at different things
-in different repositories and reaching confident conclusions from an incomplete picture. Run the
-inventory script first and reason over its output rather than grepping ad hoc.
+in different repositories and reaching confident conclusions from an incomplete picture. The
+checklist below is what to look at, every time.
+
+Do that inventory yourself: grep reads a solution better than a script does, because it sees the
+context around each hit. Run the script only for the two things reading cannot find:
 
 ```bash
-pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-assessment.json
+pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-collisions.json
 ```
 
-Needs `pwsh`, which is cross-platform. Without it, gather the same things by hand — the list
-below is the checklist either way.
+- the same configuration key holding **different values** in different files
+- the same route template declared in more than one place
 
-Three things it does not do, so do not take its silence as an answer:
+Both are silent at runtime, and which one wins is decided by load order — which is decided by
+`HOSTINGSTARTUPASSEMBLIES`, and can therefore differ between topologies.
 
-- **It composes no routes.** `MapGroup("/billing")` followed by `MapGet("/overdue")` is reported
-  as two templates, not one. The reliable route inventory comes from `EndpointDataSource` at
-  runtime — see [verify.md](verify.md). This list is for spotting collisions early, not for the
-  baseline.
-- **Its collisions are candidates.** Two modules mapping the same template only matters if a
-  topology loads both. Check before raising it.
-- **Properties inherited from `Directory.Build.props` are reported separately**, not resolved.
-  Resolving them properly means an MSBuild evaluation per project, which turns seconds into
-  minutes. So a project whose `targetFramework` is empty probably inherits it.
+Two caveats. It composes no routes: `MapGroup("/billing")` followed by `MapGet("/overdue")` is
+reported as two templates, not one. And its collisions are candidates — two modules declaring the
+same template only matters if some topology loads both. Confirm before raising. The authoritative
+route inventory comes from `EndpointDataSource` at runtime; see [verify.md](verify.md).
 
 ## What the assessment must contain
 

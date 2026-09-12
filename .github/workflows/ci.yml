@@ -29,11 +29,14 @@ jobs:
             8.0.x
             10.0.x
 
+      # Modulith.slnx is the product, samples/Samples.slnx the samples: one project list each.
       - run: dotnet build Modulith.slnx -c Release -warnaserror
+      - run: dotnet build samples/Samples.slnx -c Release -warnaserror
 
       # MTP mode, selected in global.json: the solution goes behind --solution, and VSTest's
       # --logger is not a thing here. TUnit writes an HTML report of its own.
       - run: dotnet test --solution Modulith.slnx -c Release --no-build
+      - run: dotnet test --solution samples/Samples.slnx -c Release --no-build
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -55,11 +58,17 @@ jobs:
 
       - run: dotnet run --project tools/skillgen
 
-      - name: Generated skill outputs are up to date
-        run: git diff --exit-code -- skill/
+      - name: The portable skill matches its source
+        # Only skill/dist is committed — the plugin copy is generated at release time, so there is
+        # nothing to drift.
+        run: git diff --exit-code -- skill/dist
 
-      - name: The inventory script runs
-        run: pwsh skill/src/assets/scripts/assess.ps1 -Path samples -Output /tmp/assessment.json
+      - name: The collision detector produces both sections
+        # Asserting on the output, not just on exit code: a script that silently finds nothing
+        # looks exactly like a passing one.
+        run: |
+          pwsh skill/src/assets/scripts/assess.ps1 -Path samples -Output /tmp/collisions.json
+          python3 -c "import json,sys; d=json.load(open('/tmp/collisions.json')); sys.exit(0 if {'routeCollisions','configurationKeyCollisions'} <= d.keys() else 1)"
 
   pack-validate:
     # Consumes the built package from a scratch project outside the repository. Analyzer and

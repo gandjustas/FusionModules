@@ -47,7 +47,8 @@ internal sealed class ModularWebApplicationFactory(params string[] modules) : We
 ```
 
 Ten lines, copied into the test project — there is no package for this, because there is nothing
-in it but a setting. Use `KnownModules` for the names so a rename is a compile error.
+in it but a setting. Keep the module names in one place in the test project: they are the same
+strings a deployment writes, and a typo in them fails startup with a message naming the module.
 
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is

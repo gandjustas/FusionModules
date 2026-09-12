@@ -122,7 +122,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.All))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

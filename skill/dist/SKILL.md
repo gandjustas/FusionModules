@@ -94,27 +94,26 @@ lists them by symptom along with what each MOD diagnostic means.
 Read-only. Change nothing. The output is `modulith-assessment.md` and one batch of questions.
 
 The risk in this phase is not being wrong, it is being inconsistent — looking at different things
-in different repositories and reaching confident conclusions from an incomplete picture. Run the
-inventory script first and reason over its output rather than grepping ad hoc.
+in different repositories and reaching confident conclusions from an incomplete picture. The
+checklist below is what to look at, every time.
+
+Do that inventory yourself: grep reads a solution better than a script does, because it sees the
+context around each hit. Run the script only for the two things reading cannot find:
 
 ```bash
-pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-assessment.json
+pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-collisions.json
 ```
 
-Needs `pwsh`, which is cross-platform. Without it, gather the same things by hand — the list
-below is the checklist either way.
+- the same configuration key holding **different values** in different files
+- the same route template declared in more than one place
 
-Three things it does not do, so do not take its silence as an answer:
+Both are silent at runtime, and which one wins is decided by load order — which is decided by
+`HOSTINGSTARTUPASSEMBLIES`, and can therefore differ between topologies.
 
-- **It composes no routes.** `MapGroup("/billing")` followed by `MapGet("/overdue")` is reported
-  as two templates, not one. The reliable route inventory comes from `EndpointDataSource` at
-  runtime — see [verify.md](verify.md). This list is for spotting collisions early, not for the
-  baseline.
-- **Its collisions are candidates.** Two modules mapping the same template only matters if a
-  topology loads both. Check before raising it.
-- **Properties inherited from `Directory.Build.props` are reported separately**, not resolved.
-  Resolving them properly means an MSBuild evaluation per project, which turns seconds into
-  minutes. So a project whose `targetFramework` is empty probably inherits it.
+Two caveats. It composes no routes: `MapGroup("/billing")` followed by `MapGet("/overdue")` is
+reported as two templates, not one. And its collisions are candidates — two modules declaring the
+same template only matters if some topology loads both. Confirm before raising. The authoritative
+route inventory comes from `EndpointDataSource` at runtime; see [verify.md](verify.md).
 
 ### What the assessment must contain
 
@@ -302,12 +301,11 @@ MOD0005 covers the same class of mistake at build time.
 The host references its modules:
 
 ```xml
-<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" ModulithModule="true" />
+<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" />
 ```
 
-An ordinary project reference — it orders the build and copies the assembly next to the host so
-it can be loaded by name. The metadata drives `KnownModules` generation, which turns module names
-into compile-checked constants.
+An ordinary project reference, and nothing more: it orders the build and copies the assembly next
+to the host so it can be loaded by name. The host still never uses its types.
 
 **Do not set `ReferenceOutputAssembly="false"`.** It looks like hardening. The analyzer tolerates
 it and the module then stops being copied to the output at all, so nothing loads and the failure
@@ -463,7 +461,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.All))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -760,11 +758,11 @@ would otherwise break every deployment silently.
 Then register it with the host and with the test project:
 
 ```xml
-<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" ModulithModule="true" />
+<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" />
 ```
 
-Both, not just the host: the metadata is what generates `KnownModules`, and tests are where
-module names are written down most often.
+In the test project as well as the host, so the module's assembly lands in the test output and
+can be loaded there.
 
 ### Program.cs into Module.cs
 
@@ -1120,7 +1118,8 @@ internal sealed class ModularWebApplicationFactory(params string[] modules) : We
 ```
 
 Ten lines, copied into the test project — there is no package for this, because there is nothing
-in it but a setting. Use `KnownModules` for the names so a rename is a compile error.
+in it but a setting. Keep the module names in one place in the test project: they are the same
+strings a deployment writes, and a typo in them fails startup with a message naming the module.
 
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is

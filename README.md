@@ -58,8 +58,6 @@ Because the approach has sharp edges, and every one of them fails quietly:
   **MOD0004** is the backstop.
 - The host using one type from one module quietly puts that module in every deployment.
   **MOD0003** catches it while allowing the project reference the model needs.
-- Module names are strings in an environment variable, so a rename is found in production.
-  `KnownModules` is generated from your project references and makes it a compile error.
 
 ## Rules
 

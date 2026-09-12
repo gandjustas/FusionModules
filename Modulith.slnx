@@ -7,18 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Modulith.Analyzers.Tests/Modulith.Analyzers.Tests.csproj" />
   </Folder>
-  <Folder Name="/samples/01-minimal-api/">
-    <Project Path="samples/01-minimal-api/Host/Host.csproj" />
-    <Project Path="samples/01-minimal-api/Modules/Weather/WeatherModule.csproj" />
-    <Project Path="samples/01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
-    <Project Path="samples/01-minimal-api/Tests/Tests.csproj" />
-  </Folder>
-  <Folder Name="/samples/02-mvc-razor/">
-    <Project Path="samples/02-mvc-razor/Host/Host.csproj" />
-    <Project Path="samples/02-mvc-razor/Modules/Dashboard/DashboardModule.csproj" />
-    <Project Path="samples/02-mvc-razor/Modules/Status/StatusModule.csproj" />
-    <Project Path="samples/02-mvc-razor/Tests/Tests.csproj" />
-  </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/skillgen/skillgen.csproj" />
   </Folder>
@@ -26,16 +14,6 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="README.md" />
-    <File Path="README.ru.md" />
     <File Path="skill/README.md" />
-  </Folder>
-  <Folder Name="/samples/03-modular-data/">
-    <Project Path="samples/03-modular-data/Host/Host.csproj" />
-    <Project Path="samples/03-modular-data/Modules/Orders/Orders.Entities.csproj" />
-    <Project Path="samples/03-modular-data/Modules/Customers/Customers.Entities.csproj" />
-    <Project Path="samples/03-modular-data/Modules/CustomersApi/CustomersModule.csproj" />
-    <Project Path="samples/03-modular-data/Modules/Billing/BillingModule.csproj" />
-    <Project Path="samples/03-modular-data/Tests/Tests.csproj" />
-    <Project Path="samples/03-modular-data/UnitTests/Billing.UnitTests.csproj" />
   </Folder>
 </Solution>

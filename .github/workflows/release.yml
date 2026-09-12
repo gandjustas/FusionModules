@@ -35,13 +35,18 @@ jobs:
             10.0.x
 
       - run: dotnet build Modulith.slnx -c Release -warnaserror
+      - run: dotnet build samples/Samples.slnx -c Release -warnaserror
 
       - run: dotnet test --solution Modulith.slnx -c Release --no-build
+      - run: dotnet test --solution samples/Samples.slnx -c Release --no-build
 
-      - name: The generated skill outputs match their source
+      - name: The portable skill matches its source
         run: |
           dotnet run --project tools/skillgen
-          git diff --exit-code -- skill/
+          git diff --exit-code -- skill/dist
+
+      - name: Package the Claude Code plugin
+        run: cd skill && zip -qr ../modulith-plugin.zip plugin
 
       - name: Pack and consume the package as a stranger would
         run: bash eng/pack-validate.sh
@@ -52,9 +57,10 @@ jobs:
           path: |
             local-feed/*.nupkg
             local-feed/*.snupkg
+            modulith-plugin.zip
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg modulith-plugin.zip --clobber
         env:
           GH_TOKEN: ${{ github.token }}

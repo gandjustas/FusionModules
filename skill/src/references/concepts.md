@@ -101,12 +101,11 @@ MOD0005 covers the same class of mistake at build time.
 The host references its modules:
 
 ```xml
-<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" ModulithModule="true" />
+<ProjectReference Include="..\Modules\Orders\OrdersModule.csproj" />
 ```
 
-An ordinary project reference — it orders the build and copies the assembly next to the host so
-it can be loaded by name. The metadata drives `KnownModules` generation, which turns module names
-into compile-checked constants.
+An ordinary project reference, and nothing more: it orders the build and copies the assembly next
+to the host so it can be loaded by name. The host still never uses its types.
 
 **Do not set `ReferenceOutputAssembly="false"`.** It looks like hardening. The analyzer tolerates
 it and the module then stops being copied to the output at all, so nothing loads and the failure
