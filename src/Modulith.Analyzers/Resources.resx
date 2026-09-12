@@ -66,7 +66,7 @@
     <value>Type '{0}' is public in a module assembly</value>
   </data>
   <data name="MOD0001_Description" xml:space="preserve">
-    <value>A module's types are an implementation detail: nothing outside it may reference them, and the analyzer that keeps the host free of module references depends on that. Make the type internal. Types that ASP.NET Core or EF Core must discover through reflection are exempt: controllers, page models, view components, tag helpers, and entity types configured by an IEntityTypeConfiguration in the same assembly. For anything else that genuinely has to be public, list it in modulith_allowed_public_types in .editorconfig.</value>
+    <value>A module's types are an implementation detail, and the rule that keeps the host free of module references depends on that. Make it internal, or move it to a contracts library. Controllers, page models, view components, tag helpers and configured entity types are exempt; anything else goes in modulith_allowed_public_types.</value>
   </data>
 
   <data name="MOD0002_Title" xml:space="preserve">
@@ -76,7 +76,7 @@
     <value>Type '{0}' is named by [assembly: HostingStartup] but does not derive from '{1}'</value>
   </data>
   <data name="MOD0002_Description" xml:space="preserve">
-    <value>ASP.NET Core will instantiate this type and cast it to IHostingStartup. Deriving from ModuleBase is what gives the module its configuration registry entry and its check that referenced modules were activated.</value>
+    <value>ASP.NET Core instantiates this type and casts it to IHostingStartup. Deriving from ModuleBase is also what registers the module and checks that the modules it references were activated.</value>
   </data>
 
   <data name="MOD0003_Title" xml:space="preserve">
@@ -86,7 +86,7 @@
     <value>The host uses types from module assembly '{0}'</value>
   </data>
   <data name="MOD0003_Description" xml:space="preserve">
-    <value>The point of the model is that the host has no compile-time knowledge of any module, so that deployment topology can be chosen at startup. A project reference is fine — it only orders the build and copies the module to the output directory — but using the module's types couples the two. Move the shared type to a contracts assembly that is not itself a module.</value>
+    <value>A project reference is fine — it orders the build and copies the module to the output. Using the module's types is not: it puts that module in every deployment. Move the shared type to a contracts assembly.</value>
   </data>
 
   <data name="MOD0004_Title" xml:space="preserve">
@@ -96,7 +96,7 @@
     <value>The host declares [assembly: ApplicationPart] for module assembly '{0}'</value>
   </data>
   <data name="MOD0004_Description" xml:space="preserve">
-    <value>Application Part Discovery does not know about HostingStartup: it loads the module's controllers and pages without ever running the module's own code. Set GenerateMvcApplicationPartsAssemblyAttributes to false in the host project and let each module call AddApplicationPart for itself.</value>
+    <value>Application Part Discovery does not know about HostingStartup: it loads a module's controllers and pages without running the module. Set GenerateMvcApplicationPartsAssemblyAttributes to false and let each module call AddApplicationPart.</value>
   </data>
 
   <data name="MOD0005_Title" xml:space="preserve">
@@ -106,7 +106,7 @@
     <value>Module '{0}' is never named by an [assembly: HostingStartup] attribute and will not be loaded</value>
   </data>
   <data name="MOD0005_Description" xml:space="preserve">
-    <value>Without the attribute the module fails silently: the assembly is listed in HOSTINGSTARTUPASSEMBLIES, ASP.NET Core loads it, finds no attribute and moves on, so the module's services and endpoints simply do not exist and nothing is logged. Add [assembly: HostingStartup(typeof(YourModule))].</value>
+    <value>Without the attribute the module fails silently: ASP.NET Core loads the assembly, finds no attribute and moves on, so the module's services and endpoints do not exist and nothing is logged.</value>
   </data>
 
   <data name="MOD0006_Title" xml:space="preserve">
@@ -116,7 +116,7 @@
     <value>'{0}' replaces the whole request pipeline and must not be called from a module</value>
   </data>
   <data name="MOD0006_Description" xml:space="preserve">
-    <value>IWebHostBuilder.Configure and UseStartup do not add to the pipeline, they define it — discarding whatever the host and every other module set up, including routing. A module contributes middleware by overriding ModuleBase.Configure, which runs through an IStartupFilter after the host's own pipeline is in place.</value>
+    <value>IWebHostBuilder.Configure and UseStartup define the pipeline rather than adding to it, discarding whatever the host and every other module set up. Override ModuleBase.Configure instead.</value>
   </data>
 
   <data name="MOD0007_Title" xml:space="preserve">
@@ -126,7 +126,7 @@
     <value>'{0}' already registers itself as an IStartupFilter</value>
   </data>
   <data name="MOD0007_Description" xml:space="preserve">
-    <value>ModuleBase registers the module as an IStartupFilter for you. Registering it again means Configure runs twice, which duplicates every piece of middleware and every endpoint the module adds — and a duplicate endpoint is an exception at startup, not a warning.</value>
+    <value>ModuleBase already registers the module as an IStartupFilter. Registering it again runs Configure twice, duplicating every piece of middleware and every endpoint the module adds.</value>
   </data>
 
   <data name="MOD0008_Title" xml:space="preserve">
@@ -136,7 +136,7 @@
     <value>Module '{0}' registers a hosted service, which will run once per replica of every topology that loads this module</value>
   </data>
   <data name="MOD0008_Description" xml:space="preserve">
-    <value>A worker that ran in one replica of one service now runs wherever its module is loaded, and twice if two replicas of a topology both load it. That changes behaviour silently and in production. The options are leader election, a topology that is the only one loading this module, or leaving the work outside the modular host. Suppress this once you have chosen.</value>
+    <value>A worker that ran in one replica of one service now runs wherever its module is loaded, and twice if two replicas load it. Choose: leader election, a dedicated worker topology, or once per replica — then suppress.</value>
   </data>
 
   <data name="MOD0020_Title" xml:space="preserve">
@@ -146,6 +146,6 @@
     <value>This assembly declares a HostingStartup but does not reference '{0}', so module rules cannot be verified</value>
   </data>
   <data name="MOD0020_Description" xml:space="preserve">
-    <value>The analyzers are running without the runtime package, which means the ModuleBase type cannot be found and the rules that depend on it are silently inactive. Add a reference to the Modulith package.</value>
+    <value>The runtime package is missing, so ModuleBase cannot be found and the rules that depend on it are inactive. The build is green because nothing is being checked.</value>
   </data>
 </root>
