@@ -2,11 +2,12 @@
 
 A modular monolith for ASP.NET Core — with no framework.
 
+[Русская версия](README.ru.md)
+
 A module is an ordinary class library. It is activated by naming its assembly in
-`HOSTINGSTARTUPASSEMBLIES`. One image, any deployment topology, chosen by an environment
-variable rather than a rebuild. ASP.NET Core has had every mechanism for this for years;
-this package is one base class over them, plus the analyzers that stop the architecture
-from leaking.
+`HOSTINGSTARTUPASSEMBLIES`. One image, any deployment topology, chosen by an environment variable
+rather than a rebuild. ASP.NET Core has had every mechanism for this for years; this package is
+one base class over them, plus the analyzers that stop the architecture from leaking.
 
 ```csharp
 // OrdersModule/Module.cs — the whole module contract
@@ -43,11 +44,61 @@ monolith:  { environment: { HOSTINGSTARTUPASSEMBLIES: "Orders.Entities;Customers
 dotnet add package Modulith
 ```
 
-That is the whole dependency. The analyzers come with it.
+That is the whole dependency. The analyzers come with it. `net8.0` and `net10.0`.
+
+## Why a package at all
+
+Because the approach has sharp edges, and every one of them fails quietly:
+
+- A module that forgets `[assembly: HostingStartup]` loads and does nothing. The application
+  starts, the readiness probe passes, and the first sign is a 404. **MOD0005** makes it a build
+  error.
+- A typo in `HOSTINGSTARTUPASSEMBLIES` makes ASP.NET Core log a critical message and carry on
+  starting. `ModuleBase` fails startup instead.
+- The Razor SDK wires a module's controllers into the host behind `HOSTINGSTARTUPASSEMBLIES`'
+  back, so they appear in topologies that excluded the module. The MSBuild assets turn that off;
+  **MOD0004** is the backstop.
+- The host using one type from one module quietly puts that module in every deployment.
+  **MOD0003** catches it while allowing the project reference the model needs.
+- Module names are strings in an environment variable, so a rename is found in production.
+  `KnownModules` is generated from your project references and makes it a compile error.
+
+## Rules
+
+| | |
+|---|---|
+| [MOD0001](docs/rules/MOD0001.md) | A module must not expose public types |
+| [MOD0002](docs/rules/MOD0002.md) | The type named by HostingStartup must be a module |
+| [MOD0003](docs/rules/MOD0003.md) | The host must not use types from a module |
+| [MOD0004](docs/rules/MOD0004.md) | The host must not declare an ApplicationPart for a module |
+| [MOD0005](docs/rules/MOD0005.md) | A module must be named by an assembly-level HostingStartup attribute |
+| [MOD0020](docs/rules/MOD0020.md) | The Modulith package is not referenced |
+
+Diagnostics are available in English and Russian.
+
+## Samples
+
+| | |
+|---|---|
+| [01 — Minimal API](samples/01-minimal-api) | The smallest thing that shows the idea |
+| [02 — MVC and Razor Pages](samples/02-mvc-razor) | Views, areas, page models and per-module static assets |
+| [03 — Modular data model](samples/03-modular-data) | One EF Core model composed from modules; three topologies from one image |
+
+## What is deliberately not here
+
+An EF Core package, a testing package, project templates, a messaging abstraction. Each of them
+would be a handful of lines wrapped in something you have to depend on, version and learn — and
+the claim this project is making is that the approach does not need a framework. They live in the
+samples as code to copy, with the reasoning next to them:
+[the data model recipe](samples/03-modular-data#the-recipe),
+[the testing recipe](samples/03-modular-data#tests).
+
+Modules also load by name at runtime, so `PublishTrimmed` and `PublishAot` are off the table for
+the host. That is the cost of the approach and it is worth knowing before you adopt it.
 
 ## Status
 
-Early development, pre-1.0. The API surface is not yet locked.
+Early development, pre-1.0. The API surface is not locked, and the package id is not yet claimed.
 
 ## Origin
 

@@ -22,6 +22,7 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="README.md" />
+    <File Path="README.ru.md" />
   </Folder>
   <Folder Name="/samples/03-modular-data/">
     <Project Path="samples/03-modular-data/Host/Host.csproj" />
