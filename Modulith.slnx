@@ -6,11 +6,17 @@
   <Folder Name="/tests/">
     <Project Path="tests/Modulith.Analyzers.Tests/Modulith.Analyzers.Tests.csproj" />
   </Folder>
-  <Folder Name="/samples/">
+  <Folder Name="/samples/01-minimal-api/">
     <Project Path="samples/01-minimal-api/Host/Host.csproj" />
     <Project Path="samples/01-minimal-api/Modules/Weather/WeatherModule.csproj" />
     <Project Path="samples/01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
     <Project Path="samples/01-minimal-api/Tests/Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/02-mvc-razor/">
+    <Project Path="samples/02-mvc-razor/Host/Host.csproj" />
+    <Project Path="samples/02-mvc-razor/Modules/Dashboard/DashboardModule.csproj" />
+    <Project Path="samples/02-mvc-razor/Modules/Status/StatusModule.csproj" />
+    <Project Path="samples/02-mvc-razor/Tests/Tests.csproj" />
   </Folder>
   <Folder Name="/solution items/">
     <File Path="Directory.Build.props" />

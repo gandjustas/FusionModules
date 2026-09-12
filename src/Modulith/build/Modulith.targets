@@ -21,6 +21,15 @@
   </PropertyGroup>
 
   <!--
+    A module that ships .cshtml is always a library compiled for an MVC host, so it always needs
+    Razor's MVC support. Left unset, the Razor SDK emits RAZORSDK1004 and the views do not work.
+    Razor Pages modules hit this as readily as MVC ones, despite the property's name.
+  -->
+  <PropertyGroup Condition="'$(ModulithProjectKind)' == 'Module' and '$(UsingMicrosoftNETSdkRazor)' == 'true' and '$(AddRazorSupportForMvc)' == ''">
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <!--
     <ModulithModule Include="..\Modules\Weather\WeatherModule.csproj" /> is an ordinary project
     reference, kept with ReferenceOutputAssembly true so the module's assembly is copied next to
     the host and into the test output. Setting it to false looks like hardening but stops the

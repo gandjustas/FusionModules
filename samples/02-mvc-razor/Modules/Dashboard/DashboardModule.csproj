@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <!--
+      Microsoft.NET.Sdk.Razor, because this module ships .cshtml views that have to be compiled.
+      A module with no views needs only Microsoft.NET.Sdk.
+    -->
+    <AssemblyName>DashboardModule</AssemblyName>
+  </PropertyGroup>
+
+</Project>

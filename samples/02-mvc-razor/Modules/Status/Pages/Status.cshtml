@@ -1,0 +1,22 @@
+@page "/status"
+@model StatusModule.Pages.StatusModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Status</title>
+    <!--
+        Static assets from a Razor class library are served under _content/<AssemblyName>/.
+        A module's wwwroot is therefore namespaced by construction: two modules can both ship
+        site.css without either of them knowing about the other.
+    -->
+    <link rel="stylesheet" href="~/_content/StatusModule/status.css" />
+</head>
+<body>
+    <h1>Status</h1>
+    <p class="ok">Up since @Model.Since.ToString("O")</p>
+</body>
+</html>

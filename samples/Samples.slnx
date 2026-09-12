@@ -5,4 +5,10 @@
     <Project Path="01-minimal-api/Modules/Greeting/GreetingModule.csproj" />
     <Project Path="01-minimal-api/Tests/Tests.csproj" />
   </Folder>
+  <Folder Name="/02-mvc-razor/">
+    <Project Path="02-mvc-razor/Host/Host.csproj" />
+    <Project Path="02-mvc-razor/Modules/Dashboard/DashboardModule.csproj" />
+    <Project Path="02-mvc-razor/Modules/Status/StatusModule.csproj" />
+    <Project Path="02-mvc-razor/Tests/Tests.csproj" />
+  </Folder>
 </Solution>

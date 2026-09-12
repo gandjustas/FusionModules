@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <AssemblyName>StatusModule</AssemblyName>
+  </PropertyGroup>
+
+</Project>
