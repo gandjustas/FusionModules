@@ -17,6 +17,15 @@
   </ItemGroup>
 
   <!--
+    The surface is deliberately one class, and this is what keeps it that way: adding a public
+    member is a reviewable change to PublicAPI.Unshipped.txt rather than something that happens
+    while nobody is looking.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
     One PackageReference gives a consumer the base class, the rules and the conventions.
     The analyzer ships inside this package rather than beside it: every rule needs the ModuleBase
     type to be present, so an analyzer-only package would have nothing to say.
@@ -25,6 +34,9 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Modulith.Analyzers\Modulith.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+    <ProjectReference Include="..\Modulith.CodeFixes\Modulith.CodeFixes.csproj"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
   </ItemGroup>
@@ -37,6 +49,11 @@
   <Target Name="ResolveAnalyzerPackFiles" BeforeTargets="_GetPackageFiles">
     <MSBuild Projects="..\Modulith.Analyzers\Modulith.Analyzers.csproj"
              Targets="GetAnalyzerPackFiles"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_AnalyzerPackFile" />
+    </MSBuild>
+    <MSBuild Projects="..\Modulith.CodeFixes\Modulith.CodeFixes.csproj"
+             Targets="GetCodeFixPackFiles"
              Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="_AnalyzerPackFile" />
     </MSBuild>

@@ -72,6 +72,9 @@ dotnet add package Modulith
 | [MOD0003](docs/rules/MOD0003.md) | Хост не должен использовать типы модулей |
 | [MOD0004](docs/rules/MOD0004.md) | Хост не должен объявлять ApplicationPart для модуля |
 | [MOD0005](docs/rules/MOD0005.md) | Модуль должен быть указан в атрибуте HostingStartup уровня сборки |
+| [MOD0006](docs/rules/MOD0006.md) | Модуль не должен подменять пайплайн приложения |
+| [MOD0007](docs/rules/MOD0007.md) | Лишняя регистрация IStartupFilter |
+| [MOD0008](docs/rules/MOD0008.md) | Hosted-сервис в модуле выполняется в каждой реплике, которая его загрузила |
 | [MOD0020](docs/rules/MOD0020.md) | Пакет Modulith не подключён |
 
 Диагностики выводятся на английском и на русском — Roslyn берёт язык из текущей UI-культуры, так

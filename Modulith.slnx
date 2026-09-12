@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Modulith/Modulith.csproj" />
     <Project Path="src/Modulith.Analyzers/Modulith.Analyzers.csproj" />
+    <Project Path="src/Modulith.CodeFixes/Modulith.CodeFixes.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Modulith.Analyzers.Tests/Modulith.Analyzers.Tests.csproj" />

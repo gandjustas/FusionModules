@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -20,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modulith.Analyzers\Modulith.Analyzers.csproj" />
+    <ProjectReference Include="..\..\src\Modulith.CodeFixes\Modulith.CodeFixes.csproj" />
   </ItemGroup>
 
 </Project>

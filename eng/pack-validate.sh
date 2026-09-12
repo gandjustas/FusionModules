@@ -31,6 +31,7 @@ log "Package layout"
 contents="$(unzip -Z1 "$feed/Modulith.$version.nupkg")"
 for expected in \
     "analyzers/dotnet/cs/Modulith.Analyzers.dll" \
+    "analyzers/dotnet/cs/Modulith.CodeFixes.dll" \
     "analyzers/dotnet/cs/ru/Modulith.Analyzers.resources.dll" \
     "buildTransitive/Modulith.props" \
     "buildTransitive/Modulith.targets" \

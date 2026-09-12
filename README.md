@@ -72,6 +72,9 @@ Because the approach has sharp edges, and every one of them fails quietly:
 | [MOD0003](docs/rules/MOD0003.md) | The host must not use types from a module |
 | [MOD0004](docs/rules/MOD0004.md) | The host must not declare an ApplicationPart for a module |
 | [MOD0005](docs/rules/MOD0005.md) | A module must be named by an assembly-level HostingStartup attribute |
+| [MOD0006](docs/rules/MOD0006.md) | A module must not replace the application pipeline |
+| [MOD0007](docs/rules/MOD0007.md) | Redundant IStartupFilter registration |
+| [MOD0008](docs/rules/MOD0008.md) | A hosted service in a module runs in every replica that loads it |
 | [MOD0020](docs/rules/MOD0020.md) | The Modulith package is not referenced |
 
 Diagnostics are available in English and Russian.

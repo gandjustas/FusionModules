@@ -109,6 +109,36 @@
     <value>Without the attribute the module fails silently: the assembly is listed in HOSTINGSTARTUPASSEMBLIES, ASP.NET Core loads it, finds no attribute and moves on, so the module's services and endpoints simply do not exist and nothing is logged. Add [assembly: HostingStartup(typeof(YourModule))].</value>
   </data>
 
+  <data name="MOD0006_Title" xml:space="preserve">
+    <value>A module must not replace the application pipeline</value>
+  </data>
+  <data name="MOD0006_Message" xml:space="preserve">
+    <value>'{0}' replaces the whole request pipeline and must not be called from a module</value>
+  </data>
+  <data name="MOD0006_Description" xml:space="preserve">
+    <value>IWebHostBuilder.Configure and UseStartup do not add to the pipeline, they define it — discarding whatever the host and every other module set up, including routing. A module contributes middleware by overriding ModuleBase.Configure, which runs through an IStartupFilter after the host's own pipeline is in place.</value>
+  </data>
+
+  <data name="MOD0007_Title" xml:space="preserve">
+    <value>Redundant IStartupFilter registration</value>
+  </data>
+  <data name="MOD0007_Message" xml:space="preserve">
+    <value>'{0}' already registers itself as an IStartupFilter</value>
+  </data>
+  <data name="MOD0007_Description" xml:space="preserve">
+    <value>ModuleBase registers the module as an IStartupFilter for you. Registering it again means Configure runs twice, which duplicates every piece of middleware and every endpoint the module adds — and a duplicate endpoint is an exception at startup, not a warning.</value>
+  </data>
+
+  <data name="MOD0008_Title" xml:space="preserve">
+    <value>A hosted service in a module runs in every replica that loads it</value>
+  </data>
+  <data name="MOD0008_Message" xml:space="preserve">
+    <value>Module '{0}' registers a hosted service, which will run once per replica of every topology that loads this module</value>
+  </data>
+  <data name="MOD0008_Description" xml:space="preserve">
+    <value>A worker that ran in one replica of one service now runs wherever its module is loaded, and twice if two replicas of a topology both load it. That changes behaviour silently and in production. The options are leader election, a topology that is the only one loading this module, or leaving the work outside the modular host. Suppress this once you have chosen.</value>
+  </data>
+
   <data name="MOD0020_Title" xml:space="preserve">
     <value>The Modulith package is not referenced</value>
   </data>

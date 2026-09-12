@@ -34,6 +34,16 @@ internal static class AnalyzerTest
         {
             public interface IHostingStartup { }
 
+            public interface IStartupFilter { }
+
+            public interface IWebHostBuilder { }
+
+            public static class WebHostBuilderExtensions
+            {
+                public static IWebHostBuilder Configure(this IWebHostBuilder builder, System.Action<object> configure) => builder;
+                public static IWebHostBuilder UseStartup<TStartup>(this IWebHostBuilder builder) => builder;
+            }
+
             [System.AttributeUsage(System.AttributeTargets.Assembly, AllowMultiple = true)]
             public sealed class HostingStartupAttribute : System.Attribute
             {
@@ -72,13 +82,31 @@ internal static class AnalyzerTest
         {
             public interface IEntityTypeConfiguration<T> where T : class { }
         }
+
+        namespace Microsoft.Extensions.Hosting
+        {
+            public interface IHostedService { }
+        }
+
+        namespace Microsoft.Extensions.DependencyInjection
+        {
+            public interface IServiceCollection { }
+
+            public static class ServiceCollectionExtensions
+            {
+                public static IServiceCollection AddSingleton<TService>(this IServiceCollection services) => services;
+                public static IServiceCollection AddSingleton<TService>(this IServiceCollection services, TService instance) => services;
+                public static IServiceCollection AddHostedService<THostedService>(this IServiceCollection services)
+                    where THostedService : Microsoft.Extensions.Hosting.IHostedService => services;
+            }
+        }
         """;
 
     /// <summary>The runtime package's one public type, as a stub.</summary>
     public const string ModuleBaseStub = """
         namespace Modulith
         {
-            public abstract class ModuleBase : Microsoft.AspNetCore.Hosting.IHostingStartup { }
+            public abstract class ModuleBase : Microsoft.AspNetCore.Hosting.IHostingStartup, Microsoft.AspNetCore.Hosting.IStartupFilter { }
         }
         """;
 

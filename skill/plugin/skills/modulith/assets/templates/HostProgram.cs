@@ -10,8 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 var app = builder.Build();
 
-// Required. Modules map their endpoints into the host's routing; without this there is nothing
-// for them to map into.
+// Modules map their endpoints into the host's routing. WebApplication adds routing on its own if
+// the host maps anything itself, and throws a message naming this call if neither does — but
+// being explicit costs nothing and removes the question.
 app.UseRouting();
 
 // Only static assets if any module ships a wwwroot. They are served from _content/<AssemblyName>/.

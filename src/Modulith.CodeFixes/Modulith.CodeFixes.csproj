@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>$(ModulithName).CodeFixes</PackageId>
+    <AssemblyName>$(PackageId)</AssemblyName>
+    <RootNamespace>$(PackageId)</RootNamespace>
+
+    <!--
+      Separate from the analyzer assembly because code fixes reference Workspaces, which analyzers
+      must not: they load in contexts where it is absent, and RS1038 says so. Ships in the same
+      package, beside the analyzer.
+    -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modulith.Analyzers\Modulith.Analyzers.csproj" />
+  </ItemGroup>
+
+  <Target Name="GetCodeFixPackFiles" DependsOnTargets="Build" Returns="@(ModulithCodeFixPackFile)">
+    <ItemGroup>
+      <ModulithCodeFixPackFile Include="$(TargetPath)" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -36,6 +36,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="$(ModulithName).Analyzers.Tests" />
+    <InternalsVisibleTo Include="$(ModulithName).CodeFixes" />
+    <InternalsVisibleTo Include="$(ModulithName).CodeFixes.Tests" />
   </ItemGroup>
 
   <ItemGroup>

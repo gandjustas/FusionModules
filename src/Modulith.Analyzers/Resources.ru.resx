@@ -63,6 +63,36 @@
     <value>Без атрибута модуль отказывает молча: сборка перечислена в HOSTINGSTARTUPASSEMBLIES, ASP.NET Core её загружает, не находит атрибута и идёт дальше — сервисов и эндпоинтов модуля просто нет, и в логе об этом ни строчки. Добавьте [assembly: HostingStartup(typeof(YourModule))].</value>
   </data>
 
+  <data name="MOD0006_Title" xml:space="preserve">
+    <value>Модуль не должен подменять пайплайн приложения</value>
+  </data>
+  <data name="MOD0006_Message" xml:space="preserve">
+    <value>'{0}' заменяет весь конвейер обработки запроса и не должен вызываться из модуля</value>
+  </data>
+  <data name="MOD0006_Description" xml:space="preserve">
+    <value>IWebHostBuilder.Configure и UseStartup не дополняют пайплайн, а задают его — отбрасывая всё, что настроили хост и остальные модули, включая маршрутизацию. Модуль добавляет middleware переопределением ModuleBase.Configure, который выполняется через IStartupFilter уже поверх готового пайплайна хоста.</value>
+  </data>
+
+  <data name="MOD0007_Title" xml:space="preserve">
+    <value>Лишняя регистрация IStartupFilter</value>
+  </data>
+  <data name="MOD0007_Message" xml:space="preserve">
+    <value>'{0}' уже регистрирует себя как IStartupFilter</value>
+  </data>
+  <data name="MOD0007_Description" xml:space="preserve">
+    <value>ModuleBase регистрирует модуль как IStartupFilter сам. Повторная регистрация означает, что Configure выполнится дважды, а значит удвоятся и middleware, и эндпоинты модуля — а дублирующийся эндпоинт это исключение при старте, а не предупреждение.</value>
+  </data>
+
+  <data name="MOD0008_Title" xml:space="preserve">
+    <value>Hosted-сервис в модуле выполняется в каждой реплике, которая его загрузила</value>
+  </data>
+  <data name="MOD0008_Message" xml:space="preserve">
+    <value>Модуль '{0}' регистрирует hosted-сервис: он будет работать в каждой реплике каждой топологии, загружающей этот модуль</value>
+  </data>
+  <data name="MOD0008_Description" xml:space="preserve">
+    <value>Воркер, который выполнялся в одной реплике одного сервиса, теперь работает везде, где загружен его модуль, — и дважды, если топологию развернули в двух репликах. Поведение меняется молча и в проде. Варианты: leader election, отдельная топология, которая единственная грузит этот модуль, или вынести работу за пределы модульного хоста. Подавите предупреждение, когда выберете.</value>
+  </data>
+
   <data name="MOD0020_Title" xml:space="preserve">
     <value>Пакет Modulith не подключён</value>
   </data>

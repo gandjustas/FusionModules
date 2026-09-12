@@ -12,16 +12,26 @@ In order of likelihood:
 2. **The module has no `[assembly: HostingStartup(typeof(...))]`.** ASP.NET Core loads the
    assembly, finds no attribute, and moves on without a word. MOD0005 catches this at build time —
    if it did not fire, the build was not run with the analyzers.
-3. **The host does not call `UseRouting()`.** Modules map endpoints into the host's routing;
-   without it there is nothing to map into.
-4. **The module's `Configure` maps into a group or area whose prefix you have forgotten.**
-5. **Two modules mapped the same template** and load order decided it.
+3. **The module's `Configure` maps into a group or area whose prefix you have forgotten.**
+4. **Two modules mapped the same template** and load order decided it.
+
+Routing is not on this list. A host with no routing does not serve 404s — startup throws, naming
+`UseRouting` in the message. See below.
 
 Confirm what actually loaded rather than reasoning about it:
 
 ```csharp
 ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name)
 ```
+
+## Startup throws: "EndpointRoutingMiddleware ... must be added ... before EndpointMiddleware"
+
+The host never called `UseRouting()` and maps no endpoints of its own, so `WebApplication` had no
+reason to add routing automatically. Add `app.UseRouting()`.
+
+Loud rather than silent, which is why there is no analyzer rule for it: the runtime's message
+already names the fix, and a rule would fire on every host that maps an endpoint itself and
+therefore does not need the call.
 
 ## The application starts but a module's services are missing
 
@@ -96,6 +106,9 @@ The usual suspects, in order:
 | MOD0003 | The host uses a module's types. Move the type to a contracts library. Keep the project reference — the model needs it. |
 | MOD0004 | The host declares an `[ApplicationPart]` for a module. Set `GenerateMvcApplicationPartsAssemblyAttributes` to false. |
 | MOD0005 | A module nothing names in `[assembly: HostingStartup]`. It would load and do nothing. |
+| MOD0006 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
+| MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
+| MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
 | MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

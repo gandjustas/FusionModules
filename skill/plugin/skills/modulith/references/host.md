@@ -54,7 +54,9 @@ Almost nothing, and the test is: *would every topology want this?*
 
 Genuinely host-level:
 
-- `UseRouting()`
+- `UseRouting()` — needed when the host maps no endpoints of its own. When it does map some,
+  `WebApplication` adds routing anyway; when it does not and a module tries to map endpoints,
+  startup throws with a message naming the call. Either way it is cheap to be explicit.
 - the composition root for infrastructure the deployment owns rather than the application —
   the database connection string, logging sinks, the OpenTelemetry exporter
 - middleware whose order is a property of the application rather than of a feature: exception
