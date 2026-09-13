@@ -44,9 +44,10 @@ Four things there are load-bearing and none of them are obvious.
 type. A module needs somewhere to put its tables, not knowledge of the application it is deployed
 into. Inside a module: `db.Set<Order>()`.
 
-**`GetLoadedModules`, not `AppDomain`.** `AppDomain.CurrentDomain.GetAssemblies()` reports
-assemblies that were referenced but never activated, and every module of every other host in a
-test process. It will appear to work and then compose the wrong model.
+**`GetLoadedModules`, not `AppDomain`.** `AppDomain.CurrentDomain.GetAssemblies()` filtered by
+the attribute composes the right model while one host owns the process, and the wrong one as soon
+as a second host shares it — in an integration-test assembly every topology's modules are loaded,
+so every topology composes the union. Nothing throws; the tables are simply wrong.
 
 **`PendingModelChangesWarning` downgraded to a log.** A topology loading a subset of the modules
 legitimately has a smaller model than the migrations snapshot, and `MigrateAsync` treats that as

@@ -261,10 +261,16 @@ Modulith:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 anything composed from modules — an EF Core model, a health check, a diagnostic endpoint — finds
 out what is live, without the host having to know that modules exist.
 
-**Do not use `AppDomain.CurrentDomain.GetAssemblies()` for this.** It reports whatever happens to
-be loaded in the process, which includes assemblies that were referenced but never activated, and
-in a test process it reports every module of every host that has run. The registry reports
-exactly the modules that ran, in the order they ran.
+**`AppDomain.CurrentDomain.GetAssemblies()` filtered by the attribute is not a substitute**, even
+though it looks like one. While a single host owns the process it gives the same answer in the
+same order — a referenced-but-never-activated module is not loaded there, because nothing uses its
+types. It diverges in a process that runs more than one host, which is every integration-test
+assembly: every topology's modules are loaded, so every topology sees the union. It also reports
+hosting startups nobody in the application wrote — `Microsoft.AspNetCore.Server.IISIntegration` is
+always present, and Application Insights, OpenTelemetry and `dotnet watch`'s browser refresh all
+ship one. And design-time code has no host to inspect at all, so it needs an explicit list
+regardless. The registry is one mechanism instead of two, and it never reports a module that did
+not run.
 
 `dotnet ef` does build the host, so `HostingStartup` runs and the registry is populated the usual
 way — from `HOSTINGSTARTUPASSEMBLIES` as it stands in the shell that ran the command. That is the
@@ -387,9 +393,10 @@ Four things there are load-bearing and none of them are obvious.
 type. A module needs somewhere to put its tables, not knowledge of the application it is deployed
 into. Inside a module: `db.Set<Order>()`.
 
-**`GetLoadedModules`, not `AppDomain`.** `AppDomain.CurrentDomain.GetAssemblies()` reports
-assemblies that were referenced but never activated, and every module of every other host in a
-test process. It will appear to work and then compose the wrong model.
+**`GetLoadedModules`, not `AppDomain`.** `AppDomain.CurrentDomain.GetAssemblies()` filtered by
+the attribute composes the right model while one host owns the process, and the wrong one as soon
+as a second host shares it — in an integration-test assembly every topology's modules are loaded,
+so every topology composes the union. Nothing throws; the tables are simply wrong.
 
 **`PendingModelChangesWarning` downgraded to a log.** A topology loading a subset of the modules
 legitimately has a smaller model than the migrations snapshot, and `MigrateAsync` treats that as
@@ -1016,8 +1023,10 @@ EF Core's model cache, keyed by context type, shared across hosts in one process
 topology in a test run gets the first one's model. Nothing throws. Fix with an
 `IModelCacheKeyFactory` that includes the module set — [data.md](data.md).
 
-If it happens at runtime rather than in tests, check that the model is being composed from
-`GetLoadedModules` and not from `AppDomain.CurrentDomain.GetAssemblies()`.
+If it happens at runtime rather than in tests, look at what the model is composed from. An
+`AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly
+while one host owns the process, but it also reports hosting startups that arrived with a
+package.
 
 ### Controllers or pages appear in a topology that excluded their module
 

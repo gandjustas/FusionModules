@@ -30,9 +30,10 @@ internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext
         // the configurations of the entities it joins. GetLoadedModules preserves the order of
         // HOSTINGSTARTUPASSEMBLIES, so "the composing module goes last" is a rule you can state.
         //
-        // AppDomain.CurrentDomain.GetAssemblies() looks like it would do the same job and does
-        // not: it reports assemblies that were referenced but never activated, and in a test
-        // process it reports every module of every host that has run.
+        // AppDomain.CurrentDomain.GetAssemblies() filtered by the attribute does do the same job
+        // while one host owns the process — and stops the moment a second one shares it. In an
+        // integration-test assembly every topology's modules are loaded, so every topology
+        // composes the union. Nothing throws; the tables are wrong.
         foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
         {
             modelBuilder.ApplyConfigurationsFromAssembly(assembly);

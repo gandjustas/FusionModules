@@ -22,9 +22,10 @@ internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext
         // Activation order matters: a composing module's configuration has to be applied after the
         // configurations of the entities it joins, so it goes last in HOSTINGSTARTUPASSEMBLIES.
         //
-        // Not AppDomain.CurrentDomain.GetAssemblies(): that reports assemblies referenced but
-        // never activated, and every module of every other host in a test process. It appears to
-        // work and then composes the wrong model.
+        // Not AppDomain.CurrentDomain.GetAssemblies(): filtered by the attribute it is correct
+        // while one host owns the process, and wrong as soon as a second one shares it — in an
+        // integration-test assembly every topology's modules are loaded, so every topology
+        // composes the union. Nothing throws; the tables are wrong.
         foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
         {
             modelBuilder.ApplyConfigurationsFromAssembly(assembly);

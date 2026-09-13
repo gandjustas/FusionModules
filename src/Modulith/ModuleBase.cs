@@ -92,10 +92,13 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// <remarks>
     /// <para>
     /// Prefer this over <see cref="AppDomain.GetAssemblies()"/> when composing anything from
-    /// modules — an EF Core model, for instance. <c>AppDomain</c> reports whatever happens to be
-    /// loaded in the process, which includes assemblies that were referenced but never activated,
-    /// and every module of every other host when several hosts share a process (as they do in any
-    /// integration-test assembly). This method reports exactly the modules that ran.
+    /// modules — an EF Core model, for instance. Filtered by <c>HostingStartupAttribute</c>,
+    /// <c>AppDomain</c> gives the same answer in the same order while one host owns the process;
+    /// a module that was referenced but never activated is not loaded there, because nothing uses
+    /// its types. It gives a different answer wherever several hosts share a process, as they do
+    /// in any integration-test assembly: every topology's modules are loaded, so every topology
+    /// sees the union. It also reports hosting startups that arrived with a package. Either way
+    /// nothing throws — the model is simply composed from the wrong set.
     /// </para>
     /// <para>
     /// Activation order is a contract you can rely on: a module that composes two others — adding

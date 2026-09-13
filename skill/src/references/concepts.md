@@ -61,10 +61,16 @@ Modulith:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 anything composed from modules — an EF Core model, a health check, a diagnostic endpoint — finds
 out what is live, without the host having to know that modules exist.
 
-**Do not use `AppDomain.CurrentDomain.GetAssemblies()` for this.** It reports whatever happens to
-be loaded in the process, which includes assemblies that were referenced but never activated, and
-in a test process it reports every module of every host that has run. The registry reports
-exactly the modules that ran, in the order they ran.
+**`AppDomain.CurrentDomain.GetAssemblies()` filtered by the attribute is not a substitute**, even
+though it looks like one. While a single host owns the process it gives the same answer in the
+same order — a referenced-but-never-activated module is not loaded there, because nothing uses its
+types. It diverges in a process that runs more than one host, which is every integration-test
+assembly: every topology's modules are loaded, so every topology sees the union. It also reports
+hosting startups nobody in the application wrote — `Microsoft.AspNetCore.Server.IISIntegration` is
+always present, and Application Insights, OpenTelemetry and `dotnet watch`'s browser refresh all
+ship one. And design-time code has no host to inspect at all, so it needs an explicit list
+regardless. The registry is one mechanism instead of two, and it never reports a module that did
+not run.
 
 `dotnet ef` does build the host, so `HostingStartup` runs and the registry is populated the usual
 way — from `HOSTINGSTARTUPASSEMBLIES` as it stands in the shell that ran the command. That is the

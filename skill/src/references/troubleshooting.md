@@ -56,8 +56,10 @@ EF Core's model cache, keyed by context type, shared across hosts in one process
 topology in a test run gets the first one's model. Nothing throws. Fix with an
 `IModelCacheKeyFactory` that includes the module set — [data.md](data.md).
 
-If it happens at runtime rather than in tests, check that the model is being composed from
-`GetLoadedModules` and not from `AppDomain.CurrentDomain.GetAssemblies()`.
+If it happens at runtime rather than in tests, look at what the model is composed from. An
+`AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly
+while one host owns the process, but it also reports hosting startups that arrived with a
+package.
 
 ## Controllers or pages appear in a topology that excluded their module
 
