@@ -1,7 +1,3 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Modulith;
 using WeatherModule;
 
@@ -13,20 +9,26 @@ namespace WeatherModule;
 // internal, like everything else in a module: nothing outside may reference it (MOD0001).
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services) =>
-        services.AddSingleton<Forecaster>();
+    // The builder overload, for registrations written against IHostApplicationBuilder rather than
+    // IServiceCollection — every Aspire client integration, and most component packages. Those do
+    // more than register a client: they resolve the connection string, add a health check and
+    // instrument the calls, and a hand-written AddSingleton keeps none of it. Nothing here needs
+    // one, so this is only the shape: the same environment, configuration and services the host has.
+    protected override void ConfigureServices(IHostApplicationBuilder builder) =>
+        builder.Services.AddSingleton(new Forecaster(
+            builder.Configuration.GetValue("Weather:Days", 5)));
 
     protected override void Configure(IApplicationBuilder app) =>
         app.UseEndpoints(endpoints => endpoints
             .MapGroup("/weather")
-            .MapGet("/", (Forecaster forecaster) => forecaster.Next(5)));
+            .MapGet("/", (Forecaster forecaster) => forecaster.Next()));
 }
 
-sealed class Forecaster
+sealed class Forecaster(int days)
 {
     private static readonly string[] Summaries = ["Freezing", "Chilly", "Mild", "Balmy", "Sweltering"];
 
-    public IEnumerable<object> Next(int days) => Enumerable.Range(1, days).Select(day => new
+    public IEnumerable<object> Next() => Enumerable.Range(1, days).Select(day => new
     {
         Date = DateOnly.FromDateTime(DateTime.Now.AddDays(day)),
         TemperatureC = Random.Shared.Next(-20, 35),

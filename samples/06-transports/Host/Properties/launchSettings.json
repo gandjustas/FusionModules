@@ -1,0 +1,30 @@
+{
+  "profiles": {
+    "NoModules": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5600"
+    },
+    "Merged": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5600",
+      "environmentVariables": {
+        "HOSTINGSTARTUPASSEMBLIES": "CheckoutModule;PricingModule"
+      }
+    },
+    "PricingService": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5601",
+      "environmentVariables": {
+        "HOSTINGSTARTUPASSEMBLIES": "PricingModule;PricingApiModule"
+      }
+    },
+    "CheckoutCallingPricing": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5600",
+      "environmentVariables": {
+        "HOSTINGSTARTUPASSEMBLIES": "CheckoutModule;PricingClientModule",
+        "Pricing__BaseAddress": "http://localhost:5601"
+      }
+    }
+  }
+}

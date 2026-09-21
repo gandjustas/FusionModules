@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Both of the package's target frameworks. The shim over IHostApplicationBuilder and the MVC
+      feature provider are the two places where the framework's own shape differs across them, so
+      running here on net8.0 is the only thing that exercises it outside sample 01.
+    -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Modulith.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\Modulith\Modulith.csproj" />
+  </ItemGroup>
+
+</Project>

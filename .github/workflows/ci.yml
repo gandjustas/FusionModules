@@ -48,7 +48,14 @@ jobs:
     # The plugin and the portable file are generated from skill/src. Regenerating them here and
     # failing on a diff is what stops the three shapes drifting apart, which they would otherwise
     # do quietly and only be noticed by whoever used the stale one.
-    runs-on: ubuntu-latest
+    #
+    # On Windows too, because assess.ps1 normalises path separators for exactly one reason and
+    # that reason was never exercised.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,16 +72,59 @@ jobs:
 
       - name: The collision detector produces both sections
         # Asserting on the output, not just on exit code: a script that silently finds nothing
-        # looks exactly like a passing one.
+        # looks exactly like a passing one. pwsh rather than python so the step is one step on
+        # both images — python3 is spelled python on the Windows runner.
+        shell: pwsh
         run: |
-          pwsh skill/src/assets/scripts/assess.ps1 -Path samples -Output /tmp/collisions.json
-          python3 -c "import json,sys; d=json.load(open('/tmp/collisions.json')); sys.exit(0 if {'routeCollisions','configurationKeyCollisions'} <= d.keys() else 1)"
+          $out = Join-Path ([IO.Path]::GetTempPath()) 'collisions.json'
+          ./skill/src/assets/scripts/assess.ps1 -Path samples -Output $out
+          $keys = (Get-Content -Raw $out | ConvertFrom-Json).PSObject.Properties.Name
+          foreach ($section in 'routeCollisions', 'configurationKeyCollisions') {
+            if ($keys -notcontains $section) { throw "assess.ps1 produced no '$section'" }
+          }
+
+      - name: The plugin manifest is well formed
+        # skill/plugin is hand-written and, unlike skill/dist, nothing regenerates it — so nothing
+        # would notice it going malformed until somebody tried to install the released zip.
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -Raw skill/plugin/.claude-plugin/plugin.json | ConvertFrom-Json
+          foreach ($field in 'name', 'description', 'version') {
+            if (-not $manifest.$field) { throw "plugin.json has no '$field'" }
+          }
+          if (-not (Get-ChildItem skill/plugin/commands -Filter *.md)) { throw 'plugin has no commands' }
+
+      - name: Every relative link resolves
+        # The rule pages are what an IDE opens from a squiggle and the README is the only map of
+        # the rule set; both are maintained by hand and neither is exercised by a build.
+        shell: pwsh
+        run: ./eng/check-links.ps1
+
+  docker:
+    # The three-topology demonstration in samples/03-modular-data is the argument the README makes,
+    # and until now nothing built it. A Dockerfile that no job runs is a Dockerfile that stops
+    # working without anybody finding out.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: bash eng/docker-smoke.sh
 
   pack-validate:
     # Consumes the built package from a scratch project outside the repository. Analyzer and
     # MSBuild assets are wired up by project reference in-repo, so nothing else proves that the
     # package layout is right — and when it is wrong the build stays green and the rules go quiet.
-    runs-on: ubuntu-latest
+    #
+    # Windows is not decoration: the script converts paths with cygpath for NuGet under git-bash,
+    # and that branch never ran anywhere until this matrix existed.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,5 +152,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: packages
+          name: packages-${{ matrix.os }}
           path: local-feed/*.nupkg

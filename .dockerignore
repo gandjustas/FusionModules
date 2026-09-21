@@ -1,0 +1,20 @@
+# The build context is the repository root, and samples/03-modular-data/Dockerfile copies whole
+# source trees into it. Without this, a developer's bin/ and obj/ ride along — and a restore
+# output carrying Windows absolute paths lands on top of the one the image just produced, which
+# fails inside ResolvePackageAssets with a stack trace that says nothing about the cause.
+#
+# It works on a clean checkout, so CI never saw it. That is the whole reason the image is now
+# built by a job rather than by whoever remembers to.
+**/bin/
+**/obj/
+**/TestResults/
+local-feed/
+artifacts/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+skill/
+docs/
+tests/

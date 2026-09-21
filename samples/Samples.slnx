@@ -20,4 +20,24 @@
     <Project Path="03-modular-data/Tests/Tests.csproj" />
     <Project Path="03-modular-data/UnitTests/Billing.UnitTests.csproj" />
   </Folder>
+  <Folder Name="/04-signalr/">
+    <Project Path="04-signalr/Host/Host.csproj" />
+    <Project Path="04-signalr/Modules/Notifications/NotificationsModule.csproj" />
+    <Project Path="04-signalr/Tests/Tests.csproj" />
+  </Folder>
+  <Folder Name="/05-startup/">
+    <Project Path="05-startup/Contracts/Startup.Contracts.csproj" />
+    <Project Path="05-startup/Host/Host.csproj" />
+    <Project Path="05-startup/Modules/Catalog/CatalogModule.csproj" />
+    <Project Path="05-startup/Tests/Tests.csproj" />
+  </Folder>
+  <Folder Name="/06-transports/">
+    <Project Path="06-transports/Contracts/Pricing.Contracts.csproj" />
+    <Project Path="06-transports/Host/Host.csproj" />
+    <Project Path="06-transports/Modules/Checkout/CheckoutModule.csproj" />
+    <Project Path="06-transports/Modules/Pricing/PricingModule.csproj" />
+    <Project Path="06-transports/Modules/PricingApi/PricingApiModule.csproj" />
+    <Project Path="06-transports/Modules/PricingClient/PricingClientModule.csproj" />
+    <Project Path="06-transports/Tests/Tests.csproj" />
+  </Folder>
 </Solution>

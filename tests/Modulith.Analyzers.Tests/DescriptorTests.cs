@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -11,6 +12,11 @@ namespace Modulith.Analyzers.Tests;
 /// </summary>
 public class DescriptorTests
 {
+    private static string RepositoryRoot { get; } = typeof(DescriptorTests).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .Single(attribute => attribute.Key == "RepositoryRoot")
+        .Value!;
+
     private static DiagnosticAnalyzer[] Analyzers =>
         [new ModuleAnalyzer(), new HostAnalyzer(), new ModuleUsageAnalyzer()];
 
@@ -46,6 +52,48 @@ public class DescriptorTests
         await Assert.That(descriptor.Description.ToString(CultureInfo.InvariantCulture)).IsNotEmpty();
         await Assert.That(descriptor.HelpLinkUri).Contains(descriptor.Id);
         await Assert.That(descriptor.IsEnabledByDefault).IsTrue();
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AllDescriptors))]
+    public async Task Descriptor_HasItsDocumentationPage(DiagnosticDescriptor descriptor)
+    {
+        // Descriptor_IsFullyPopulated only checks that the help link contains the id. A rule
+        // shipped without its page has a link that resolves to a 404 in the IDE, and nothing
+        // anywhere goes red — which is how MOD0009's page came to be written but untracked.
+        var page = Path.Combine(RepositoryRoot, "docs", "rules", $"{descriptor.Id}.md");
+
+        await Assert.That(File.Exists(page)).IsTrue();
+        await Assert.That(descriptor.HelpLinkUri).EndsWith($"docs/rules/{descriptor.Id}.md");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AllDescriptors))]
+    public async Task Descriptor_IsListedWhereRulesAreListed(DiagnosticDescriptor descriptor)
+    {
+        // Two hand-maintained lists. The release file is what the Roslyn analyzer RS2000 reads,
+        // and the README table is what a reader reads; both drift the same silent way.
+        var releases = await File.ReadAllTextAsync(
+            Path.Combine(RepositoryRoot, "src", "Modulith.Analyzers", "AnalyzerReleases.Unshipped.md"));
+        var readme = await File.ReadAllTextAsync(Path.Combine(RepositoryRoot, "README.md"));
+
+        await Assert.That(releases).Contains(descriptor.Id);
+        await Assert.That(readme).Contains($"docs/rules/{descriptor.Id}.md");
+    }
+
+    [Test]
+    public async Task EveryDocumentedRuleStillExists()
+    {
+        // The other direction: a rule that is removed leaves its page behind, and the page then
+        // documents behaviour nothing implements.
+        var documented = Directory
+            .EnumerateFiles(Path.Combine(RepositoryRoot, "docs", "rules"), "MOD*.md")
+            .Select(page => Path.GetFileNameWithoutExtension(page)!)
+            .Order();
+
+        var implemented = AllDescriptors().Select(descriptor => descriptor().Id).Order();
+
+        await Assert.That(documented).IsEquivalentTo(implemented);
     }
 
     [Test]

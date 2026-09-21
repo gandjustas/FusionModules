@@ -18,7 +18,12 @@ services:
     environment:
       ConnectionStrings__Postgres: Host=postgres;Database=modular;Username=demo;Password=demo;Maximum Pool Size=90
       HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;CustomersModule;BillingModule
-    depends_on: [postgres]
+    # The long form, because the short one waits for the container to start and not for the
+    # database to accept connections. This replica migrates on startup, so it loses that race and
+    # exits — intermittently by hand, and reliably on a cold CI machine.
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   customers:
     image: modulith-modular-data
@@ -31,7 +36,11 @@ services:
       HOSTINGSTARTUPASSEMBLIES: Customers.Entities;CustomersModule
       # Only one replica should own the schema. The others take the database as they find it.
       Database__Migrate: "false"
-    depends_on: [postgres, monolith]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      monolith:
+        condition: service_started
 
   billing:
     image: modulith-modular-data
@@ -44,7 +53,11 @@ services:
       # The composing module goes last: its configuration has to be applied after theirs.
       HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;BillingModule
       Database__Migrate: "false"
-    depends_on: [postgres, monolith]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      monolith:
+        condition: service_started
 
   postgres:
     image: postgres:17

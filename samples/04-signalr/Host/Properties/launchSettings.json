@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "NoModules": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5400"
+    },
+    "Notifications": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5400",
+      "environmentVariables": {
+        "HOSTINGSTARTUPASSEMBLIES": "NotificationsModule"
+      }
+    }
+  }
+}

@@ -16,6 +16,11 @@ feed="$root/local-feed"
 work="${1:-$(mktemp -d)}"
 failures=0
 
+# NuGet and pwsh are Windows processes under git-bash and do not understand /d/... paths.
+native() {
+    if command -v cygpath > /dev/null 2>&1; then cygpath -w "$1"; else printf %s "$1"; fi
+}
+
 log()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 pass() { printf '  \033[32mok\033[0m   %s\n' "$*"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures=$((failures + 1)); }
@@ -28,7 +33,10 @@ version="${version#Modulith.}"
 echo "  Modulith $version"
 
 log "Package layout"
-contents="$(unzip -Z1 "$feed/Modulith.$version.nupkg")"
+# pwsh rather than unzip: pwsh is on every CI image this runs on and in git-bash's PATH on
+# Windows, and unzip is on neither.
+nupkg="$(native "$feed/Modulith.$version.nupkg")"
+contents="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$nupkg').Entries.FullName" | tr -d '\r')"
 for expected in \
     "analyzers/dotnet/cs/Modulith.Analyzers.dll" \
     "analyzers/dotnet/cs/Modulith.CodeFixes.dll" \
@@ -41,13 +49,9 @@ done
 
 # A scratch consumer outside the repository, so none of our own Directory.Build.props reaches it.
 rm -rf "$work/consumer"
-mkdir -p "$work/consumer/GoodModule" "$work/consumer/BadModule" "$work/consumer/Host"
+mkdir -p "$work/consumer/GoodModule" "$work/consumer/BadModule" "$work/consumer/Host" "$work/consumer/BadHost" "$work/consumer/NoPackage"
 
-# NuGet is a Windows process under git-bash and does not understand /d/... paths.
-feed_for_nuget="$feed"
-if command -v cygpath > /dev/null 2>&1; then
-    feed_for_nuget="$(cygpath -w "$feed")"
-fi
+feed_for_nuget="$(native "$feed")"
 
 cat > "$work/consumer/NuGet.config" <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -84,20 +88,112 @@ using Modulith;
 [assembly: HostingStartup(typeof(Module))]
 
 sealed class Module : ModuleBase { }
-CS
 
+// Public on purpose, and allowed by name in .editorconfig below. Two things at once: it proves
+// MOD0001's escape hatch survives packaging, and it gives BadHost a type to misuse for MOD0003.
+public class Contract
+{
+    public static string Name => "contract";
+}
+CS
+cat > "$work/consumer/GoodModule/.editorconfig" <<'INI'
+root = true
+
+[*.cs]
+modulith_allowed_public_types = Contract
+INI
+
+# Every module-side rule in one project. One build, one log, one grep per rule — a rule that
+# stops firing when the package is rebuilt has nowhere to hide.
 write_project "$work/consumer/BadModule" "Microsoft.NET.Sdk" ""
 cat > "$work/consumer/BadModule/Module.cs" <<'CS'
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Modulith;
 
 [assembly: HostingStartup(typeof(Module))]
+[assembly: HostingStartup(typeof(NotAModule))]   // MOD0002
 
-sealed class Module : ModuleBase { }
+sealed class Module : ModuleBase
+{
+    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    {
+        services.AddSingleton<IStartupFilter>(this);   // MOD0007
+        services.AddHostedService<Worker>();           // MOD0008
+    }
 
-public class Leaked { }              // MOD0001
+    public static void Replace(IWebHostBuilder builder) =>
+        builder.Configure(app => { });                 // MOD0006
+}
 
-sealed class Forgotten : ModuleBase { }  // MOD0005
+public class Leaked { }                                // MOD0001
+
+sealed class Forgotten : ModuleBase { }                // MOD0005
+
+sealed class NotAModule { }
+
+sealed class Worker : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.CompletedTask;
+}
+
+interface IPaymentClient                               // MOD0009
+{
+    Task Paid(string reference);
+}
+
+sealed class PaymentHub : Hub<IPaymentClient> { }
+CS
+
+# MOD0003 and MOD0004 belong to the host, so they need a host that gets them wrong.
+cat > "$work/consumer/BadHost/BadHost.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Modulith" Version="$version" />
+    <ProjectReference Include="../GoodModule/GoodModule.csproj" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/BadHost/Program.cs" <<'CS'
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+
+[assembly: ApplicationPart("GoodModule")]   // MOD0004
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.MapGet("/", () => Contract.Name);       // MOD0003
+await app.RunAsync();
+CS
+
+# MOD0020 says the runtime package is missing, so the project has to have the analyzer without it.
+# ExcludeAssets=compile leaves the analyzer and the MSBuild assets and removes ModuleBase.
+cat > "$work/consumer/NoPackage/NoPackage.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Modulith" Version="$version" ExcludeAssets="compile" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/NoPackage/Module.cs" <<'CS'
+using Microsoft.AspNetCore.Hosting;
+
+[assembly: HostingStartup(typeof(Module))]   // MOD0020
+
+sealed class Module { }
 CS
 
 write_project "$work/consumer/Host" "Microsoft.NET.Sdk.Web" "<OutputType>Exe</OutputType>"
@@ -116,11 +212,28 @@ else
     fail "did not build"; cat "$work/good.log"
 fi
 
+# Severity is part of a rule's contract — an error people must deal with, or a warning they may
+# decide about — and it is carried by the package's own AnalyzerReleases file.
+expect() {
+    if grep -q "$2 $3" "$1"; then pass "$3 reported as $2"; else fail "$3 not reported as $2"; fi
+}
+
 log "Rules fire from the packaged analyzer"
 dotnet build "$work/consumer/BadModule" --nologo -v q > "$work/bad.log" 2>&1 || true
-for rule in MOD0001 MOD0005; do
-    if grep -q "error $rule" "$work/bad.log"; then pass "$rule reported"; else fail "$rule not reported"; fi
+for rule in MOD0001 MOD0002 MOD0005 MOD0006 MOD0009; do
+    expect "$work/bad.log" error "$rule"
 done
+for rule in MOD0007 MOD0008; do
+    expect "$work/bad.log" warning "$rule"
+done
+
+dotnet build "$work/consumer/BadHost" --nologo -v q > "$work/badhost.log" 2>&1 || true
+for rule in MOD0003 MOD0004; do
+    expect "$work/badhost.log" error "$rule"
+done
+
+dotnet build "$work/consumer/NoPackage" --nologo -v q > "$work/nopackage.log" 2>&1 || true
+expect "$work/nopackage.log" warning MOD0020
 
 log "Help links reach the documentation"
 if grep -q "docs/rules/MOD0001.md" "$work/bad.log"; then pass "help link present"; else fail "no help link"; fi
@@ -174,6 +287,13 @@ parts="$(dotnet msbuild "$work/consumer/Host" -getProperty:GenerateMvcApplicatio
 
 kind="$(dotnet msbuild "$work/consumer/GoodModule" -getProperty:ModulithProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
 [ "$kind" = "Module" ] && pass "library detected as ModulithProjectKind=Module" || fail "ModulithProjectKind was '$kind', expected 'Module'"
+
+# The implicit usings a module loses when it stops being a Microsoft.NET.Sdk.Web project.
+usings="$(dotnet msbuild "$work/consumer/GoodModule" -getItem:Using -v:q 2>/dev/null)"
+case "$usings" in
+    *Microsoft.AspNetCore.Builder*) pass "module gets the Web SDK's implicit usings" ;;
+    *) fail "no Microsoft.AspNetCore.Builder in @(Using) for a module" ;;
+esac
 
 log "Result"
 if [ "$failures" -eq 0 ]; then

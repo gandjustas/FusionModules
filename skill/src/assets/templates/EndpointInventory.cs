@@ -7,6 +7,12 @@
 // Read off the endpoint table rather than probed over HTTP, because an HTTP probe cannot tell
 // "not deployed" from "deployed and broken", and it drags a database into a question about
 // composition.
+//
+// One normalisation, and it is not cosmetic. An attribute route is stored without its leading
+// slash and a minimal-API route with one, so /customers and customers are the same URL written
+// two ways. Converting a controller to a minimal API — or the reverse, which is the common
+// direction here — would otherwise diff every route it touched while changing none of them, in
+// the one artefact whose whole value is that its diff means something.
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -23,7 +29,8 @@ internal static class EndpointInventory
             .Select(endpoint =>
             {
                 var methods = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? ["*"];
-                return $"{string.Join(',', methods.Order(StringComparer.Ordinal))} {endpoint.RoutePattern.RawText}";
+                var route = "/" + (endpoint.RoutePattern.RawText ?? string.Empty).TrimStart('/');
+                return $"{string.Join(',', methods.Order(StringComparer.Ordinal))} {route}";
             })
             .Order(StringComparer.Ordinal)];
 }

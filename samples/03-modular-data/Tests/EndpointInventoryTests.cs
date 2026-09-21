@@ -22,7 +22,12 @@ public class EndpointInventoryTests
         return [.. factory.Services.GetRequiredService<EndpointDataSource>()
             .Endpoints
             .OfType<RouteEndpoint>()
-            .Select(endpoint => endpoint.RoutePattern.RawText!)
+            // An attribute route is stored without its leading slash and a minimal-API route with
+            // one, so /customers and customers are the same URL written two ways. CustomersModule
+            // serves its route from a controller and BillingModule from MapGet; without this the
+            // inventory would report the difference between the two styles as a difference in
+            // what is deployed.
+            .Select(endpoint => "/" + endpoint.RoutePattern.RawText!.TrimStart('/'))
             .Order(StringComparer.Ordinal)];
     }
 
@@ -39,6 +44,9 @@ public class EndpointInventoryTests
 
     [Test]
     public async Task AFeatureModuleBringsItsOwnRoutesAndNobodyElses() =>
+        // /customers is served by an internal controller, so this also asserts that
+        // AllowInternalControllers did its job: without it the type is skipped for not being
+        // public and the route is simply absent, with nothing said anywhere.
         await Assert.That(RoutesFor(Modules.CustomersEntities, Modules.CustomersApi))
             .IsEquivalentTo(new[] { "/", "/customers" });
 

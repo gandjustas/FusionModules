@@ -14,7 +14,20 @@
   </ItemGroup>
 
   <!-- Samples only. -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <!--
+      Sample 03 multi-targets, and EF 10 does not run on net8 — so the invariant below becomes one
+      version per target framework rather than one version outright. The reason it exists is
+      unchanged: within a build, the host and its test project must agree.
+    -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0'">
     <!--
       One version for every EF package the sample touches. Left to transitive resolution, the
       host (which references the Design package) and its test project end up with different
@@ -43,6 +56,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.31" Condition="'$(TargetFramework)' == 'net8.0'" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" Condition="'$(TargetFramework)' != 'net8.0'" />
     <PackageVersion Include="TUnit" Version="1.67.0" />
+    <!-- Sample 04 connects a real client to a hub: a proxy that cannot be generated is the point. -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
   </ItemGroup>
 
 </Project>

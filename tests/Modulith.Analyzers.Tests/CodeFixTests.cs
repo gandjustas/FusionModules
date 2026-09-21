@@ -82,13 +82,124 @@ public class CodeFixTests
             sealed class Orders : ModuleBase { }
             """);
 
-    private static Task VerifyFixAsync<TAnalyzer, TCodeFix>(string source, string fixedSource)
+    [Test]
+    public Task HubClient_GrantsAccessToTheProxyAssembly() =>
+        // The fix worth reaching for: one line, and the module's surface stays exactly as MOD0001
+        // wants it. The alternative makes the interface public and then the compiler drags its
+        // whole signature closure out with it.
+        VerifyFixAsync<ModuleAnalyzer, HubClientReachableCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            interface {|MOD0009:IPaymentClient|} { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+            """,
+            """
+            using Microsoft.AspNetCore.SignalR;
+            [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
+
+            interface IPaymentClient { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+            """,
+            codeActionIndex: 0);
+
+    [Test]
+    public Task HubClient_MakePublic_KeepsTheDocCommentAttached() =>
+        VerifyFixAsync<ModuleAnalyzer, HubClientReachableCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            /// <summary>What the server pushes to a payment client.</summary>
+            interface {|MOD0009:IPaymentClient|} { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+            """,
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            /// <summary>What the server pushes to a payment client.</summary>
+            public interface IPaymentClient { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+            """,
+            codeActionIndex: 1);
+
+    [Test]
+    public Task HubClient_MakePublic_TakesTheContainingTypeWithIt() =>
+        // The case MOD0009 exists to report and the fix used to break: the interface is already
+        // public, and what hides it from the proxy is the type it sits in. Making the interface
+        // "public" again would emit `public public` and change nothing that mattered.
+        //
+        // The MOD0001 in the fixed state is the point rather than a wart. This is the spread the
+        // rule's documentation promises, and it lands on the container — a different type, about
+        // which there is now a real decision to take. The other fix costs one line and none of it.
+        VerifyFixAsync<ModuleAnalyzer, HubClientReachableCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            class Contracts
+            {
+                public interface {|MOD0009:IPaymentClient|} { }
+            }
+
+            sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
+            """,
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            public class {|MOD0001:Contracts|}
+            {
+                public interface IPaymentClient { }
+            }
+
+            sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
+            """,
+            codeActionIndex: 1);
+
+    [Test]
+    public Task HubClient_GrantAccess_IsWrittenOnceForTheWholeFile() =>
+        // Two clients, one attribute. Nothing in the provider guards against writing it twice,
+        // and nothing needs to: BatchFixer drops the second insertion as conflicting with the
+        // first, and once the attribute exists the analyzer stops reporting at all. The guarantee
+        // is worth a test even though it costs no code — that is exactly the kind that rots.
+        VerifyFixAsync<ModuleAnalyzer, HubClientReachableCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            interface {|MOD0009:IPaymentClient|} { }
+
+            interface {|MOD0009:IRefundClient|} { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+
+            sealed class RefundHub : Hub<IRefundClient> { }
+            """,
+            """
+            using Microsoft.AspNetCore.SignalR;
+            [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
+
+            interface IPaymentClient { }
+
+            interface IRefundClient { }
+
+            sealed class PaymentHub : Hub<IPaymentClient> { }
+
+            sealed class RefundHub : Hub<IRefundClient> { }
+            """,
+            codeActionIndex: 0);
+
+    private static Task VerifyFixAsync<TAnalyzer, TCodeFix>(
+        string source, string fixedSource, int? codeActionIndex = null)
         where TAnalyzer : DiagnosticAnalyzer, new()
         where TCodeFix : CodeFixProvider, new()
     {
         var test = new CSharpCodeFixTest<TAnalyzer, TCodeFix, DefaultVerifier>
         {
             ReferenceAssemblies = ReferenceAssemblies.Default,
+            // A provider that offers more than one way out has to be told which one is under test.
+            CodeActionIndex = codeActionIndex,
         };
 
         var framework = new ProjectState("Framework", LanguageNames.CSharp, "/Framework/", "cs");

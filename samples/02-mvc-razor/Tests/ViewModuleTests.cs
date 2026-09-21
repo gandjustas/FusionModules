@@ -27,7 +27,16 @@ public class ViewModuleTests
         using var factory = new ModularWebApplicationFactory(DashboardModule);
         var client = factory.CreateClient();
 
+        // The controller behind this is internal, and so are the service it takes and the model
+        // it returns. A 200 here is the whole of AllowInternalControllers' claim.
         await Assert.That(await client.GetStringAsync("/Dashboard", cancellationToken)).Contains("<h1>Dashboard</h1>");
+        await Assert.That(await client.GetStringAsync("/Dashboard", cancellationToken)).Contains("3 tiles.");
+        // And the view component, which is internal too and found by a different mechanism. The
+        // page invokes it twice — by name and through the generic overload — because both reach an
+        // internal component and only the <vc:...> element does not.
+        var dashboard = await client.GetStringAsync("/Dashboard", cancellationToken);
+        await Assert.That(System.Text.RegularExpressions.Regex.Matches(dashboard, "counted by a view component").Count)
+            .IsEqualTo(2);
         await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
@@ -52,6 +61,20 @@ public class ViewModuleTests
 
         await Assert.That(css.StatusCode).IsEqualTo(HttpStatusCode.OK);
         await Assert.That(await css.Content.ReadAsStringAsync(cancellationToken)).Contains(".ok");
+    }
+
+    [Test]
+    public async Task AModulesStaticAssetsAreServedEvenWhereItsPagesAreNot(CancellationToken cancellationToken)
+    {
+        // The asymmetry, asserted rather than described. Controllers and pages are gated by
+        // HOSTINGSTARTUPASSEMBLIES, because MOD0004 and GenerateMvcApplicationPartsAssemblyAttributes
+        // see to it. Static web assets are not: their manifest is built from project references at
+        // build time, so this file answers in a topology that named no module at all.
+        using var factory = new ModularWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        await Assert.That((await client.GetAsync("/_content/StatusModule/status.css", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);
     }
 
     [Test]

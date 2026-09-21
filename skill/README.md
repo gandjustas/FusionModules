@@ -23,7 +23,13 @@ is generated but not committed: it was a byte-for-byte copy of `src/`, and the o
 two identical trees in git bought was a way to edit the wrong one.
 
 `plugin/.claude-plugin/plugin.json` and `plugin/commands/` are hand-written and survive
-regeneration.
+regeneration. CI checks the manifest parses and has its required fields, because nothing else
+would notice it going malformed until somebody installed the released zip.
+
+The `version` in it is a placeholder: a working tree does not know what the next tag will be, so
+`release.yml` stamps the tag into the copy it zips and MinVer stays the only source of the number.
+A zip built from a `workflow_dispatch` run has no tag behind it and keeps the placeholder, which is
+the honest answer for a build that is not a release.
 
 ## Using it
 

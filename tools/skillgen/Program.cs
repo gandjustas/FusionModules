@@ -136,6 +136,11 @@ string Linkify(string text, List<Reference> references)
             $"[{reference.Title}](#{reference.Anchor})");
 
         text = text.Replace($"](references/{reference.FileName})", $"](#{reference.Anchor})", StringComparison.Ordinal);
+
+        // The same link seen from inside references/, where a sibling is named on its own. Missed
+        // for as long as this has existed, because a bare name is a valid link in the source tree
+        // and only stops resolving once the files are flattened into one.
+        text = text.Replace($"]({reference.FileName})", $"](#{reference.Anchor})", StringComparison.Ordinal);
     }
 
     return text;

@@ -17,6 +17,17 @@ internal static class ModuleFacts
     public const string TagHelperMetadataName = "Microsoft.AspNetCore.Razor.TagHelpers.ITagHelper";
     public const string EntityTypeConfigurationMetadataName = "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1";
     public const string ModuleBaseMetadataName = "Modulith.ModuleBase";
+    public const string HubMetadataName = "Microsoft.AspNetCore.SignalR.Hub";
+    public const string HubOfTMetadataName = "Microsoft.AspNetCore.SignalR.Hub`1";
+    public const string InternalsVisibleToAttributeMetadataName =
+        "System.Runtime.CompilerServices.InternalsVisibleToAttribute";
+
+    /// <summary>
+    /// The assembly SignalR emits a strongly-typed hub client proxy into. It is built with
+    /// <c>AssemblyBuilderAccess.Run</c> and is therefore unsigned, so naming it in
+    /// <c>InternalsVisibleTo</c> is enough to let the proxy implement an internal interface.
+    /// </summary>
+    public const string TypedClientBuilderAssemblyName = "Microsoft.AspNetCore.SignalR.TypedClientBuilder";
 
     /// <summary>
     /// Resolves <c>Modulith.ModuleBase</c>. Uses the plural lookup because the type can legitimately
@@ -105,6 +116,94 @@ internal static class ModuleFacts
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Client interfaces named by a <c>Hub&lt;TClient&gt;</c> declared in this assembly, each
+    /// mapped to the name of the hub that names it.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the client rather than the hub: two hubs may share one client interface, and the
+    /// interface is the thing a rule reports on. The first hub found supplies the name, because a
+    /// message needs one and not a list.
+    /// </remarks>
+    public static Dictionary<ITypeSymbol, string> GetHubClients(Compilation compilation)
+    {
+        var result = new Dictionary<ITypeSymbol, string>(SymbolEqualityComparer.Default);
+
+        var hubOfT = compilation.GetTypeByMetadataName(HubOfTMetadataName)?.ConstructUnboundGenericType();
+        if (hubOfT is null)
+        {
+            return result;
+        }
+
+        foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
+        {
+            for (var current = type.BaseType; current is not null; current = current.BaseType)
+            {
+                if (current.IsGenericType &&
+                    SymbolEqualityComparer.Default.Equals(current.ConstructUnboundGenericType(), hubOfT))
+                {
+                    if (!result.ContainsKey(current.TypeArguments[0]))
+                    {
+                        result[current.TypeArguments[0]] = type.Name;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// True when the assembly grants <paramref name="friendAssemblyName"/> access to its internals.
+    /// </summary>
+    /// <remarks>
+    /// The attribute argument may carry a public key (<c>"Name, PublicKey=…"</c>), so only the
+    /// simple name is compared.
+    /// </remarks>
+    public static bool HasInternalsVisibleTo(Compilation compilation, string friendAssemblyName)
+    {
+        var attributeType = compilation.GetTypeByMetadataName(InternalsVisibleToAttributeMetadataName);
+
+        foreach (var attribute in GetAttributes(compilation.Assembly, attributeType))
+        {
+            if (attribute.ConstructorArguments.Length != 1 ||
+                attribute.ConstructorArguments[0].Value is not string value)
+            {
+                continue;
+            }
+
+            var comma = value.IndexOf(',');
+            var name = comma < 0 ? value : value.Substring(0, comma);
+
+            if (name.Trim().Equals(friendAssemblyName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when nothing outside this assembly can see the type — which is what a proxy in another
+    /// assembly cares about, and not the same question as the type's own declared accessibility:
+    /// a public type nested in an internal one is invisible too.
+    /// </summary>
+    public static bool IsInvisibleOutsideAssembly(ITypeSymbol type)
+    {
+        for (ISymbol? current = type; current is INamedTypeSymbol named; current = named.ContainingType)
+        {
+            if (named.DeclaredAccessibility != Accessibility.Public)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol root)

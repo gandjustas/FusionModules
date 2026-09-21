@@ -1,6 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
+    Both of the package's target frameworks. An MVC module is where the Razor SDK, application
+    parts and the targets that switch off Application Part Discovery all meet, and none of that
+    was exercised on net8 before.
+  -->
+  <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <!--
     No <GenerateMvcApplicationPartsAssemblyAttributes>false</...> here: Modulith's MSBuild assets
     set it once the project is detected as a host. Without it the SDK would wire the modules'
     controllers and pages straight into this project, bypassing the modules' own code and

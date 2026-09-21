@@ -144,6 +144,51 @@ populated.
 Exactly one replica should run migrations. The others take the database as they find it —
 `Database__Migrate: "false"` in the compose file, or whatever switch the host uses.
 
+## Work that must finish before the port opens
+
+A service that checked its own schema, or seeded reference data, before `RunAsync` has nowhere
+obvious to put that once it is a module. `ModuleBase`'s overrides are all synchronous, and they run
+while the container is still being assembled — too early to resolve anything from it.
+
+`AddHostedService` is closer than it looks, and it is worth being accurate about why it is still
+not the answer. A module's hosted services are registered before `GenericWebHostService` is, so
+their `StartAsync` runs before Kestrel binds: work there genuinely does delay the first request
+rather than race it. What it does not give you is **ordering**. Hosted services start in
+registration order, which is `HOSTINGSTARTUPASSEMBLIES` order, so a gate that has to precede every
+other module's work cannot be expressed from inside one of them. And the guarantee is registration
+order rather than a contract — it has moved once already, between hosting models.
+
+`IHostedLifecycleService.StartingAsync` is the contractual version of the same window: it runs
+before any hosted service starts, by specification. Reach for it when the work answers only to
+itself. MOD0008 fires on the registration either way, correctly — the thing does run once per
+replica — and answering it with "this is a startup gate, not a worker" is a suppression with a
+reason, which is what that rule asks for.
+
+When ordering across modules matters, let the module declare the work and let the host run it. The
+module puts a descriptor in DI; the host enumerates them between `Build()` and `RunAsync()`:
+
+```csharp
+services.AddSingleton(typeof(SchemaTarget), SchemaTarget.Required<OrdersDbContext>("ORDERS"));
+```
+
+```csharp
+var app = builder.Build();
+
+foreach (var target in app.Services.GetServices<SchemaTarget>())
+{
+    await EnsureSchemaUpToDateAsync(app, target);
+}
+
+await app.RunAsync();
+```
+
+`SchemaTarget` is your type, in the contracts library both sides already reference — a name for the
+logs, a `DbContext` type, and whether its absence from DI is normal. The host stays ignorant of
+modules: it enumerates a contract, and what registered it is none of its business. Ordering stays
+with the host, which is the whole reason to prefer this over a hosted service, and the failure is
+loud: the host is `await`ing, so an exception stops startup instead of being swallowed into a
+background task.
+
 ## Consolidating existing databases
 
 Three playbooks. **Choose with the user**; this is one of the Phase 0 questions.

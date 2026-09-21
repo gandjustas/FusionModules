@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <!--
       A feature module, separate from the entity module it reads. Splitting them is what lets a
       topology take the tables without the endpoints, or the endpoints without the composing

@@ -20,6 +20,7 @@ internal static class Diagnostics
     public const string ModuleMustNotReplacePipelineId = "MOD0006";
     public const string RedundantStartupFilterId = "MOD0007";
     public const string HostedServiceInModuleId = "MOD0008";
+    public const string HubClientTypeMustBeReachableId = "MOD0009";
     public const string PackageNotReferencedId = "MOD0020";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
@@ -45,6 +46,9 @@ internal static class Diagnostics
 
     public static readonly DiagnosticDescriptor HostedServiceInModule =
         Create(HostedServiceInModuleId, DiagnosticSeverity.Warning, UsageCategory);
+
+    public static readonly DiagnosticDescriptor HubClientTypeMustBeReachable =
+        Create(HubClientTypeMustBeReachableId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor PackageNotReferenced =
         Create(PackageNotReferencedId, DiagnosticSeverity.Warning);

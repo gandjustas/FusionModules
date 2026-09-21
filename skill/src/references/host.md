@@ -73,6 +73,33 @@ make it a module and put it first in every `HOSTINGSTARTUPASSEMBLIES`. The host 
 `[assembly: HostingStartup(typeof(Module))]` itself; ASP.NET Core activates the entry assembly
 first.
 
+## Kestrel endpoints
+
+Merging services merges their listeners, and that cannot be a per-module decision: a module gets a
+service collection and a place in the pipeline, never a port. Take the endpoint list out of Phase 0
+and settle it here, once.
+
+The trap is protocols. On a TLS endpoint `Http1AndHttp2` really is the union, because ALPN picks
+per connection. On a **plaintext** endpoint there is no ALPN, so `Http1AndHttp2` means HTTP/1.1,
+and every gRPC client that `Http2` would have served gets `HTTP_1_1_REQUIRED` on its first call.
+The union reads like the safe merge of two services' settings, and it is the one setting that
+silently drops gRPC.
+
+```json
+{
+  "Kestrel": {
+    "Endpoints": {
+      "Http": { "Url": "http://*:8080", "Protocols": "Http1AndHttp2" },
+      "Grpc": { "Url": "http://*:8081", "Protocols": "Http2" }
+    }
+  }
+}
+```
+
+Keep the gRPC port on `Http2` unless something genuinely calls it over HTTP/1.1 — JSON transcoding
+on the same port is the usual reason, and which services relied on that is worth knowing before you
+take it away.
+
 ## Cross-cutting concerns, reconciled once
 
 Phase 0 produced a diff table of middleware order and cross-cutting configuration across the

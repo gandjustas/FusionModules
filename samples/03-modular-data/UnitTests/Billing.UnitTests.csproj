@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <AssemblyName>Billing.UnitTests</AssemblyName>
     <RootNamespace>Billing.UnitTests</RootNamespace>

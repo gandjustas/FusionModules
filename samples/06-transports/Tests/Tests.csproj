@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Sample.Transports.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="TUnit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Host\Host.csproj" />
+    <ProjectReference Include="..\Contracts\Pricing.Contracts.csproj" />
+  </ItemGroup>
+
+  <!-- The modules under test, so their assemblies land in this project's output. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Checkout\CheckoutModule.csproj" />
+    <ProjectReference Include="..\Modules\Pricing\PricingModule.csproj" />
+    <ProjectReference Include="..\Modules\PricingApi\PricingApiModule.csproj" />
+    <ProjectReference Include="..\Modules\PricingClient\PricingClientModule.csproj" />
+  </ItemGroup>
+
+</Project>

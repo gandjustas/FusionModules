@@ -25,6 +25,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         Diagnostics.ModuleMustNotExposePublicTypes,
         Diagnostics.HostingStartupTypeMustBeModule,
         Diagnostics.ModuleMustBeRegistered,
+        Diagnostics.HubClientTypeMustBeReachable,
         Diagnostics.PackageNotReferenced,
     ];
 
@@ -72,10 +73,22 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var exemptions = TypeExemptions.Create(compilation);
+        var hubClients = ModuleFacts.GetHubClients(compilation);
+
+        var exemptions = TypeExemptions.Create(compilation, hubClients);
         context.RegisterSymbolAction(
             symbolContext => CheckTypeIsNotPublic(symbolContext, exemptions),
             SymbolKind.NamedType);
+
+        // MOD0009 — the mirror image: these types the runtime insists on reaching, and an
+        // InternalsVisibleTo to the proxy's assembly is the cheaper of the two ways to allow it.
+        if (hubClients.Count > 0 &&
+            !ModuleFacts.HasInternalsVisibleTo(compilation, ModuleFacts.TypedClientBuilderAssemblyName))
+        {
+            context.RegisterSymbolAction(
+                symbolContext => CheckHubClientIsReachable(symbolContext, hubClients),
+                SymbolKind.NamedType);
+        }
     }
 
     private static void RegisterHostingStartupAttributeCheck(
@@ -169,6 +182,28 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             type.Name));
     }
 
+    private static void CheckHubClientIsReachable(
+        SymbolAnalysisContext context,
+        Dictionary<ITypeSymbol, string> hubClients)
+    {
+        var type = (INamedTypeSymbol)context.Symbol;
+
+        // Declared elsewhere means it cannot be fixed here, and a referenced assembly is free to
+        // keep its own types to itself for reasons that are none of this module's business.
+        if (!SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, context.Compilation.Assembly) ||
+            !hubClients.TryGetValue(type, out var hub) ||
+            !ModuleFacts.IsInvisibleOutsideAssembly(type))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            Diagnostics.HubClientTypeMustBeReachable,
+            type.Locations.FirstOrDefault() ?? Location.None,
+            type.Name,
+            hub));
+    }
+
     private static bool IsAllowedByConfiguration(SymbolAnalysisContext context, INamedTypeSymbol type)
     {
         var tree = type.Locations.FirstOrDefault(l => l.SourceTree is not null)?.SourceTree;
@@ -203,10 +238,14 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         private readonly INamedTypeSymbol? _pageModel;
         private readonly INamedTypeSymbol? _viewComponentAttribute;
         private readonly INamedTypeSymbol? _tagHelper;
+        private readonly INamedTypeSymbol? _hub;
         private readonly HashSet<ITypeSymbol> _entityTypes;
+        private readonly Dictionary<ITypeSymbol, string> _hubClients;
 
-        private TypeExemptions(Compilation compilation)
+        private TypeExemptions(Compilation compilation, Dictionary<ITypeSymbol, string> hubClients)
         {
+            _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
+            _hubClients = hubClients;
             _controllerBase = compilation.GetTypeByMetadataName(ModuleFacts.ControllerBaseMetadataName);
             _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
             _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
@@ -214,10 +253,15 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             _entityTypes = ModuleFacts.GetConfiguredEntityTypes(compilation);
         }
 
-        public static TypeExemptions Create(Compilation compilation) => new(compilation);
+        public static TypeExemptions Create(Compilation compilation, Dictionary<ITypeSymbol, string> hubClients) =>
+            new(compilation, hubClients);
 
         public bool IsExempt(INamedTypeSymbol type) =>
             _entityTypes.Contains(type) ||
+            // A hub is found by reflection like a controller; its client interface is one MOD0009
+            // may require to be public, and two rules must not argue over the same line.
+            _hubClients.ContainsKey(type) ||
+            (_hub is not null && ModuleFacts.InheritsFrom(type, _hub)) ||
             (_controllerBase is not null && ModuleFacts.InheritsFrom(type, _controllerBase)) ||
             (_pageModel is not null && ModuleFacts.InheritsFrom(type, _pageModel)) ||
             (_tagHelper is not null && ModuleFacts.Implements(type, _tagHelper)) ||

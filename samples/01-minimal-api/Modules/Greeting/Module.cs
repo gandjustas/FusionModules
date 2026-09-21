@@ -1,8 +1,4 @@
 using GreetingModule;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Configuration;
 using Modulith;
 
 [assembly: HostingStartup(typeof(Module))]

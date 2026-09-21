@@ -78,6 +78,14 @@ internal static class AnalyzerTest
             public interface ITagHelper { }
         }
 
+        namespace Microsoft.AspNetCore.SignalR
+        {
+            public abstract class Hub { }
+
+            // The constraint is SignalR's own: the stub must not model a laxer framework.
+            public abstract class Hub<T> : Hub where T : class { }
+        }
+
         namespace Microsoft.EntityFrameworkCore
         {
             public interface IEntityTypeConfiguration<T> where T : class { }

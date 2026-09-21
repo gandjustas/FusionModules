@@ -9,8 +9,8 @@ one image.
 |---|---|
 | `Orders.Entities` | The `Orders` table, in the `Sales` schema |
 | `Customers.Entities` | The `Customers` table, in the `Marketing` schema |
-| `CustomersModule` | `GET /customers` — a feature module over the customers tables |
-| `BillingModule` | `GET /billing/overdue`, and the foreign key from orders to customers |
+| `CustomersModule` | `GET /customers` — a feature module over the customers tables, served by an **internal MVC controller** |
+| `BillingModule` | `GET /billing/overdue`, and the foreign key from orders to customers, served by minimal APIs |
 
 `BillingModule` is a **composing module**: it owns no entities, it joins two other modules'.
 It does that with a second `IEntityTypeConfiguration<Order>`, in its own assembly, adding the
@@ -20,6 +20,35 @@ exists; leave it out and the two tables are independent.
 Which means the composing module must come **last** in `HOSTINGSTARTUPASSEMBLIES` — EF Core
 applies configurations in activation order, and this one has to come after the configurations it
 extends.
+
+## A controller that takes a DbContext
+
+The shape a service being migrated arrives in, and the one place two rules look like they
+contradict each other. A public controller cannot take an internal service or return an internal
+model, so it drags both public — and MOD0001 then reports them. Making the controller internal is
+what breaks the deadlock:
+
+```csharp
+services.AddControllers()
+    .AddApplicationPart(typeof(Module).Assembly)
+    .AllowInternalControllers();
+```
+
+[`CustomersController`](Modules/CustomersApi/CustomersController.cs) is `internal`, its constructor
+is `public` because MVC's activator reads `GetConstructors()`, and from there it may take internal
+parameters and return the internal `CustomerView`. C# bounds a member's effective accessibility by
+its containing type, which is why that is legal and not a loophole.
+
+The `DbContext` in its constructor is the other half. A service arriving here had its own
+`CustomersDbContext` injected exactly like that — a type that would have to be public for a public
+controller and internal for MOD0001. It becomes neither: the host owns one context and registers
+`AddTransient<DbContext>`, the module asks for the base type and says `db.Set<Customer>()`, and
+there is no longer a type whose visibility to argue about. The trade is real — you lose `DbSet`
+properties and context-level conventions.
+
+Testability survives without a single public type. `Tests/` boots topologies and reads the route
+table, which needs no internals at all; `UnitTests/` reaches the module's logic directly through
+`InternalsVisibleTo` and composes its own model from the module assemblies.
 
 ## The recipe
 

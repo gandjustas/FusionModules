@@ -40,4 +40,31 @@
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
   </PropertyGroup>
 
+  <!--
+    Converting a service from Microsoft.NET.Sdk.Web to Microsoft.NET.Sdk silently drops the
+    implicit usings the Web SDK contributed, so the first build of the converted project is a wall
+    of CS0246 on types that are sitting right there in the framework reference. It reads like a
+    missing package reference and it is not one. This is the Web SDK's own list, restored for a
+    module; System.Net.Http.Json comes from Microsoft.NETCore.App and the rest from the
+    Microsoft.AspNetCore.App framework reference this package already brings.
+
+    The UsingMicrosoftNETSdkWeb guard is not decoration: a module that stayed on the Web SDK would
+    otherwise get every name twice, and a duplicate global using is CS0105.
+  -->
+  <ItemGroup Condition="'$(ModulithProjectKind)' == 'Module'
+                        and '$(Language)' == 'C#'
+                        and '$(UsingMicrosoftNETSdkWeb)' != 'true'
+                        and '$(ModulithImplicitUsings)' != 'false'
+                        and ('$(ImplicitUsings)' == 'true' or '$(ImplicitUsings)' == 'enable')">
+    <Using Include="System.Net.Http.Json" />
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
 </Project>

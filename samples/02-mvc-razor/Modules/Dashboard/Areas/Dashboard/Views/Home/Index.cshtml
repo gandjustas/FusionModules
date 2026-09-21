@@ -1,3 +1,4 @@
+@model DashboardModule.Areas.Dashboard.Controllers.DashboardView
 @{
     Layout = null;
 }
@@ -10,5 +11,17 @@
 <body>
     <h1>Dashboard</h1>
     <p>Served by a module the host has never heard of.</p>
+    <p>@Model.TileCount tiles.</p>
+    @*
+        Both of these reach the internal view component: the name is looked up at runtime, and the
+        generic overload resolves the type here, in a generated view class that is itself internal
+        and in this same assembly.
+
+        What does not work is <vc:tiles />. That one is bound by the Razor compiler, which requires
+        a public type — and when it does not find one it says nothing at all: the element is copied
+        into the page as literal HTML, with no error and no warning.
+    *@
+    <p>@await Component.InvokeAsync("Tiles")</p>
+    <p>@(await Component.InvokeAsync<DashboardModule.Areas.Dashboard.Components.TilesViewComponent>())</p>
 </body>
 </html>

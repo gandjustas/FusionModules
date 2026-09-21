@@ -13,4 +13,5 @@ MOD0005 | Modulith.Design | Error | A module must be named by an assembly-level 
 MOD0006 | Modulith.Design | Error | A module must not replace the application pipeline
 MOD0007 | Modulith.Usage | Warning | Redundant IStartupFilter registration
 MOD0008 | Modulith.Usage | Warning | A hosted service in a module runs in every replica that loads it
+MOD0009 | Modulith.Design | Error | A hub's client interface must be reachable from SignalR's generated proxy
 MOD0020 | Modulith.Design | Warning | The Modulith package is not referenced

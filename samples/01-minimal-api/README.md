@@ -28,8 +28,10 @@ configuration too, so a default value can live with the feature that needs it.
 The reference is what orders the build and copies the assemblies next to the executable so they
 can be loaded by name; MOD0003 is what stops it becoming a dependency.
 
-**[`Tests/`](Tests)** — one topology per test. `KnownModules` is generated from the marked project
-references, so the module names the tests use are checked by the compiler and survive a rename.
+**[`Tests/`](Tests)** — one topology per test. The module names live in one place as plain
+constants: they are the same strings a deployment writes into `HOSTINGSTARTUPASSEMBLIES`, so they
+are not something the compiler can check, and a typo in one fails startup with a message naming the
+module.
 
 One test asserts something that does *not* work: if every name in `HOSTINGSTARTUPASSEMBLIES` is
 misspelled, nothing notices, because the check runs from the modules that did load. Recorded as a

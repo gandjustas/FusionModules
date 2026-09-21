@@ -46,6 +46,14 @@ limiting, OpenTelemetry, health checks, problem details, localization — and th
 each service uses. Divergent middleware order is the single largest source of behaviour change
 after a merge, and it is invisible in a per-service reading. Lay them side by side.
 
+**What crosses an assembly boundary by reflection.** One list, and the cheapest question in this
+phase. SignalR hubs *and the client interface of every `Hub<TClient>`*, `JsonSerializerContext`
+types and what they bind, gRPC service bases, `ActivatorUtilities` over a type named in
+configuration, anything an assembly scan picks up, anything resolved by a string from a settings
+file. Each one is a type whose visibility stops being a free choice when its service becomes a
+module, and none of them fail at build time — MOD0001 will tell you to make them internal and the
+compiler will agree. Phase 2 spends this list; collect it while you are already reading the code.
+
 **Collisions.** Three kinds, all silent:
 
 - *Routes.* Enumerate every template across every service and list the duplicates. Never merge

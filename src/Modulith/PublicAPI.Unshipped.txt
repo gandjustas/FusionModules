@@ -6,3 +6,7 @@ static Modulith.ModuleBase.GetLoadedModules(Microsoft.Extensions.Configuration.I
 virtual Modulith.ModuleBase.Configure(Microsoft.AspNetCore.Builder.IApplicationBuilder! app) -> void
 virtual Modulith.ModuleBase.ConfigureAppConfiguration(Microsoft.AspNetCore.Hosting.WebHostBuilderContext! context, Microsoft.Extensions.Configuration.IConfigurationBuilder! configuration) -> void
 virtual Modulith.ModuleBase.ConfigureServices(Microsoft.AspNetCore.Hosting.WebHostBuilderContext! context, Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+virtual Modulith.ModuleBase.ConfigureServices(Microsoft.Extensions.Hosting.IHostApplicationBuilder! builder) -> void
+Modulith.ModuleDiscovery
+static Modulith.ModuleDiscovery.AllowInternalControllers(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
+static Modulith.ModuleDiscovery.AllowInternalViewComponents(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!

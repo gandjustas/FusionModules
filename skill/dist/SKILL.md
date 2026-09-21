@@ -77,9 +77,11 @@ semantics delta written down. See [Transports](#phase-4-transports).
 `dotnet ef database update`, `psql`, and anything touching a database that is not a disposable
 local container are out of scope for this skill.
 
-**Preserve the route inventory.** It is the strongest available signal that a mechanical
-migration is correct. Capture it before touching anything — see
-[Verification](#verification).
+**Preserve the route inventory — and do not stop at it.** It is the strongest available signal
+that a mechanical migration is correct, and it is blind to everything resolved by reflection,
+negotiated on the wire, or built after the container is. Capture it before touching anything, and
+treat booting every topology with one real request per module as its peer rather than its
+follow-up. See [Verification](#verification).
 
 ## When something fails quietly
 
@@ -113,7 +115,7 @@ Both are silent at runtime, and which one wins is decided by load order — whic
 Two caveats. It composes no routes: `MapGroup("/billing")` followed by `MapGet("/overdue")` is
 reported as two templates, not one. And its collisions are candidates — two modules declaring the
 same template only matters if some topology loads both. Confirm before raising. The authoritative
-route inventory comes from `EndpointDataSource` at runtime; see [verify.md](verify.md).
+route inventory comes from `EndpointDataSource` at runtime; see [verify.md](#verification).
 
 ### What the assessment must contain
 
@@ -136,6 +138,14 @@ whether a service genuinely has its own scaling profile.
 limiting, OpenTelemetry, health checks, problem details, localization — and the middleware order
 each service uses. Divergent middleware order is the single largest source of behaviour change
 after a merge, and it is invisible in a per-service reading. Lay them side by side.
+
+**What crosses an assembly boundary by reflection.** One list, and the cheapest question in this
+phase. SignalR hubs *and the client interface of every `Hub<TClient>`*, `JsonSerializerContext`
+types and what they bind, gRPC service bases, `ActivatorUtilities` over a type named in
+configuration, anything an assembly scan picks up, anything resolved by a string from a settings
+file. Each one is a type whose visibility stops being a free choice when its service becomes a
+module, and none of them fail at build time — MOD0001 will tell you to make them internal and the
+compiler will agree. Phase 2 spends this list; collect it while you are already reading the code.
 
 **Collisions.** Three kinds, all silent:
 
@@ -189,7 +199,7 @@ and record the answers in `modulith-migration.md` with their reasons.
 3. **Transports to keep.** Per edge in the call graph. Default to removing edges whose only
    callers are inside this solution, keeping everything else.
 4. **Database consolidation.** One database or several; if several, which contexts go where.
-   See [data.md](data.md) for the three migration playbooks.
+   See [data.md](#phase-3-data) for the three migration playbooks.
 5. **Contract ownership.** For each type that crosses a module boundary: which contracts library
    owns it, and who may change it.
 
@@ -493,6 +503,51 @@ populated.
 Exactly one replica should run migrations. The others take the database as they find it —
 `Database__Migrate: "false"` in the compose file, or whatever switch the host uses.
 
+### Work that must finish before the port opens
+
+A service that checked its own schema, or seeded reference data, before `RunAsync` has nowhere
+obvious to put that once it is a module. `ModuleBase`'s overrides are all synchronous, and they run
+while the container is still being assembled — too early to resolve anything from it.
+
+`AddHostedService` is closer than it looks, and it is worth being accurate about why it is still
+not the answer. A module's hosted services are registered before `GenericWebHostService` is, so
+their `StartAsync` runs before Kestrel binds: work there genuinely does delay the first request
+rather than race it. What it does not give you is **ordering**. Hosted services start in
+registration order, which is `HOSTINGSTARTUPASSEMBLIES` order, so a gate that has to precede every
+other module's work cannot be expressed from inside one of them. And the guarantee is registration
+order rather than a contract — it has moved once already, between hosting models.
+
+`IHostedLifecycleService.StartingAsync` is the contractual version of the same window: it runs
+before any hosted service starts, by specification. Reach for it when the work answers only to
+itself. MOD0008 fires on the registration either way, correctly — the thing does run once per
+replica — and answering it with "this is a startup gate, not a worker" is a suppression with a
+reason, which is what that rule asks for.
+
+When ordering across modules matters, let the module declare the work and let the host run it. The
+module puts a descriptor in DI; the host enumerates them between `Build()` and `RunAsync()`:
+
+```csharp
+services.AddSingleton(typeof(SchemaTarget), SchemaTarget.Required<OrdersDbContext>("ORDERS"));
+```
+
+```csharp
+var app = builder.Build();
+
+foreach (var target in app.Services.GetServices<SchemaTarget>())
+{
+    await EnsureSchemaUpToDateAsync(app, target);
+}
+
+await app.RunAsync();
+```
+
+`SchemaTarget` is your type, in the contracts library both sides already reference — a name for the
+logs, a `DbContext` type, and whether its absence from DI is normal. The host stays ignorant of
+modules: it enumerates a contract, and what registered it is none of its business. Ordering stays
+with the host, which is the whole reason to prefer this over a hosted service, and the failure is
+loud: the host is `await`ing, so an exception stops startup instead of being swallowed into a
+background task.
+
 ### Consolidating existing databases
 
 Three playbooks. **Choose with the user**; this is one of the Phase 0 questions.
@@ -708,6 +763,33 @@ make it a module and put it first in every `HOSTINGSTARTUPASSEMBLIES`. The host 
 `[assembly: HostingStartup(typeof(Module))]` itself; ASP.NET Core activates the entry assembly
 first.
 
+### Kestrel endpoints
+
+Merging services merges their listeners, and that cannot be a per-module decision: a module gets a
+service collection and a place in the pipeline, never a port. Take the endpoint list out of Phase 0
+and settle it here, once.
+
+The trap is protocols. On a TLS endpoint `Http1AndHttp2` really is the union, because ALPN picks
+per connection. On a **plaintext** endpoint there is no ALPN, so `Http1AndHttp2` means HTTP/1.1,
+and every gRPC client that `Http2` would have served gets `HTTP_1_1_REQUIRED` on its first call.
+The union reads like the safe merge of two services' settings, and it is the one setting that
+silently drops gRPC.
+
+```json
+{
+  "Kestrel": {
+    "Endpoints": {
+      "Http": { "Url": "http://*:8080", "Protocols": "Http1AndHttp2" },
+      "Grpc": { "Url": "http://*:8081", "Protocols": "Http2" }
+    }
+  }
+}
+```
+
+Keep the gRPC port on `Http2` unless something genuinely calls it over HTTP/1.1 — JSON transcoding
+on the same port is the usual reason, and which services relied on that is worth knowing before you
+take it away.
+
 ### Cross-cutting concerns, reconciled once
 
 Phase 0 produced a diff table of middleware order and cross-cutting configuration across the
@@ -768,6 +850,21 @@ Set `<AssemblyName>` explicitly. It is the literal string an operator writes int
 `HOSTINGSTARTUPASSEMBLIES`, so it must not follow the project file name — renaming a project
 would otherwise break every deployment silently.
 
+The SDK line is what bites first. `Microsoft.NET.Sdk.Web` contributes implicit usings that a plain
+`Microsoft.NET.Sdk` project does not, so the first build of a converted service is a wall of CS0246
+on types that are sitting right there in the framework reference. It reads like a missing package
+reference and it is not one. Modulith puts them back for a module project, so on a current version
+there is nothing to do; on an older one, add them yourself:
+
+```xml
+<ItemGroup>
+  <Using Include="Microsoft.AspNetCore.Builder" />
+  <Using Include="Microsoft.AspNetCore.Http" />
+  <Using Include="Microsoft.AspNetCore.Routing" />
+  <Using Include="Microsoft.Extensions.Hosting" />
+</ItemGroup>
+```
+
 Then register it with the host and with the test project:
 
 ```xml
@@ -803,6 +900,28 @@ Middleware the service ran for itself goes at the top of `Configure`, before `Us
 Middleware that was really cross-cutting goes to the host — but only after reconciling it with
 the other services, which was Phase 1's job.
 
+### When a registration wants the builder, not the services
+
+A good deal of modern .NET is written as extensions of `IHostApplicationBuilder` rather than of
+`IServiceCollection` — every Aspire client integration, and most component packages. Those are not
+decoration over `AddDbContext`: they resolve `ConnectionStrings:<name>` out of configuration,
+register a health check and instrument the calls. Registering the client by hand keeps none of it.
+
+Override the other `ConfigureServices` and call them unchanged:
+
+```csharp
+protected override void ConfigureServices(IHostApplicationBuilder builder)
+{
+    builder.AddNpgsqlDataSource("orders");
+    builder.AddRedisClient("cache");
+}
+```
+
+It is the module's view of the host rather than the host: the configuration is readable and closed
+to new sources — `ConfigureAppConfiguration` is where those go, and adding one here throws rather
+than disappearing — and the container is not a module's choice. Both overloads always run, and this
+one runs first, so an explicit registration in the other still beats an integration's `TryAdd`.
+
 ### Five collisions, all silent
 
 Work through these for every module. None of them produce an error; all of them change behaviour.
@@ -833,8 +952,49 @@ Build. MOD0001 will report every public type. Apply the "make internal" fix — 
 converted service in one pass.
 
 Exempt by default, because the framework finds them by reflection: controllers, page models, view
-components, tag helpers, and entity types configured by an `IEntityTypeConfiguration<T>` in the
-same assembly.
+components, tag helpers, SignalR hubs and the client interface of a `Hub<TClient>`, and entity
+types configured by an `IEntityTypeConfiguration<T>` in the same assembly.
+
+Controllers need a second sentence, because the exemption is true and not enough. A public class
+cannot have a public constructor taking an internal service, nor a public action returning an
+internal DTO — so a public controller drags its services and its models public with it, and then
+whatever those name. Keep the controller internal instead and let discovery see it:
+
+```csharp
+services.AddControllers()
+    .AddApplicationPart(typeof(Module).Assembly)
+    .AllowInternalControllers();
+```
+
+The class becomes `internal`, the constructor stays public — MVC's activator reads
+`GetConstructors()`, which is public-only — and from there the parameters and return types may be
+internal, because C# bounds a member's effective accessibility by its containing type. One call
+covers the whole application.
+
+The other three kinds the framework finds by reflection each answer differently, and guessing costs
+a day:
+
+- **View components** — `.AllowInternalViewComponents()`, same call site. Invoke by name or through
+  the generic overload; both resolve at run time and both work. The one form that does not is
+  `<vc:…>`, which the Razor compiler binds and which needs a public type — finding none, it reports
+  nothing and copies the element into the page as literal HTML.
+- **Razor Pages** — nothing to do. Page discovery reads the attributes the Razor compiler emits
+  rather than scanning types, and the generated page class is itself internal, so an internal
+  `PageModel` already works. Keep its constructor and handler methods public.
+- **Tag helpers** — keep them public. `@addTagHelper` binds in the compiler against Roslyn symbols
+  and requires public, for the current assembly as much as for referenced ones. An internal tag
+  helper produces no descriptor at all: the element renders as literal HTML, with no error, no
+  warning and nothing at runtime. Add it to the list of things the route inventory cannot see.
+
+A hub's client interface needs a second sentence for the opposite reason: MOD0001 leaves it alone,
+but SignalR still has to reach it. The proxy for a `Hub<TClient>` is generated into a dynamic
+assembly of its own, which cannot implement an `internal` interface declared in yours — and nothing
+says so until a client connects and the process throws `TypeLoadException`. MOD0009 asks the
+question at build time; the usual answer is one line:
+
+```csharp
+[assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
+```
 
 What remains is the interesting part: a public type with no reason to be public is a leak, and a
 public type with a real reason is a **contract**. Move contracts into a plain `Microsoft.NET.Sdk`
@@ -843,11 +1003,11 @@ meant to be public. That library is also the answer whenever two modules need to
 without one depending on the other's deployment.
 
 For the genuine exceptions the analyzer cannot infer — a DTO bound by a source-generated
-`JsonSerializerContext` elsewhere, a SignalR hub, a message contract a broker discovers —
+`JsonSerializerContext` elsewhere, a gRPC service base, a message contract a broker discovers —
 use `.editorconfig`:
 
 ```ini
-modulith_allowed_public_types = OrderDto, PaymentHub
+modulith_allowed_public_types = OrderDto, PaymentEnvelope
 ```
 
 Write down why. Nobody can tell a considered exception from an abandoned one.
@@ -859,13 +1019,23 @@ inside `ConfigureServices`; the host must not, and Modulith turns off the SDK be
 would have done it silently. Static assets are served from `_content/<AssemblyName>/`, so two
 modules can both ship `site.css`.
 
+Which is where an asymmetry lives, and it is worth stating out loud: controllers and pages are
+gated by `HOSTINGSTARTUPASSEMBLIES` and static assets are not. The static web asset manifest is
+built from project references at build time, so `_content/StatusModule/status.css` is served by a
+topology that never named `StatusModule`, while that same module's controllers correctly stay away.
+It turns up in a route inventory diff as something the pre-migration service did not serve, and the
+usual right answer is to leave it — a CSS file reachable by URL is not an endpoint anyone can act
+on. When it is more than that, a demo page or an internal tool, confine `MapStaticAssets()` to
+Development in the host. Excluding the asset properly means not referencing the project, which
+means a second host, and that is rarely worth it.
+
 ### Per-module gate
 
 Before moving to the next module:
 
 1. `dotnet build -warnaserror` — no MOD diagnostics.
 2. The route inventory for the topology containing this module matches what the service served
-   before. See [verify.md](verify.md).
+   before. See [verify.md](#verification).
 3. One smoke test for the module alone, and one for the full topology.
 4. Commit.
 
@@ -991,6 +1161,31 @@ Confirm what actually loaded rather than reasoning about it:
 ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name)
 ```
 
+### `TypeLoadException` the first time a client connects to a hub
+
+```
+Type 'Microsoft.AspNetCore.SignalR.TypedClientBuilder.IPaymentClientImpl' ...
+is attempting to implement an inaccessible interface.
+```
+
+The client interface of a `Hub<TClient>` is internal. SignalR generates the proxy into a dynamic
+assembly of its own, which cannot implement it. One line in the module fixes it and keeps the
+module's surface intact:
+
+```csharp
+[assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
+```
+
+MOD0009 catches this at build time. It is worth knowing what survives it otherwise: a clean build,
+a green MOD0001, a full test run, and an unchanged route inventory — nothing but a live hub resolve
+triggers it.
+
+### Every gRPC call fails with `HTTP_1_1_REQUIRED` after the merge
+
+The merged host's gRPC endpoint is plaintext and set to `Http1AndHttp2`. Without TLS there is no
+ALPN, so the connection is HTTP/1.1 and gRPC refuses it. Set that endpoint's `Protocols` to
+`Http2` — see [the host](#phase-1-the-host). The union of two services' settings is not a superset here.
+
 ### Startup throws: "EndpointRoutingMiddleware ... must be added ... before EndpointMiddleware"
 
 The host never called `UseRouting()` and maps no endpoints of its own, so `WebApplication` had no
@@ -1015,13 +1210,13 @@ all, it is the previous section.
 `HOSTINGSTARTUPASSEMBLIES` as set in the shell that ran the command: unset gives an empty model,
 one topology's value gives that topology's tables. There is no error either way — `Up` is just
 empty, or short. Generate migrations through a design-time factory that names every module with
-`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](data.md).
+`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](#phase-3-data).
 
 ### A topology has tables it should not, or is missing tables it should have
 
 EF Core's model cache, keyed by context type, shared across hosts in one process. The second
 topology in a test run gets the first one's model. Nothing throws. Fix with an
-`IModelCacheKeyFactory` that includes the module set — [data.md](data.md).
+`IModelCacheKeyFactory` that includes the module set — [data.md](#phase-3-data).
 
 If it happens at runtime rather than in tests, look at what the model is composed from. An
 `AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly
@@ -1079,6 +1274,7 @@ The usual suspects, in order:
 | MOD0006 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
 | MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
 | MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
+| MOD0009 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
 | MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.
@@ -1110,7 +1306,61 @@ works too if the services already produce it.
 
 Store one file per service, then one per topology, and diff them.
 
-### 2. Build
+Normalise the leading slash. An attribute route is stored without one and a minimal-API route with
+one, so `/orders` and `orders` are the same URL written two ways — and converting a controller to a
+minimal API would otherwise diff every route it touched while changing none of them. The template
+does this; if you write your own, do it too.
+
+#### When every service declares `Program` in the global namespace
+
+Which is every service converted from top-level statements. One test project referencing fifteen
+of them sees fifteen `Program` types, and usually a few genuinely duplicated type names between
+services that were copied from one another. It does not compile, and the error names a type rather
+than the shape of the problem.
+
+Give each reference its own alias and reach the entry point through it:
+
+```xml
+<ProjectReference Include="..\..\orders\Orders.csproj" Aliases="svc_orders" />
+<NoWarn>$(NoWarn);CS0436</NoWarn>
+```
+
+```csharp
+extern alias svc_orders;
+
+internal sealed class OrdersFactory : WebApplicationFactory<svc_orders::Program>;
+```
+
+An ambiguous name is an error only where it is used, and through an alias it never is; CS0436 is
+the warning about the ambiguity you have just arranged not to hit. This belongs to the test project
+that references many services at once, which is a temporary thing — when the old projects are
+deleted, the aliases go with them and the topology factory goes back to plain `Program`.
+
+If that is more machinery than one baseline is worth, run one process per service and capture each
+inventory on its own. The file per service is the artefact; where it was produced does not matter.
+
+### 2. What the inventory cannot see
+
+It is the best signal you have and it is not a complete one. Three classes of failure leave the
+inventory byte-identical and the process broken.
+
+**Anything built by reflection at resolve time.** The client proxy of a SignalR `Hub<TClient>`, a
+`JsonSerializerContext` in another assembly, `ActivatorUtilities` over a type named in
+configuration, a gRPC service base. The endpoint is in the table; the first request into it throws.
+
+**Anything negotiated on the wire.** Protocol, TLS, ALPN, authentication scheme. The table says a
+gRPC method is mapped — whether a gRPC client can reach it is a property of the Kestrel endpoint
+the call arrives on, and that is in no route. See [the host](#phase-1-the-host).
+
+**Anything that happens after the container is built.** A connection string that resolves to a
+password nothing else has, a schema gate that never completes, a hosted service that does not
+return from `StartAsync`, a singleton whose constructor throws. A factory that builds a host and
+reads its endpoints touches none of it.
+
+The answer is not a better inventory. It is that section 4 is this section's peer rather than its
+sequel: boot every topology for real, and put one real request through each module.
+
+### 3. Build
 
 ```bash
 dotnet build -warnaserror
@@ -1120,7 +1370,7 @@ Zero MOD diagnostics. If MOD0003 fires alongside compiler errors, fix the compil
 Roslyn cannot work out which references are used in a broken compilation, and the analyzer
 suppresses itself in that case, so anything you do see is real.
 
-### 3. Boot every topology
+### 4. Boot every topology
 
 ```csharp
 internal sealed class ModularWebApplicationFactory(params string[] modules) : WebApplicationFactory<Program>
@@ -1137,11 +1387,38 @@ Ten lines, copied into the test project — there is no package for this, becaus
 in it but a setting. Keep the module names in one place in the test project: they are the same
 strings a deployment writes, and a typo in them fails startup with a message naming the module.
 
+This is the other half of section 1, not a later step: everything section 2 lists is found here or
+in production.
+
+A module's hosted services really run here. `StartAsync` opens the database connection, does the
+Redis handshake, subscribes to the queue — and on a machine with none of that, every topology test
+hangs or fails for a reason that has nothing to do with composition. The question this test asks is
+what composed, not what connected, so take them out and leave the one that builds the pipeline:
+
+```csharp
+builder.ConfigureTestServices(services =>
+{
+    foreach (var descriptor in services
+        .Where(d => d.ServiceType == typeof(IHostedService) &&
+                    d.ImplementationType?.FullName != "Microsoft.AspNetCore.Hosting.GenericWebHostService")
+        .ToList())
+    {
+        services.Remove(descriptor);
+    }
+});
+```
+
+`GenericWebHostService` stays because it is what builds the pipeline, and therefore the route table
+the test came for. Two things go with it. Connection strings have to be present and syntactically
+valid even though nothing connects — Npgsql and the Redis client both connect lazily, so an address
+nothing is listening on is enough. And whatever switch keeps the second replica from migrating in
+the compose file turns the startup gate off here too.
+
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is
 worth knowing before a deployment finds out.
 
-### 4. Two kinds of test, kept apart
+### 5. Two kinds of test, kept apart
 
 **Topology tests** know about modules only as the names handed to the factory, exactly as a
 deployment names them. They assert on route inventories and on model shape — table and schema
@@ -1160,12 +1437,12 @@ Both kinds hit EF Core's model cache if they compose more than one model from th
 type. Same fix as the host: an `IModelCacheKeyFactory` that includes what the model was composed
 from.
 
-### 5. Model snapshots
+### 6. Model snapshots
 
 `ctx.Model.ToDebugString()` per topology, as golden files. Then
 `dotnet ef migrations has-pending-model-changes` against the union.
 
-### 6. Collisions
+### 7. Collisions
 
 - No configuration key defined twice with different values across modules.
 - No non-`TryAdd` registration of the same service type in two modules.
@@ -1173,12 +1450,12 @@ from.
 
 All three are silent at runtime; a test is the only place they will be noticed.
 
-### 7. Contracts, for transports that were kept
+### 8. Contracts, for transports that were kept
 
 The remote and local implementations of an interface pass the same suite. The pattern gives you
 this for free; it costs one shared test class to collect.
 
-### 8. Before and after, under load
+### 9. Before and after, under load
 
 Same script, both shapes, capturing requests per second, p95 and container memory. Required, for
 two reasons: "we merged the services and it got slower" has to be catchable, and the performance
@@ -1187,7 +1464,7 @@ argument for doing this at all is worth checking rather than assuming.
 Record hardware, tool version and commit alongside the numbers. Performance claims without them
 rot into folklore.
 
-### 9. Containers
+### 10. Containers
 
 Every topology in the compose file starts and answers its health probe. `docker compose up` is
 part of verification, not a separate activity.

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Modulith;
 
@@ -18,9 +19,11 @@ namespace Modulith;
 /// Nothing else is required: no registration in the host, no plugin engine, no manifest.
 /// </para>
 /// <para>
-/// Derived types override <see cref="ConfigureServices"/>, <see cref="Configure"/> and
-/// <see cref="ConfigureAppConfiguration"/> — the same shape as the classic
-/// <c>Startup</c> class, so the composition model is one a .NET developer already knows.
+/// Derived types override <see cref="ConfigureServices(WebHostBuilderContext, IServiceCollection)"/>,
+/// <see cref="Configure"/> and <see cref="ConfigureAppConfiguration"/> — the same shape as the
+/// classic <c>Startup</c> class, so the composition model is one a .NET developer already knows.
+/// <see cref="ConfigureServices(IHostApplicationBuilder)"/> is there for the registrations that
+/// are written against the builder instead.
 /// </para>
 /// <para>
 /// The assembly must carry <c>[assembly: HostingStartup(typeof(TModule))]</c>. Forgetting it is a
@@ -62,6 +65,43 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// <param name="context">The web host builder context.</param>
     /// <param name="services">The service collection to add to.</param>
     protected virtual void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    {
+    }
+
+    /// <summary>
+    /// Registers the module's services through an <see cref="IHostApplicationBuilder"/>, for the
+    /// extensions that are written against the builder rather than the service collection.
+    /// </summary>
+    /// <param name="builder">A builder over the host's environment, configuration and services.</param>
+    /// <remarks>
+    /// <para>
+    /// Every Aspire client integration is of that shape, and most component packages —
+    /// <c>AddNpgsqlDataSource</c>, <c>AddRedisClient</c> and their kind. They do more than register
+    /// a client: they resolve the connection string out of <c>ConnectionStrings</c>, add a health
+    /// check and instrument the calls. Calling them here keeps all of that; hand-registering the
+    /// client keeps none of it.
+    /// </para>
+    /// <para>
+    /// This runs before <see cref="ConfigureServices(WebHostBuilderContext, IServiceCollection)"/>,
+    /// and both always run. Integrations register with <c>TryAdd</c>, so an explicit registration
+    /// in the other overload wins over an integration's default — which is the way round you want.
+    /// </para>
+    /// <para>
+    /// The builder is the module's view of the host, not the host: its configuration is readable
+    /// and closed to new sources (use <see cref="ConfigureAppConfiguration"/> for those), and it
+    /// does not choose the container.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// protected override void ConfigureServices(IHostApplicationBuilder builder)
+    /// {
+    ///     builder.AddNpgsqlDataSource("orders");
+    ///     builder.AddRedisClient("cache");
+    /// }
+    /// </code>
+    /// </example>
+    protected virtual void ConfigureServices(IHostApplicationBuilder builder)
     {
     }
 
@@ -172,6 +212,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         builder.ConfigureServices((context, services) =>
         {
             services.AddSingleton<IStartupFilter>(this);
+            ConfigureServices(new ModuleHostBuilder(context, services));
             ConfigureServices(context, services);
         });
 

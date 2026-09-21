@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Clears the single-TFM default from samples/Directory.Build.props, which would win. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <!--
       A module that owns a slice of the data model and nothing else. It has no endpoints and no
       services: it contributes entity configurations, and any module that needs its tables

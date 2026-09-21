@@ -1,5 +1,4 @@
 using Customers;
-using Microsoft.AspNetCore.Hosting;
 using Modulith;
 
 [assembly: HostingStartup(typeof(Module))]

@@ -139,6 +139,16 @@
     <value>A worker that ran in one replica of one service now runs wherever its module is loaded, and twice if two replicas load it. Choose: leader election, a dedicated worker topology, or once per replica — then suppress.</value>
   </data>
 
+  <data name="MOD0009_Title" xml:space="preserve">
+    <value>A hub's client interface must be reachable from SignalR's generated proxy</value>
+  </data>
+  <data name="MOD0009_Message" xml:space="preserve">
+    <value>'{0}' is the client interface of hub '{1}' and is not visible outside this assembly</value>
+  </data>
+  <data name="MOD0009_Description" xml:space="preserve">
+    <value>SignalR builds the proxy for a Hub&lt;TClient&gt; into a dynamic assembly of its own, which cannot implement an internal interface declared in yours. The project compiles, no other rule fires, and every test that never starts a hub passes; the running process throws TypeLoadException the first time it resolves IHubContext. Grant the proxy access with [assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")], or make the interface public and follow the compiler through its signatures.</value>
+  </data>
+
   <data name="MOD0020_Title" xml:space="preserve">
     <value>The Modulith package is not referenced</value>
   </data>

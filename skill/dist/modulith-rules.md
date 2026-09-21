@@ -66,9 +66,11 @@ semantics delta written down. See Transports.
 `dotnet ef database update`, `psql`, and anything touching a database that is not a disposable
 local container are out of scope for this skill.
 
-**Preserve the route inventory.** It is the strongest available signal that a mechanical
-migration is correct. Capture it before touching anything — see
-Verification.
+**Preserve the route inventory — and do not stop at it.** It is the strongest available signal
+that a mechanical migration is correct, and it is blind to everything resolved by reflection,
+negotiated on the wire, or built after the container is. Capture it before touching anything, and
+treat booting every topology with one real request per module as its peer rather than its
+follow-up. See Verification.
 
 ## When something fails quietly
 

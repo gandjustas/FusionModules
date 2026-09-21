@@ -24,6 +24,31 @@ Confirm what actually loaded rather than reasoning about it:
 ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name)
 ```
 
+## `TypeLoadException` the first time a client connects to a hub
+
+```
+Type 'Microsoft.AspNetCore.SignalR.TypedClientBuilder.IPaymentClientImpl' ...
+is attempting to implement an inaccessible interface.
+```
+
+The client interface of a `Hub<TClient>` is internal. SignalR generates the proxy into a dynamic
+assembly of its own, which cannot implement it. One line in the module fixes it and keeps the
+module's surface intact:
+
+```csharp
+[assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
+```
+
+MOD0009 catches this at build time. It is worth knowing what survives it otherwise: a clean build,
+a green MOD0001, a full test run, and an unchanged route inventory — nothing but a live hub resolve
+triggers it.
+
+## Every gRPC call fails with `HTTP_1_1_REQUIRED` after the merge
+
+The merged host's gRPC endpoint is plaintext and set to `Http1AndHttp2`. Without TLS there is no
+ALPN, so the connection is HTTP/1.1 and gRPC refuses it. Set that endpoint's `Protocols` to
+`Http2` — see [the host](host.md). The union of two services' settings is not a superset here.
+
 ## Startup throws: "EndpointRoutingMiddleware ... must be added ... before EndpointMiddleware"
 
 The host never called `UseRouting()` and maps no endpoints of its own, so `WebApplication` had no
@@ -112,6 +137,7 @@ The usual suspects, in order:
 | MOD0006 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
 | MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
 | MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
+| MOD0009 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
 | MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

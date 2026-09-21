@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <!--
-    The surface is deliberately one class, and this is what keeps it that way: adding a public
+    The surface is deliberately small, and this is what keeps it that way: adding a public type or
     member is a reviewable change to PublicAPI.Unshipped.txt rather than something that happens
     while nobody is looking.
   -->
