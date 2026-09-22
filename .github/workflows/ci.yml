@@ -148,14 +148,21 @@ jobs:
       - name: Samples build against the package, not the projects
         # The inner loop uses project references. This is the configuration a reader of the
         # samples actually gets, and it fails differently.
+        #
+        # pwsh rather than the job's bash: git-bash on the Windows runner rewrites the `//` in the
+        # nuget.org URL, NuGet stops recognising it as a URI and looks for a directory of that name
+        # next to the project. Nothing here needs a POSIX shell.
+        shell: pwsh
         run: |
-          version=$(basename local-feed/FusionModules.*.nupkg .nupkg | grep -v symbols | head -1)
-          version=${version#FusionModules.}
-          dotnet restore samples/Samples.slnx \
-            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version \
+          $package = Get-ChildItem local-feed/FusionModules.*.nupkg | Select-Object -First 1
+          $version = $package.BaseName -replace '^FusionModules\.', ''
+          dotnet restore samples/Samples.slnx `
+            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version `
             --source ./local-feed --source https://api.nuget.org/v3/index.json
-          dotnet build samples/Samples.slnx -c Release --no-restore \
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build samples/Samples.slnx -c Release --no-restore `
             -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v7
         with:
