@@ -15,11 +15,11 @@ jobs:
     permissions:
       contents: write # Attaching the artefacts to the release.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # MinVer derives the version from tags.
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
@@ -56,7 +56,7 @@ jobs:
       - name: Pack and consume the package as a stranger would
         run: bash eng/pack-validate.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: packages
           path: |
@@ -98,12 +98,12 @@ jobs:
       contents: read
       id-token: write # The OIDC token the exchange is built on. Nothing else needs it.
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: packages
           path: artifacts
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
