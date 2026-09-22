@@ -47,6 +47,17 @@ do
     if grep -qx "$expected" <<<"$contents"; then pass "$expected"; else fail "missing $expected"; fi
 done
 
+# A stranger does not have our global packages folder, and that is not a detail here: NuGet serves
+# a PackageReference out of it whenever that id and version are already extracted there, and never
+# looks at the feed. On a release tag the version just packed is the version already on nuget.org,
+# so everything below would restore the published package and pass — measured, on v0.1.0, against a
+# targets change the consumer never saw. An empty packages folder per run leaves the feed as the
+# only place the package can come from.
+#
+# Set after packing on purpose: the build above restores this repository's own dependencies, and
+# they have no reason to be downloaded again.
+export NUGET_PACKAGES="$(native "$work/packages")"
+
 # A scratch consumer outside the repository, so none of our own Directory.Build.props reaches it.
 rm -rf "$work/consumer"
 mkdir -p "$work/consumer/GoodModule" "$work/consumer/BadModule" "$work/consumer/Host" "$work/consumer/BadHost" "$work/consumer/NoPackage"
