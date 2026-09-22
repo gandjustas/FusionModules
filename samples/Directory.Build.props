@@ -32,8 +32,14 @@
                       OutputItemType="Analyzer" />
   </ItemGroup>
 
+  <!--
+    VersionOverride rather than Version: this repository manages package versions centrally, and
+    under that a PackageReference carrying a Version is NU1008. The version here is the one just
+    packed into the local feed, so it cannot come from Directory.Packages.props — it is not known
+    until the build that produced it has run.
+  -->
   <ItemGroup Condition="'$(FusionModulesUseProjectReferences)' != 'true'">
-    <PackageReference Include="FusionModules" Version="$(FusionModulesVersion)" />
+    <PackageReference Include="FusionModules" VersionOverride="$(FusionModulesVersion)" />
   </ItemGroup>
 
 </Project>
