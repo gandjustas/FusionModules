@@ -6,6 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  # Pushing to a pull request again cancels its runs in flight — four jobs, most of them across two
+  # operating systems, and only the last push can be merged anyway. Pushes to main get a group per
+  # commit, so nothing cancels a run whose result is the record of that commit.
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   DOTNET_NOLOGO: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
