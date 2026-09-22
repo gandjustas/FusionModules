@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
-using Modulith;
+using FusionModules;
 using Orders;
 
 [assembly: HostingStartup(typeof(Module))]

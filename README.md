@@ -1,4 +1,4 @@
-# Modulith
+# FusionModules
 
 A modular monolith for ASP.NET Core — with no framework.
 
@@ -39,7 +39,7 @@ monolith:  { environment: { HOSTINGSTARTUPASSEMBLIES: "Orders.Entities;Customers
 ## Install
 
 ```
-dotnet add package Modulith
+dotnet add package FusionModules
 ```
 
 That is the whole dependency. The analyzers come with it. `net8.0` and `net10.0`.
@@ -81,7 +81,7 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0007](docs/rules/MOD0007.md) | Redundant IStartupFilter registration |
 | [MOD0008](docs/rules/MOD0008.md) | A hosted service in a module runs in every replica that loads it |
 | [MOD0009](docs/rules/MOD0009.md) | A hub's client interface must be reachable from SignalR's generated proxy |
-| [MOD0020](docs/rules/MOD0020.md) | The Modulith package is not referenced |
+| [MOD0020](docs/rules/MOD0020.md) | The FusionModules package is not referenced |
 
 The package also sets a few MSBuild properties, each of them a fix for something that fails
 quietly. What they do and how to override them: [docs/msbuild.md](docs/msbuild.md).
@@ -125,11 +125,9 @@ the host. That is the cost of the approach and it is worth knowing before you ad
 Early development, pre-1.0. The public surface is two classes and nine members, locked by
 `PublicAPI.Shipped.txt` so that adding to it is a reviewable change.
 
-Not on nuget.org yet: the package id is not claimed, and claiming it has no undo while the name is
-still open — `Modulith` is crowded there and collides with Spring Modulith. The pipeline no longer
-waits on anything but that decision. Pushing a `v*` tag makes `release.yml` build, test, pack,
-consume the package from a scratch project outside the repository, attach it to the GitHub release
-and push it to nuget.org with
+Not on nuget.org yet, but the id is free and nothing else is in the way. Pushing a `v*` tag makes
+`release.yml` build, test, pack, consume the package from a scratch project outside the repository,
+attach it to the GitHub release and push it to nuget.org with
 [Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing): the job
 exchanges a GitHub OIDC token for an API key that lives an hour, so there is no `NUGET_API_KEY`
 secret here to leak, rotate or hand to a fork.
@@ -137,20 +135,21 @@ secret here to leak, rotate or hand to a fork.
 Three things have to exist before that first push, and none of them are in the working tree:
 
 - a trusted publishing policy on nuget.org — repository owner `gandjustas`, repository `modulith`,
-  workflow file `release.yml`, environment `nuget.org`;
+  workflow file `release.yml`, environment `nuget.org`. The repository is still named `modulith`
+  and the policy is bound to the repository rather than to the package id, so that is not a typo;
 - a repository variable `NUGET_USER` holding the nuget.org profile name, not an email address;
 - the `nuget.org` environment, if the push should wait for a reviewer before it runs.
 
 Install from a local feed in the meantime:
 
 ```bash
-dotnet pack src/Modulith/Modulith.csproj -c Release -o local-feed
+dotnet pack src/FusionModules/FusionModules.csproj -c Release -o local-feed
 ```
 
 ## Building this repository
 
 ```bash
-dotnet build Modulith.slnx -c Release -warnaserror && dotnet test --solution Modulith.slnx -c Release --no-build
+dotnet build FusionModules.slnx -c Release -warnaserror && dotnet test --solution FusionModules.slnx -c Release --no-build
 ```
 
 The samples are a second solution — `samples/Samples.slnx` — built and tested the same way.

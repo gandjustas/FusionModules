@@ -1,10 +1,11 @@
 # MSBuild properties
 
-The `Modulith` package ships a `.targets` file that is imported at the bottom of every project that
-references it. It sets four things, each of them a fix for something that otherwise fails quietly.
-All four can be overridden, and each override is listed here with the reason you would reach for it.
+The `FusionModules` package ships a `.targets` file that is imported at the bottom of every project
+that references it. It sets four things, each of them a fix for something that otherwise fails
+quietly. All four can be overridden, and each override is listed here with the reason you would
+reach for it.
 
-## `ModulithProjectKind`
+## `FusionModulesProjectKind`
 
 `Test`, `Host` or `Module`. Everything else on this page keys off it, and the analyzers read it
 through `CompilerVisibleProperty` — MOD0003 holds a host to a rule a test project is exempt from.
@@ -26,11 +27,11 @@ Set it explicitly when the inference is wrong — a test project whose SDK does 
 
 ```xml
 <PropertyGroup>
-  <ModulithProjectKind>Test</ModulithProjectKind>
+  <FusionModulesProjectKind>Test</FusionModulesProjectKind>
 </PropertyGroup>
 ```
 
-## `ModulithConfigureMvcApplicationParts`
+## `FusionModulesConfigureMvcApplicationParts`
 
 Default on. For a `Host`, sets `GenerateMvcApplicationPartsAssemblyAttributes=false`.
 
@@ -54,7 +55,7 @@ Pages modules hit this as readily as MVC ones, despite the property's name.
 
 This one is set only when you have not, so there is no separate opt-out.
 
-## `ModulithImplicitUsings`
+## `FusionModulesImplicitUsings`
 
 Default on. For a `Module` on a non-Web SDK with `ImplicitUsings` enabled, contributes the implicit
 usings the Web SDK would have:
@@ -73,7 +74,7 @@ one of your own:
 
 ```xml
 <PropertyGroup>
-  <ModulithImplicitUsings>false</ModulithImplicitUsings>
+  <FusionModulesImplicitUsings>false</FusionModulesImplicitUsings>
 </PropertyGroup>
 ```
 
@@ -87,5 +88,5 @@ the sample projects reference them:
 
 | Property | Meaning |
 |---|---|
-| `ModulithUseProjectReferences` | `true` (default) consumes Modulith by project reference; `false` by package reference from `local-feed`. CI runs both. |
-| `ModulithVersion` | The package version to use when the above is `false`. |
+| `FusionModulesUseProjectReferences` | `true` (default) consumes FusionModules by project reference; `false` by package reference from `local-feed`. CI runs both. |
+| `FusionModulesVersion` | The package version to use when the above is `false`. |

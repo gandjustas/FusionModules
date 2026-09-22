@@ -6,7 +6,7 @@
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <!--
       Plain Microsoft.NET.Sdk, not Microsoft.NET.Sdk.Web: the ASP.NET types a module needs come
-      from the shared framework, which the Modulith package brings in.
+      from the shared framework, which the FusionModules package brings in.
 
       The assembly name is the string an operator writes into HOSTINGSTARTUPASSEMBLIES, so it is
       set explicitly rather than inherited from the file name.

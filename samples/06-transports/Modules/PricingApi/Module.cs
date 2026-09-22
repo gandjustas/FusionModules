@@ -1,4 +1,4 @@
-using Modulith;
+using FusionModules;
 using Pricing.Contracts;
 using PricingApiModule;
 

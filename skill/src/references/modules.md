@@ -13,7 +13,7 @@ want one suspect.
     <AssemblyName>OrdersModule</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="..." />
+    <PackageReference Include="FusionModules" Version="..." />
   </ItemGroup>
 </Project>
 ```
@@ -27,8 +27,8 @@ would otherwise break every deployment silently.
 The SDK line is what bites first. `Microsoft.NET.Sdk.Web` contributes implicit usings that a plain
 `Microsoft.NET.Sdk` project does not, so the first build of a converted service is a wall of CS0246
 on types that are sitting right there in the framework reference. It reads like a missing package
-reference and it is not one. Modulith puts them back for a module project, so on a current version
-there is nothing to do; on an older one, add them yourself:
+reference and it is not one. FusionModules puts them back for a module project, so on a current
+version there is nothing to do; on an older one, add them yourself:
 
 ```xml
 <ItemGroup>
@@ -181,7 +181,7 @@ For the genuine exceptions the analyzer cannot infer — a DTO bound by a source
 use `.editorconfig`:
 
 ```ini
-modulith_allowed_public_types = OrderDto, PaymentEnvelope
+fusion_modules_allowed_public_types = OrderDto, PaymentEnvelope
 ```
 
 Write down why. Nobody can tell a considered exception from an abandoned one.
@@ -189,7 +189,7 @@ Write down why. Nobody can tell a considered exception from an abandoned one.
 ## Views and static assets
 
 A module ships its own `Areas/`, `Pages/` and `wwwroot/`. It adds itself as an application part
-inside `ConfigureServices`; the host must not, and Modulith turns off the SDK behaviour that
+inside `ConfigureServices`; the host must not, and FusionModules turns off the SDK behaviour that
 would have done it silently. Static assets are served from `_content/<AssemblyName>/`, so two
 modules can both ship `site.css`.
 

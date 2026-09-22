@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
-using Modulith;
+using FusionModules;
 using NotificationsModule;
 
 [assembly: HostingStartup(typeof(Module))]

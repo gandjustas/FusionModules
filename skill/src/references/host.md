@@ -8,7 +8,7 @@ about a module has given up the property the whole approach exists for.
 The existing application *is* the host. Touch two things:
 
 ```xml
-<PackageReference Include="Modulith" Version="..." />
+<PackageReference Include="FusionModules" Version="..." />
 ```
 
 ```csharp
@@ -41,7 +41,7 @@ public partial class Program;
 ```xml
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="..." />
+    <PackageReference Include="FusionModules" Version="..." />
   </ItemGroup>
 </Project>
 ```

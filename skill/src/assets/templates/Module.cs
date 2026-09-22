@@ -4,7 +4,7 @@
 // enforces that. If another module needs one of these types, it is a contract — put it in a plain
 // class library with no [HostingStartup], which both modules reference.
 
-// Recent Modulith versions contribute these to a module project the way Microsoft.NET.Sdk.Web
+// Recent FusionModules versions contribute these to a module project the way Microsoft.NET.Sdk.Web
 // used to, so on those they are redundant. Losing them is what makes the first build of a
 // converted service a wall of CS0246 — the types are in the framework reference either way.
 using Microsoft.AspNetCore.Builder;
@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Modulith;
+using FusionModules;
 
 // Without this the module loads and silently does nothing. MOD0005 catches it at build time.
 [assembly: HostingStartup(typeof(ExampleModule.Module))]

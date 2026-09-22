@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FusionModules/FusionModules.csproj" />
+    <Project Path="src/FusionModules.Analyzers/FusionModules.Analyzers.csproj" />
+    <Project Path="src/FusionModules.CodeFixes/FusionModules.CodeFixes.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FusionModules.Analyzers.Tests/FusionModules.Analyzers.Tests.csproj" />
+    <Project Path="tests/FusionModules.Tests/FusionModules.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/skillgen/skillgen.csproj" />
+  </Folder>
+  <Folder Name="/solution items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="README.md" />
+    <File Path="skill/README.md" />
+  </Folder>
+</Solution>

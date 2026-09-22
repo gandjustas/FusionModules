@@ -1,8 +1,8 @@
 ---
-description: Run the Modulith verification loop
+description: Run the FusionModules verification loop
 ---
 
-Run the verification loop from the `modulith` skill against the current repository.
+Run the verification loop from the `fusion-modules` skill against the current repository.
 
 Build with `-warnaserror` and report any MOD diagnostics. Boot every topology — no modules, each
 module alone, the full set — and diff each one's route inventory against the stored baseline.

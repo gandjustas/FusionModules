@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <!--
-    Samples consume Modulith two ways, and CI runs both.
+    Samples consume FusionModules two ways, and CI runs both.
 
       true  (default) - project references into src/. Fast inner loop.
       false           - package references from the local feed. The only thing that proves
@@ -18,22 +18,22 @@
                         is the failure mode most likely to ship unnoticed.
   -->
   <PropertyGroup>
-    <ModulithUseProjectReferences Condition="'$(ModulithUseProjectReferences)' == ''">true</ModulithUseProjectReferences>
+    <FusionModulesUseProjectReferences Condition="'$(FusionModulesUseProjectReferences)' == ''">true</FusionModulesUseProjectReferences>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(ModulithUseProjectReferences)' == 'true'">
-    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Modulith/Modulith.csproj" />
-    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Modulith.Analyzers/Modulith.Analyzers.csproj"
+  <ItemGroup Condition="'$(FusionModulesUseProjectReferences)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/FusionModules/FusionModules.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/FusionModules.Analyzers/FusionModules.Analyzers.csproj"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
     <!-- Both, so the inner loop runs the set the package actually ships. -->
-    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/Modulith.CodeFixes/Modulith.CodeFixes.csproj"
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/FusionModules.CodeFixes/FusionModules.CodeFixes.csproj"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Analyzer" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(ModulithUseProjectReferences)' != 'true'">
-    <PackageReference Include="Modulith" Version="$(ModulithVersion)" />
+  <ItemGroup Condition="'$(FusionModulesUseProjectReferences)' != 'true'">
+    <PackageReference Include="FusionModules" Version="$(FusionModulesVersion)" />
   </ItemGroup>
 
 </Project>

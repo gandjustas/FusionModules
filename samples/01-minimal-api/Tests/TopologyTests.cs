@@ -1,7 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Modulith;
+using FusionModules;
 
 namespace Sample.Tests;
 

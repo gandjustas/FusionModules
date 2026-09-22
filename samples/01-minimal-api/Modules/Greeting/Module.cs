@@ -1,5 +1,5 @@
 using GreetingModule;
-using Modulith;
+using FusionModules;
 
 [assembly: HostingStartup(typeof(Module))]
 

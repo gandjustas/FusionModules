@@ -36,13 +36,13 @@ jobs:
             8.0.x
             10.0.x
 
-      # Modulith.slnx is the product, samples/Samples.slnx the samples: one project list each.
-      - run: dotnet build Modulith.slnx -c Release -warnaserror
+      # FusionModules.slnx is the product, samples/Samples.slnx the samples: one project list each.
+      - run: dotnet build FusionModules.slnx -c Release -warnaserror
       - run: dotnet build samples/Samples.slnx -c Release -warnaserror
 
       # MTP mode, selected in global.json: the solution goes behind --solution, and VSTest's
       # --logger is not a thing here. TUnit writes an HTML report of its own.
-      - run: dotnet test --solution Modulith.slnx -c Release --no-build
+      - run: dotnet test --solution FusionModules.slnx -c Release --no-build
       - run: dotnet test --solution samples/Samples.slnx -c Release --no-build
 
       - uses: actions/upload-artifact@v4
@@ -149,13 +149,13 @@ jobs:
         # The inner loop uses project references. This is the configuration a reader of the
         # samples actually gets, and it fails differently.
         run: |
-          version=$(basename local-feed/Modulith.*.nupkg .nupkg | grep -v symbols | head -1)
-          version=${version#Modulith.}
+          version=$(basename local-feed/FusionModules.*.nupkg .nupkg | grep -v symbols | head -1)
+          version=${version#FusionModules.}
           dotnet restore samples/Samples.slnx \
-            -p:ModulithUseProjectReferences=false -p:ModulithVersion=$version \
+            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version \
             --source ./local-feed --source https://api.nuget.org/v3/index.json
           dotnet build samples/Samples.slnx -c Release --no-restore \
-            -p:ModulithUseProjectReferences=false -p:ModulithVersion=$version
+            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version
 
       - uses: actions/upload-artifact@v4
         with:

@@ -12,8 +12,8 @@
   </PropertyGroup>
 
   <!--
-    No <GenerateMvcApplicationPartsAssemblyAttributes>false</...> here: Modulith's MSBuild assets
-    set it once the project is detected as a host. Without it the SDK would wire the modules'
+    No <GenerateMvcApplicationPartsAssemblyAttributes>false</...> here: the FusionModules MSBuild
+    assets set it once the project is detected as a host. Without it the SDK would wire the modules'
     controllers and pages straight into this project, bypassing the modules' own code and
     ignoring HOSTINGSTARTUPASSEMBLIES entirely. See docs/rules/MOD0004.md.
   -->

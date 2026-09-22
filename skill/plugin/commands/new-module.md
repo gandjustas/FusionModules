@@ -2,10 +2,10 @@
 description: Scaffold a new module and wire it into the host and tests
 ---
 
-Create a new module named $ARGUMENTS, using the `modulith` skill's `Module.cs` template.
+Create a new module named $ARGUMENTS, using the `fusion-modules` skill's `Module.cs` template.
 
 - a project on `Microsoft.NET.Sdk` (or `Microsoft.NET.Sdk.Razor` if it will ship `.cshtml`), with
-  an explicit `<AssemblyName>`, referencing the `Modulith` package
+  an explicit `<AssemblyName>`, referencing the `FusionModules` package
 - `[assembly: HostingStartup(typeof(Module))]` and a `Module : ModuleBase`
 - a plain project reference from the host **and** from the test project — the host never uses the
   module's types, the reference is only what orders the build and copies the assembly next to the

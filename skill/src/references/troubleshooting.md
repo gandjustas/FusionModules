@@ -138,6 +138,6 @@ The usual suspects, in order:
 | MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
 | MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
 | MOD0009 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
-| MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0020 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

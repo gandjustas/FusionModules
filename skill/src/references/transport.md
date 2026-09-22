@@ -66,7 +66,7 @@ remote publish atomic may become unnecessary once both are local. Others are reg
 will not show up until something fails in production.
 
 **Every messaging edge gets an explicit decision from the user, with the delta written into
-`modulith-migration.md`.** Never collapse a queue because it is technically possible.
+`fusion-modules-migration.md`.** Never collapse a queue because it is technically possible.
 
 ## Failure handling after the merge
 
@@ -88,4 +88,4 @@ about failure:
 - Both implementations of a retained contract pass the same test suite. One interface, one set of
   expectations — a property the pattern gives you for free, so use it.
 - Route inventory unchanged.
-- The `modulith-migration.md` entry for each edge says what was decided and why.
+- The `fusion-modules-migration.md` entry for each edge says what was decided and why.

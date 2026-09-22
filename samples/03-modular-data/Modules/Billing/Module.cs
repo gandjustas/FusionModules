@@ -7,7 +7,7 @@ using Orders;
 
 namespace BillingModule;
 
-sealed class Module : Modulith.ModuleBase
+sealed class Module : FusionModules.ModuleBase
 {
     protected override void Configure(IApplicationBuilder app) =>
         app.UseEndpoints(endpoints =>

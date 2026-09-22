@@ -1,5 +1,5 @@
 using CheckoutModule;
-using Modulith;
+using FusionModules;
 using Pricing.Contracts;
 
 [assembly: HostingStartup(typeof(Module))]

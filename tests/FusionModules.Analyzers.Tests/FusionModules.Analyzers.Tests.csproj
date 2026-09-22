@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>FusionModules.Analyzers.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The testing library declares only a floor on Roslyn, so without these the graph resolves to
+      Microsoft.CodeAnalysis 1.0.1 and restore fails on a .NET Framework asset.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" />
+    <PackageReference Include="TUnit" />
+  </ItemGroup>
+
+  <!--
+    The catalogue tests read docs/rules, README.md and AnalyzerReleases.Unshipped.md, which are
+    repository files rather than build output. Baked in at compile time so the tests do not depend
+    on the runner's working directory or on how deep the output folder happens to be.
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..\..'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FusionModules.Analyzers\FusionModules.Analyzers.csproj" />
+    <ProjectReference Include="..\..\src\FusionModules.CodeFixes\FusionModules.CodeFixes.csproj" />
+  </ItemGroup>
+
+</Project>

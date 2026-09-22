@@ -1,14 +1,14 @@
 ---
-name: modulith
+name: fusion-modules
 description: >-
-  Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules using the Modulith
-  package. Use when the user wants to merge .NET microservices into one process or one image, cut
-  network hops, latency or infrastructure between services they own, split a monolith into
-  independently deployable modules, choose deployment topology with an environment variable
-  instead of a rebuild, replace HttpClient/gRPC/RabbitMQ calls between their own services with
-  in-process calls, consolidate per-service DbContexts or EF Core migrations, or when they mention
-  Modulith, ModuleBase, IHostingStartup, HOSTINGSTARTUPASSEMBLIES, IStartupFilter modules, a
-  modular monolith, or "modularity without microservices".
+  Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules using the
+  FusionModules package. Use when the user wants to merge .NET microservices into one process or
+  one image, cut network hops, latency or infrastructure between services they own, split a
+  monolith into independently deployable modules, choose deployment topology with an environment
+  variable instead of a rebuild, replace HttpClient/gRPC/RabbitMQ calls between their own services
+  with in-process calls, consolidate per-service DbContexts or EF Core migrations, or when they
+  mention FusionModules, ModuleBase, IHostingStartup, HOSTINGSTARTUPASSEMBLIES, IStartupFilter
+  modules, a modular monolith, or "modularity without microservices".
 ---
 
 # Modular monoliths on ASP.NET Core
@@ -43,7 +43,7 @@ Work through these in order. Each has a gate that must pass before the next begi
 
 | | | |
 |---|---|---|
-| 0 | [Assess](references/assess.md) | Read-only. Produces `modulith-assessment.md` and a list of decisions only a human can make. |
+| 0 | [Assess](references/assess.md) | Read-only. Produces `fusion-modules-assessment.md` and a list of decisions only a human can make. |
 | 1 | [Host](references/host.md) | A host that serves nothing. Gate: it runs and 404s. |
 | 2 | [Modules](references/modules.md) | One service or feature at a time. Gate: route inventory unchanged, per module. |
 | 3 | [Data](references/data.md) | Entities into the modules that own them; one model composed at startup. **Never runs destructive database commands.** |
@@ -51,7 +51,7 @@ Work through these in order. Each has a gate that must pass before the next begi
 | 5 | [Deployment](references/deployment.md) | One image, topologies as environment variables. |
 | 6 | [Verify](references/verify.md) | Run after *every* phase, not at the end. |
 
-State lives in `modulith-migration.md` at the repository root: the phase, the decisions taken and
+State lives in `fusion-modules-migration.md` at the repository root: the phase, the decisions taken and
 their reasons, and the status of each service. Write to it as you go, so a resumed session does
 not re-ask questions the user has already answered.
 

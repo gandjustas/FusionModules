@@ -1,6 +1,6 @@
 # Phase 0 — Assess
 
-Read-only. Change nothing. The output is `modulith-assessment.md` and one batch of questions.
+Read-only. Change nothing. The output is `fusion-modules-assessment.md` and one batch of questions.
 
 The risk in this phase is not being wrong, it is being inconsistent — looking at different things
 in different repositories and reaching confident conclusions from an incomplete picture. The
@@ -10,7 +10,7 @@ Do that inventory yourself: grep reads a solution better than a script does, bec
 context around each hit. Run the script only for the two things reading cannot find:
 
 ```bash
-pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-collisions.json
+pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output fusion-modules-collisions.json
 ```
 
 - the same configuration key holding **different values** in different files
@@ -97,7 +97,7 @@ one loading that module, or leaving the service alone. Ask.
 ## Human gate
 
 End Phase 0 with one numbered batch of questions. Do not start Phase 1 before they are answered,
-and record the answers in `modulith-migration.md` with their reasons.
+and record the answers in `fusion-modules-migration.md` with their reasons.
 
 1. **Module boundaries and names.** The names become `HOSTINGSTARTUPASSEMBLIES` values — a
    deployment contract, and effectively permanent. Propose a set; ask for confirmation.

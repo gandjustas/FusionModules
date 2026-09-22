@@ -1,4 +1,4 @@
-# The Modulith skill
+# The FusionModules skill
 
 Instructions for an AI agent migrating a .NET solution to a modular monolith, or building one
 from scratch.
@@ -16,7 +16,7 @@ dotnet run --project ../tools/skillgen
 | [`src/`](src) | The authored form, and the only committed copy. |
 | `plugin/` | A Claude Code plugin: the skill plus five slash commands. Generated — `plugin/skills/` is not committed, and the release attaches it as a zip. |
 | [`dist/SKILL.md`](dist/SKILL.md) | One portable file, references inlined and cross-links rewritten as anchors. For anything that takes a single markdown instruction file. |
-| [`dist/modulith-rules.md`](dist/modulith-rules.md) | The routing layer alone, ~70 lines. For a Cursor rule or a `copilot-instructions.md`, where everything is always in context and length is the whole cost. |
+| [`dist/fusion-modules-rules.md`](dist/fusion-modules-rules.md) | The routing layer alone, ~70 lines. For a Cursor rule or a `copilot-instructions.md`, where everything is always in context and length is the whole cost. |
 
 CI regenerates and fails if `dist/` changed, so the portable copies cannot drift. `plugin/skills/`
 is generated but not committed: it was a byte-for-byte copy of `src/`, and the only thing keeping
@@ -34,11 +34,11 @@ the honest answer for a build that is not a release.
 ## Using it
 
 **Claude Code** — run the generator, then add `plugin/` as a marketplace or copy
-`plugin/skills/modulith/` into `.claude/skills/`. Releases attach it as a zip. Commands:
-`/modulith:assess`, `/modulith:migrate`, `/modulith:verify`, `/modulith:new-module`,
-`/modulith:explain`.
+`plugin/skills/fusion-modules/` into `.claude/skills/`. Releases attach it as a zip. Commands:
+`/fusion-modules:assess`, `/fusion-modules:migrate`, `/fusion-modules:verify`, `/fusion-modules:new-module`,
+`/fusion-modules:explain`.
 
-**Anything else** — hand it `dist/SKILL.md`, or drop `dist/modulith-rules.md` into the tool's
+**Anything else** — hand it `dist/SKILL.md`, or drop `dist/fusion-modules-rules.md` into the tool's
 always-on rules file.
 
 ## What is in it

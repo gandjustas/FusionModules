@@ -1,5 +1,5 @@
 using Customers;
-using Modulith;
+using FusionModules;
 
 [assembly: HostingStartup(typeof(Module))]
 

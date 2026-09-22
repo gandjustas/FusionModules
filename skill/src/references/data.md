@@ -6,9 +6,9 @@ disposable local container. This is not a formality — say it to the user befor
 
 ## The recipe
 
-There is no Modulith EF Core package. The integration is about fifteen lines in the application's
-own `DbContext`, and wrapping that in a base class to inherit and a method to remember would be
-the framework the approach claims not to need.
+There is no FusionModules EF Core package. The integration is about fifteen lines in the
+application's own `DbContext`, and wrapping that in a base class to inherit and a method to
+remember would be the framework the approach claims not to need.
 
 ```csharp
 internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)

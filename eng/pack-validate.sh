@@ -27,22 +27,22 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures=$((failures + 1)); }
 
 log "Packing"
 rm -rf "$feed"
-dotnet pack "$root/src/Modulith/Modulith.csproj" -c Release -o "$feed" --nologo -v q
-version="$(basename "$(ls "$feed"/Modulith.*.nupkg | grep -v symbols | head -1)" .nupkg)"
-version="${version#Modulith.}"
-echo "  Modulith $version"
+dotnet pack "$root/src/FusionModules/FusionModules.csproj" -c Release -o "$feed" --nologo -v q
+version="$(basename "$(ls "$feed"/FusionModules.*.nupkg | grep -v symbols | head -1)" .nupkg)"
+version="${version#FusionModules.}"
+echo "  FusionModules $version"
 
 log "Package layout"
 # pwsh rather than unzip: pwsh is on every CI image this runs on and in git-bash's PATH on
 # Windows, and unzip is on neither.
-nupkg="$(native "$feed/Modulith.$version.nupkg")"
+nupkg="$(native "$feed/FusionModules.$version.nupkg")"
 contents="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$nupkg').Entries.FullName" | tr -d '\r')"
 for expected in \
-    "analyzers/dotnet/cs/Modulith.Analyzers.dll" \
-    "analyzers/dotnet/cs/Modulith.CodeFixes.dll" \
-    "buildTransitive/Modulith.targets" \
-    "lib/net8.0/Modulith.dll" \
-    "lib/net10.0/Modulith.dll"
+    "analyzers/dotnet/cs/FusionModules.Analyzers.dll" \
+    "analyzers/dotnet/cs/FusionModules.CodeFixes.dll" \
+    "buildTransitive/FusionModules.targets" \
+    "lib/net8.0/FusionModules.dll" \
+    "lib/net10.0/FusionModules.dll"
 do
     if grep -qx "$expected" <<<"$contents"; then pass "$expected"; else fail "missing $expected"; fi
 done
@@ -74,7 +74,7 @@ write_project() {
     $3
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="$version" />
+    <PackageReference Include="FusionModules" Version="$version" />
   </ItemGroup>
 </Project>
 XML
@@ -83,7 +83,7 @@ XML
 write_project "$work/consumer/GoodModule" "Microsoft.NET.Sdk" ""
 cat > "$work/consumer/GoodModule/Module.cs" <<'CS'
 using Microsoft.AspNetCore.Hosting;
-using Modulith;
+using FusionModules;
 
 [assembly: HostingStartup(typeof(Module))]
 
@@ -100,7 +100,7 @@ cat > "$work/consumer/GoodModule/.editorconfig" <<'INI'
 root = true
 
 [*.cs]
-modulith_allowed_public_types = Contract
+fusion_modules_allowed_public_types = Contract
 INI
 
 # Every module-side rule in one project. One build, one log, one grep per rule — a rule that
@@ -111,7 +111,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Modulith;
+using FusionModules;
 
 [assembly: HostingStartup(typeof(Module))]
 [assembly: HostingStartup(typeof(NotAModule))]   // MOD0002
@@ -157,7 +157,7 @@ cat > "$work/consumer/BadHost/BadHost.csproj" <<XML
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="$version" />
+    <PackageReference Include="FusionModules" Version="$version" />
     <ProjectReference Include="../GoodModule/GoodModule.csproj" />
   </ItemGroup>
 </Project>
@@ -184,7 +184,7 @@ cat > "$work/consumer/NoPackage/NoPackage.csproj" <<XML
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Modulith" Version="$version" ExcludeAssets="compile" />
+    <PackageReference Include="FusionModules" Version="$version" ExcludeAssets="compile" />
   </ItemGroup>
 </Project>
 XML
@@ -251,13 +251,13 @@ sed 's|net10.0|net8.0|' <<XML > "$work/consumer/Net8Module/Net8Module.csproj"
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="$version" />
+    <PackageReference Include="FusionModules" Version="$version" />
   </ItemGroup>
 </Project>
 XML
 cat > "$work/consumer/Net8Module/Module.cs" <<'CS'
 using Microsoft.AspNetCore.Hosting;
-using Modulith;
+using FusionModules;
 
 [assembly: HostingStartup(typeof(Module))]
 
@@ -279,14 +279,14 @@ fi
 # The NuGet-generated imports that carry buildTransitive assets only exist after restore,
 # so every project queried below has to have been built first.
 log "buildTransitive assets apply"
-kind="$(dotnet msbuild "$work/consumer/Host" -getProperty:ModulithProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
-[ "$kind" = "Host" ] && pass "host detected as ModulithProjectKind=Host" || fail "ModulithProjectKind was '$kind', expected 'Host'"
+kind="$(dotnet msbuild "$work/consumer/Host" -getProperty:FusionModulesProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
+[ "$kind" = "Host" ] && pass "host detected as FusionModulesProjectKind=Host" || fail "FusionModulesProjectKind was '$kind', expected 'Host'"
 
 parts="$(dotnet msbuild "$work/consumer/Host" -getProperty:GenerateMvcApplicationPartsAssemblyAttributes -v:q 2>/dev/null | tr -d '\r\n ')"
 [ "$parts" = "false" ] && pass "Application Part Discovery disabled for the host" || fail "GenerateMvcApplicationPartsAssemblyAttributes was '$parts', expected 'false'"
 
-kind="$(dotnet msbuild "$work/consumer/GoodModule" -getProperty:ModulithProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
-[ "$kind" = "Module" ] && pass "library detected as ModulithProjectKind=Module" || fail "ModulithProjectKind was '$kind', expected 'Module'"
+kind="$(dotnet msbuild "$work/consumer/GoodModule" -getProperty:FusionModulesProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
+[ "$kind" = "Module" ] && pass "library detected as FusionModulesProjectKind=Module" || fail "FusionModulesProjectKind was '$kind', expected 'Module'"
 
 # The implicit usings a module loses when it stops being a Microsoft.NET.Sdk.Web project.
 usings="$(dotnet msbuild "$work/consumer/GoodModule" -getItem:Using -v:q 2>/dev/null)"

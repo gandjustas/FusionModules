@@ -1,4 +1,4 @@
-using Modulith;
+using FusionModules;
 using StatusModule;
 
 [assembly: HostingStartup(typeof(Module))]

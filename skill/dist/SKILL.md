@@ -1,14 +1,14 @@
 ---
-name: modulith
+name: fusion-modules
 description: >-
-  Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules using the Modulith
-  package. Use when the user wants to merge .NET microservices into one process or one image, cut
-  network hops, latency or infrastructure between services they own, split a monolith into
-  independently deployable modules, choose deployment topology with an environment variable
-  instead of a rebuild, replace HttpClient/gRPC/RabbitMQ calls between their own services with
-  in-process calls, consolidate per-service DbContexts or EF Core migrations, or when they mention
-  Modulith, ModuleBase, IHostingStartup, HOSTINGSTARTUPASSEMBLIES, IStartupFilter modules, a
-  modular monolith, or "modularity without microservices".
+  Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules using the
+  FusionModules package. Use when the user wants to merge .NET microservices into one process or
+  one image, cut network hops, latency or infrastructure between services they own, split a
+  monolith into independently deployable modules, choose deployment topology with an environment
+  variable instead of a rebuild, replace HttpClient/gRPC/RabbitMQ calls between their own services
+  with in-process calls, consolidate per-service DbContexts or EF Core migrations, or when they
+  mention FusionModules, ModuleBase, IHostingStartup, HOSTINGSTARTUPASSEMBLIES, IStartupFilter
+  modules, a modular monolith, or "modularity without microservices".
 ---
 
 # Modular monoliths on ASP.NET Core
@@ -43,7 +43,7 @@ Work through these in order. Each has a gate that must pass before the next begi
 
 | | | |
 |---|---|---|
-| 0 | [Assess](#phase-0-assess) | Read-only. Produces `modulith-assessment.md` and a list of decisions only a human can make. |
+| 0 | [Assess](#phase-0-assess) | Read-only. Produces `fusion-modules-assessment.md` and a list of decisions only a human can make. |
 | 1 | [Host](#phase-1-the-host) | A host that serves nothing. Gate: it runs and 404s. |
 | 2 | [Modules](#phase-2-into-modules) | One service or feature at a time. Gate: route inventory unchanged, per module. |
 | 3 | [Data](#phase-3-data) | Entities into the modules that own them; one model composed at startup. **Never runs destructive database commands.** |
@@ -51,7 +51,7 @@ Work through these in order. Each has a gate that must pass before the next begi
 | 5 | [Deployment](#phase-5-deployment) | One image, topologies as environment variables. |
 | 6 | [Verify](#verification) | Run after *every* phase, not at the end. |
 
-State lives in `modulith-migration.md` at the repository root: the phase, the decisions taken and
+State lives in `fusion-modules-migration.md` at the repository root: the phase, the decisions taken and
 their reasons, and the status of each service. Write to it as you go, so a resumed session does
 not re-ask questions the user has already answered.
 
@@ -93,7 +93,7 @@ lists them by symptom along with what each MOD diagnostic means.
 
 ## Phase 0 — Assess
 
-Read-only. Change nothing. The output is `modulith-assessment.md` and one batch of questions.
+Read-only. Change nothing. The output is `fusion-modules-assessment.md` and one batch of questions.
 
 The risk in this phase is not being wrong, it is being inconsistent — looking at different things
 in different repositories and reaching confident conclusions from an incomplete picture. The
@@ -103,7 +103,7 @@ Do that inventory yourself: grep reads a solution better than a script does, bec
 context around each hit. Run the script only for the two things reading cannot find:
 
 ```bash
-pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output modulith-collisions.json
+pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output fusion-modules-collisions.json
 ```
 
 - the same configuration key holding **different values** in different files
@@ -190,7 +190,7 @@ one loading that module, or leaving the service alone. Ask.
 ### Human gate
 
 End Phase 0 with one numbered batch of questions. Do not start Phase 1 before they are answered,
-and record the answers in `modulith-migration.md` with their reasons.
+and record the answers in `fusion-modules-migration.md` with their reasons.
 
 1. **Module boundaries and names.** The names become `HOSTINGSTARTUPASSEMBLIES` values — a
    deployment contract, and effectively permanent. Propose a set; ask for confirmation.
@@ -264,7 +264,7 @@ pipeline entirely, discarding everything the host and the other modules set up.
 Each module writes itself into configuration as it activates:
 
 ```
-Modulith:Modules:<AssemblyName> = <assembly-qualified name of the module type>
+FusionModules:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 ```
 
 `ModuleBase.GetLoadedModules(IConfiguration)` reads it back, in activation order. This is how
@@ -314,7 +314,7 @@ MOD0005 covers the same class of mistake at build time.
 | | |
 |---|---|
 | Module, code only | `Microsoft.NET.Sdk` — ASP.NET types arrive through the package's framework reference |
-| Module with `.cshtml` | `Microsoft.NET.Sdk.Razor`; Modulith sets `AddRazorSupportForMvc`, needed for Razor Pages as much as MVC |
+| Module with `.cshtml` | `Microsoft.NET.Sdk.Razor`; FusionModules sets `AddRazorSupportForMvc`, needed for Razor Pages as much as MVC |
 | Host | `Microsoft.NET.Sdk.Web` |
 | Contracts | `Microsoft.NET.Sdk`, no `[HostingStartup]`, public types |
 
@@ -339,7 +339,7 @@ runtime `AddControllers`/`AddRazorPages` load those assemblies — so the host g
 controllers **without ever running the module's code**, in every topology, including the ones
 that excluded it.
 
-Modulith sets `GenerateMvcApplicationPartsAssemblyAttributes` to false for hosts. Each module
+FusionModules sets `GenerateMvcApplicationPartsAssemblyAttributes` to false for hosts. Each module
 adds itself instead, inside its own `ConfigureServices`, where it also registers what its
 controllers need:
 
@@ -365,9 +365,9 @@ disposable local container. This is not a formality — say it to the user befor
 
 ### The recipe
 
-There is no Modulith EF Core package. The integration is about fifteen lines in the application's
-own `DbContext`, and wrapping that in a base class to inherit and a method to remember would be
-the framework the approach claims not to need.
+There is no FusionModules EF Core package. The integration is about fifteen lines in the
+application's own `DbContext`, and wrapping that in a base class to inherit and a method to
+remember would be the framework the approach claims not to need.
 
 ```csharp
 internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)
@@ -698,7 +698,7 @@ about a module has given up the property the whole approach exists for.
 The existing application *is* the host. Touch two things:
 
 ```xml
-<PackageReference Include="Modulith" Version="..." />
+<PackageReference Include="FusionModules" Version="..." />
 ```
 
 ```csharp
@@ -731,7 +731,7 @@ public partial class Program;
 ```xml
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="..." />
+    <PackageReference Include="FusionModules" Version="..." />
   </ItemGroup>
 </Project>
 ```
@@ -839,7 +839,7 @@ want one suspect.
     <AssemblyName>OrdersModule</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Modulith" Version="..." />
+    <PackageReference Include="FusionModules" Version="..." />
   </ItemGroup>
 </Project>
 ```
@@ -853,8 +853,8 @@ would otherwise break every deployment silently.
 The SDK line is what bites first. `Microsoft.NET.Sdk.Web` contributes implicit usings that a plain
 `Microsoft.NET.Sdk` project does not, so the first build of a converted service is a wall of CS0246
 on types that are sitting right there in the framework reference. It reads like a missing package
-reference and it is not one. Modulith puts them back for a module project, so on a current version
-there is nothing to do; on an older one, add them yourself:
+reference and it is not one. FusionModules puts them back for a module project, so on a current
+version there is nothing to do; on an older one, add them yourself:
 
 ```xml
 <ItemGroup>
@@ -1007,7 +1007,7 @@ For the genuine exceptions the analyzer cannot infer — a DTO bound by a source
 use `.editorconfig`:
 
 ```ini
-modulith_allowed_public_types = OrderDto, PaymentEnvelope
+fusion_modules_allowed_public_types = OrderDto, PaymentEnvelope
 ```
 
 Write down why. Nobody can tell a considered exception from an abandoned one.
@@ -1015,7 +1015,7 @@ Write down why. Nobody can tell a considered exception from an abandoned one.
 ### Views and static assets
 
 A module ships its own `Areas/`, `Pages/` and `wwwroot/`. It adds itself as an application part
-inside `ConfigureServices`; the host must not, and Modulith turns off the SDK behaviour that
+inside `ConfigureServices`; the host must not, and FusionModules turns off the SDK behaviour that
 would have done it silently. Static assets are served from `_content/<AssemblyName>/`, so two
 modules can both ship `site.css`.
 
@@ -1109,7 +1109,7 @@ remote publish atomic may become unnecessary once both are local. Others are reg
 will not show up until something fails in production.
 
 **Every messaging edge gets an explicit decision from the user, with the delta written into
-`modulith-migration.md`.** Never collapse a queue because it is technically possible.
+`fusion-modules-migration.md`.** Never collapse a queue because it is technically possible.
 
 ### Failure handling after the merge
 
@@ -1131,7 +1131,7 @@ about failure:
 - Both implementations of a retained contract pass the same test suite. One interface, one set of
   expectations — a property the pattern gives you for free, so use it.
 - Route inventory unchanged.
-- The `modulith-migration.md` entry for each edge says what was decided and why.
+- The `fusion-modules-migration.md` entry for each edge says what was decided and why.
 
 ---
 
@@ -1275,7 +1275,7 @@ The usual suspects, in order:
 | MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
 | MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
 | MOD0009 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
-| MOD0020 | The Modulith package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0020 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.
 

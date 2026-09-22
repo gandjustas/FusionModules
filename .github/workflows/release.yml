@@ -25,10 +25,10 @@ jobs:
             8.0.x
             10.0.x
 
-      - run: dotnet build Modulith.slnx -c Release -warnaserror
+      - run: dotnet build FusionModules.slnx -c Release -warnaserror
       - run: dotnet build samples/Samples.slnx -c Release -warnaserror
 
-      - run: dotnet test --solution Modulith.slnx -c Release --no-build
+      - run: dotnet test --solution FusionModules.slnx -c Release --no-build
       - run: dotnet test --solution samples/Samples.slnx -c Release --no-build
 
       - name: The portable skill matches its source
@@ -51,7 +51,7 @@ jobs:
             mv "$manifest.tmp" "$manifest"
             echo "plugin version set to $version"
           fi
-          cd skill && zip -qr ../modulith-plugin.zip plugin
+          cd skill && zip -qr ../fusion-modules-plugin.zip plugin
 
       - name: Pack and consume the package as a stranger would
         run: bash eng/pack-validate.sh
@@ -62,11 +62,11 @@ jobs:
           path: |
             local-feed/*.nupkg
             local-feed/*.snupkg
-            modulith-plugin.zip
+            fusion-modules-plugin.zip
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg modulith-plugin.zip --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg fusion-modules-plugin.zip --clobber
         env:
           GH_TOKEN: ${{ github.token }}
 

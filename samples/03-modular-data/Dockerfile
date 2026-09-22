@@ -7,7 +7,7 @@
 # One image for every topology. Which modules run is decided at startup, so there is nothing
 # topology-specific to build and nothing to rebuild when the topology changes.
 #
-# Built from the repository root, because the sample consumes Modulith by project reference.
+# Built from the repository root, because the sample consumes FusionModules by project reference.
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src

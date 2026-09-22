@@ -10,7 +10,7 @@
 
 services:
   monolith:
-    image: modulith-modular-data
+    image: fusion-modules-modular-data
     build: &build
       context: ../..
       dockerfile: samples/03-modular-data/Dockerfile
@@ -26,7 +26,7 @@ services:
         condition: service_healthy
 
   customers:
-    image: modulith-modular-data
+    image: fusion-modules-modular-data
     build: *build
     ports: ["5011:8080"]
     environment:
@@ -43,7 +43,7 @@ services:
         condition: service_started
 
   billing:
-    image: modulith-modular-data
+    image: fusion-modules-modular-data
     build: *build
     ports: ["5012:8080"]
     environment:

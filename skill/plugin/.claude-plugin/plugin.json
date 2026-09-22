@@ -1,5 +1,5 @@
 {
-  "name": "modulith",
+  "name": "fusion-modules",
   "description": "Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules.",
   "version": "0.0.0",
   "author": {

@@ -4,7 +4,7 @@
 //   skill/plugin         a Claude Code plugin: SKILL.md plus references/ and assets/
 //   skill/dist/SKILL.md  one portable file, references inlined, for tools that take a single
 //                        markdown instruction file
-//   skill/dist/modulith-rules.md
+//   skill/dist/fusion-modules-rules.md
 //                        the routing layer alone, for an always-on rules file
 //
 // Run from the repository root:  dotnet run --project tools/skillgen
@@ -35,7 +35,7 @@ return 0;
 // renamed reference does not leave a stale file behind that nothing points at any more.
 void BuildPlugin()
 {
-    var skill = Path.Combine(plugin, "skills", "modulith");
+    var skill = Path.Combine(plugin, "skills", "fusion-modules");
 
     if (Directory.Exists(skill))
     {
@@ -91,7 +91,7 @@ void BuildRules()
         "<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are " +
         "detailed in the full skill at https://github.com/gandjustas/modulith/blob/main/skill/dist/SKILL.md -->";
 
-    Write(Path.Combine(dist, "modulith-rules.md"), $"{note}\n\n{text.Trim()}\n");
+    Write(Path.Combine(dist, "fusion-modules-rules.md"), $"{note}\n\n{text.Trim()}\n");
 }
 
 (string FrontMatter, string Body) ReadSkill()
@@ -166,7 +166,7 @@ static string FindRepositoryRoot(string start)
 {
     for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
     {
-        if (File.Exists(Path.Combine(directory.FullName, "Modulith.slnx")))
+        if (File.Exists(Path.Combine(directory.FullName, "FusionModules.slnx")))
         {
             return directory.FullName;
         }

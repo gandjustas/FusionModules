@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Modulith;
+using FusionModules;
 
 namespace ModularData.Host;
 
@@ -9,7 +9,7 @@ namespace ModularData.Host;
 /// it is.
 /// </summary>
 /// <remarks>
-/// This is the entire EF Core integration, and it is why there is no Modulith.EntityFrameworkCore
+/// This is the entire EF Core integration, and it is why there is no FusionModules.EntityFrameworkCore
 /// package: fifteen lines in your own context beats a base class you have to inherit and a
 /// registration method you have to remember.
 /// </remarks>

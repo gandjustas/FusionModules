@@ -1,4 +1,4 @@
-using Modulith;
+using FusionModules;
 using WeatherModule;
 
 // Without this attribute the module loads and silently does nothing. MOD0005 catches it.

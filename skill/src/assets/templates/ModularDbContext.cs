@@ -1,10 +1,10 @@
-// The whole EF Core integration. There is no Modulith EF package because this is what it would
+// The whole EF Core integration. There is no FusionModules EF package because this is what it would
 // contain, and a base class to inherit plus a method to remember is worse than fifteen lines you
 // can read.
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Modulith;
+using FusionModules;
 
 namespace Host;
 

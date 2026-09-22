@@ -54,7 +54,7 @@ pipeline entirely, discarding everything the host and the other modules set up.
 Each module writes itself into configuration as it activates:
 
 ```
-Modulith:Modules:<AssemblyName> = <assembly-qualified name of the module type>
+FusionModules:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 ```
 
 `ModuleBase.GetLoadedModules(IConfiguration)` reads it back, in activation order. This is how
@@ -104,7 +104,7 @@ MOD0005 covers the same class of mistake at build time.
 | | |
 |---|---|
 | Module, code only | `Microsoft.NET.Sdk` — ASP.NET types arrive through the package's framework reference |
-| Module with `.cshtml` | `Microsoft.NET.Sdk.Razor`; Modulith sets `AddRazorSupportForMvc`, needed for Razor Pages as much as MVC |
+| Module with `.cshtml` | `Microsoft.NET.Sdk.Razor`; FusionModules sets `AddRazorSupportForMvc`, needed for Razor Pages as much as MVC |
 | Host | `Microsoft.NET.Sdk.Web` |
 | Contracts | `Microsoft.NET.Sdk`, no `[HostingStartup]`, public types |
 
@@ -129,7 +129,7 @@ runtime `AddControllers`/`AddRazorPages` load those assemblies — so the host g
 controllers **without ever running the module's code**, in every topology, including the ones
 that excluded it.
 
-Modulith sets `GenerateMvcApplicationPartsAssemblyAttributes` to false for hosts. Each module
+FusionModules sets `GenerateMvcApplicationPartsAssemblyAttributes` to false for hosts. Each module
 adds itself instead, inside its own `ConfigureServices`, where it also registers what its
 controllers need:
 

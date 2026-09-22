@@ -1,5 +1,5 @@
 using CatalogModule;
-using Modulith;
+using FusionModules;
 using Startup.Contracts;
 
 [assembly: HostingStartup(typeof(Module))]

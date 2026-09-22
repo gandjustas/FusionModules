@@ -20,8 +20,8 @@ host would pick up a module's controllers and pages **without ever running the m
 the routes appear, the services they depend on do not, and they appear in every topology,
 including the ones that deliberately left the module out.
 
-Modulith's MSBuild assets set `GenerateMvcApplicationPartsAssemblyAttributes` to false once the
-project is detected as a host, and each module calls `AddApplicationPart` for itself inside its
+The FusionModules MSBuild assets set `GenerateMvcApplicationPartsAssemblyAttributes` to false once
+the project is detected as a host, and each module calls `AddApplicationPart` for itself inside its
 own `ConfigureServices` — where it also registers everything its controllers need. MOD0004 is the
 backstop if someone puts the attribute back.
 
@@ -32,8 +32,8 @@ that came undone.
 
 A module with `.cshtml` files uses `Microsoft.NET.Sdk.Razor`; one without needs only
 `Microsoft.NET.Sdk`. `AddRazorSupportForMvc` is required for Razor Pages modules as much as for
-MVC ones, despite the property's name — Modulith sets it, rather than leaving every author to hit
-RAZORSDK1004 once and remember it forever.
+MVC ones, despite the property's name — FusionModules sets it, rather than leaving every author to
+hit RAZORSDK1004 once and remember it forever.
 
 ## Static assets
 

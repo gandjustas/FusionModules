@@ -29,7 +29,7 @@
     Where to write the JSON. Defaults to stdout.
 
 .EXAMPLE
-    pwsh assess.ps1 -Path ./src -Output modulith-collisions.json
+    pwsh assess.ps1 -Path ./src -Output fusion-modules-collisions.json
 #>
 [CmdletBinding()]
 param(

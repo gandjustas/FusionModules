@@ -1,5 +1,5 @@
 using System.Net.Http.Json;
-using Modulith;
+using FusionModules;
 using Pricing.Contracts;
 using PricingClientModule;
 

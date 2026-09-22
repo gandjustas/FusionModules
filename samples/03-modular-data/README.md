@@ -53,8 +53,8 @@ table, which needs no internals at all; `UnitTests/` reaches the module's logic 
 ## The recipe
 
 The whole EF Core integration is in [`ApplicationDbContext.cs`](Host/ApplicationDbContext.cs) and
-three lines of [`Program.cs`](Host/Program.cs). There is no Modulith EF package, because there is
-nothing here worth packaging:
+three lines of [`Program.cs`](Host/Program.cs). There is no FusionModules EF package, because there
+is nothing here worth packaging:
 
 ```csharp
 protected override void OnModelCreating(ModelBuilder modelBuilder)
