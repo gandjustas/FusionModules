@@ -65,8 +65,16 @@ jobs:
             fusion-modules-plugin.zip
 
       - name: Attach to the release
+        # Pushing a tag creates a tag, not a release, and `gh release upload` has nothing to upload
+        # to until one exists. Created here when it does not, so that a tag is the only thing a
+        # release takes — and so that this job cannot fail in a way that silently skips the push to
+        # nuget.org, which needs it.
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg fusion-modules-plugin.zip --clobber
+        run: |
+          gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" \
+            local-feed/*.nupkg local-feed/*.snupkg fusion-modules-plugin.zip --clobber
         env:
           GH_TOKEN: ${{ github.token }}
 
