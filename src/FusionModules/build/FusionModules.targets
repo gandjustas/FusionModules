@@ -67,4 +67,41 @@
     <Using Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 
+  <!--
+    The Web SDK contributes analyzers as well, and unlike the ASP0xxx rules those do not come
+    from the framework reference: they sit in the SDK's own folder and are added by the same
+    Sdk.Server.props that adds the usings above, a dozen lines higher. So converting a service
+    off Microsoft.NET.Sdk.Web turns five rules off and says nothing about it — the Startup
+    analyzer (ASP0000, ASP0001) and the MVC ones, MVC1000 through MVC1006, which are exactly the
+    rules an MVC or Razor Pages module still needs. Everything shipped in
+    Microsoft.AspNetCore.App.Ref keeps working on any SDK, so minimal APIs and routing are
+    unaffected; measured, a module keeps sixteen analyzers and generators and loses these two
+    assemblies.
+
+    Not $(MSBuildSDKsPath), which is the obvious spelling and the wrong one: under Visual
+    Studio's MSBuild it resolves to the IDE's own Sdks folder, which holds two SDKs and neither
+    is this one. The reference would find nothing, in silence, in the IDE only.
+    $(NetCoreRoot) with $(NETCoreSdkVersion) names the .NET SDK that is actually building, and
+    is the same answer under dotnet build, under Visual Studio and in the SDK container image.
+
+    Microsoft.AspNetCore.Mvc.Api.Analyzers is deliberately absent: the Web SDK adds it only under
+    IncludeOpenAPIAnalyzers, and .NET 10 deprecates both (ASPDEPR007).
+  -->
+  <PropertyGroup Condition="'$(FusionModulesWebSdkAnalyzerPath)' == ''
+                            and '$(NetCoreRoot)' != ''
+                            and '$(NETCoreSdkVersion)' != ''">
+    <FusionModulesWebSdkAnalyzerPath>$(NetCoreRoot)sdk/$(NETCoreSdkVersion)/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/</FusionModulesWebSdkAnalyzerPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(FusionModulesProjectKind)' == 'Module'
+                        and '$(Language)' == 'C#'
+                        and '$(UsingMicrosoftNETSdkWeb)' != 'true'
+                        and '$(FusionModulesAspNetCoreAnalyzers)' != 'false'
+                        and '$(DisableImplicitAspNetCoreAnalyzers)' != 'true'">
+    <Analyzer Include="$(FusionModulesWebSdkAnalyzerPath)Microsoft.AspNetCore.Analyzers.dll"
+              Condition="Exists('$(FusionModulesWebSdkAnalyzerPath)Microsoft.AspNetCore.Analyzers.dll')" />
+    <Analyzer Include="$(FusionModulesWebSdkAnalyzerPath)Microsoft.AspNetCore.Mvc.Analyzers.dll"
+              Condition="Exists('$(FusionModulesWebSdkAnalyzerPath)Microsoft.AspNetCore.Mvc.Analyzers.dll')" />
+  </ItemGroup>
+
 </Project>

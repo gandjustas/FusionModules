@@ -1,8 +1,8 @@
 # MSBuild properties
 
 The `FusionModules` package ships a `.targets` file that is imported at the bottom of every project
-that references it. It sets four things, each of them a fix for something that otherwise fails
-quietly. All four can be overridden, and each override is listed here with the reason you would
+that references it. It sets five things, each of them a fix for something that otherwise fails
+quietly. All five can be overridden, and each override is listed here with the reason you would
 reach for it.
 
 ## `FusionModulesProjectKind`
@@ -80,6 +80,54 @@ one of your own:
 
 A module still on `Microsoft.NET.Sdk.Web` is skipped automatically — it already has these, and a
 duplicate global using is CS0105.
+
+## `FusionModulesAspNetCoreAnalyzers`
+
+Default on. For a `Module` on a non-Web SDK, adds the two analyzer assemblies the Web SDK would
+have added: `Microsoft.AspNetCore.Analyzers.dll` and `Microsoft.AspNetCore.Mvc.Analyzers.dll`.
+
+Between them they carry five rules: the Startup analyzer (ASP0000, ASP0001) and MVC1000 through
+MVC1006 — `IHtmlHelper.Partial`, attributes that do nothing on a page model, a parameter name that
+shadows a bound property, a tag helper in a code block. An MVC or Razor Pages module is exactly the
+project that still needs them.
+
+Everything in `Microsoft.AspNetCore.App.Ref` arrives with the framework reference instead, on any
+SDK, so the whole ASP0xxx family about minimal APIs and routing keeps working without this. Measured
+on .NET 10: a module keeps sixteen analyzers and generators either way and loses only these two
+assemblies.
+
+`Microsoft.AspNetCore.Mvc.Api.Analyzers` is not included. The Web SDK adds it only under
+`IncludeOpenAPIAnalyzers`, and .NET 10 deprecates both (ASPDEPR007).
+
+Set it to `false` to keep a module on the rules the framework reference brings and nothing more:
+
+```xml
+<PropertyGroup>
+  <FusionModulesAspNetCoreAnalyzers>false</FusionModulesAspNetCoreAnalyzers>
+</PropertyGroup>
+```
+
+The SDK's own `DisableImplicitAspNetCoreAnalyzers` turns this off too, so a project that already
+sets it keeps meaning what it meant.
+
+## `FusionModulesWebSdkAnalyzerPath`
+
+The folder the two assemblies above are read from. Computed as
+`$(NetCoreRoot)sdk/$(NETCoreSdkVersion)/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/`, and each file is
+referenced only if it is there.
+
+Not `$(MSBuildSDKsPath)`, which is the obvious spelling and the wrong one: under Visual Studio's
+MSBuild that resolves to the IDE's own `Sdks` folder, which holds two SDKs and neither is the Web
+SDK, so the analyzers would go missing in the IDE and nowhere else. Set this property if your layout
+puts them somewhere else:
+
+```xml
+<PropertyGroup>
+  <FusionModulesWebSdkAnalyzerPath>/opt/sdk-analyzers/</FusionModulesWebSdkAnalyzerPath>
+</PropertyGroup>
+```
+
+Trailing separator included — the file name is appended to it directly.
 
 ## Properties the samples use
 

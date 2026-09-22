@@ -39,6 +39,18 @@ version there is nothing to do; on an older one, add them yourself:
 </ItemGroup>
 ```
 
+The same line takes five analyzers away, and that one is silent in both directions — the build
+stays green and the rules simply stop asking. They live in the Web SDK's own folder rather than in
+the framework reference: the Startup analyzer (ASP0000, ASP0001) and MVC1000 through MVC1006, which
+is the set an MVC or Razor Pages module actually needs. FusionModules restores those too. The ASP0xxx
+rules about minimal APIs and routing come with the framework reference and never left, so do not
+read a quiet build as proof that the rest is still on — check `@(Analyzer)` if you are on an older
+version:
+
+```bash
+dotnet build path/to/Module.csproj -getItem:Analyzer
+```
+
 Then register it with the host and with the test project:
 
 ```xml

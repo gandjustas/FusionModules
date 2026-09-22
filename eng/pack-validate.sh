@@ -295,6 +295,18 @@ case "$usings" in
     *) fail "no Microsoft.AspNetCore.Builder in @(Using) for a module" ;;
 esac
 
+# And the analyzers it loses with them: these live in the Web SDK's own folder, not in the
+# framework reference, so nothing else puts MVC1000 or ASP0000 back.
+analyzers="$(dotnet msbuild "$work/consumer/GoodModule" -getItem:Analyzer -v:q 2>/dev/null)"
+case "$analyzers" in
+    *Microsoft.AspNetCore.Mvc.Analyzers.dll*) pass "module gets the Web SDK's MVC analyzers" ;;
+    *) fail "no Microsoft.AspNetCore.Mvc.Analyzers.dll in @(Analyzer) for a module" ;;
+esac
+case "$analyzers" in
+    *Microsoft.AspNetCore.Analyzers.dll*) pass "module gets the Web SDK's Startup analyzer" ;;
+    *) fail "no Microsoft.AspNetCore.Analyzers.dll in @(Analyzer) for a module" ;;
+esac
+
 log "Result"
 if [ "$failures" -eq 0 ]; then
     echo "  all checks passed"
