@@ -16,7 +16,7 @@
   -->
   <PropertyGroup>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <PackageReleaseNotes>https://github.com/gandjustas/modulith/releases</PackageReleaseNotes>
+    <PackageReleaseNotes>https://github.com/gandjustas/FusionModules/releases</PackageReleaseNotes>
 
     <!--
       Cross-framework validation: the net8.0 and net10.0 surfaces have to agree, so a member added

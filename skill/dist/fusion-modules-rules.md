@@ -1,4 +1,4 @@
-<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are detailed in the full skill at https://github.com/gandjustas/modulith/blob/main/skill/dist/SKILL.md -->
+<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->
 
 # Modular monoliths on ASP.NET Core
 
@@ -23,7 +23,7 @@ prefer when both are on the table.
 it inherits no references, so MOD0003 is green from the first build. Then convert services
 lowest-fan-in first.
 
-**New system.** Start from [samples/01-minimal-api](https://github.com/gandjustas/modulith/tree/main/samples/01-minimal-api)
+**New system.** Start from [samples/01-minimal-api](https://github.com/gandjustas/FusionModules/tree/HEAD/samples/01-minimal-api)
 and skip the assessment.
 
 ## Phases

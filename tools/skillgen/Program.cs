@@ -89,7 +89,7 @@ void BuildRules()
 
     var note =
         "<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are " +
-        "detailed in the full skill at https://github.com/gandjustas/modulith/blob/main/skill/dist/SKILL.md -->";
+        "detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->";
 
     Write(Path.Combine(dist, "fusion-modules-rules.md"), $"{note}\n\n{text.Trim()}\n");
 }

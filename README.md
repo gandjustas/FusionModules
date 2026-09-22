@@ -134,9 +134,9 @@ secret here to leak, rotate or hand to a fork.
 
 Three things have to exist before that first push, and none of them are in the working tree:
 
-- a trusted publishing policy on nuget.org — repository owner `gandjustas`, repository `modulith`,
-  workflow file `release.yml`, environment `nuget.org`. The repository is still named `modulith`
-  and the policy is bound to the repository rather than to the package id, so that is not a typo;
+- a trusted publishing policy on nuget.org — repository owner `gandjustas`, repository
+  `FusionModules`, workflow file `release.yml`, environment `nuget.org`, and a scope that allows
+  publishing a new package id rather than only new versions of an existing one;
 - a repository variable `NUGET_USER` holding the nuget.org profile name, not an email address;
 - the `nuget.org` environment, if the push should wait for a reviewer before it runs.
 

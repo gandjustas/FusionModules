@@ -15,8 +15,8 @@
     <Company>Stanislav Vyshchepan</Company>
     <Copyright>Copyright (c) Stanislav Vyshchepan</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/gandjustas/modulith</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/gandjustas/modulith</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/gandjustas/FusionModules</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/gandjustas/FusionModules</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>modular-monolith;aspnetcore;hostingstartup;modules;architecture</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -78,7 +78,7 @@ jobs:
     #
     # One-time setup on nuget.org (Account → Trusted Publishing), all case-insensitive:
     #   Repository Owner  gandjustas
-    #   Repository        modulith
+    #   Repository        FusionModules
     #   Workflow File     release.yml          (file name only, no .github/workflows/ prefix)
     #   Environment       nuget.org            (must match the `environment:` below, or be empty)
     # and a repository variable NUGET_USER holding the nuget.org profile name — not an email.

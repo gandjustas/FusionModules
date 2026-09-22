@@ -10,7 +10,7 @@ internal static class Diagnostics
 {
     private const string DesignCategory = "FusionModules.Design";
     private const string UsageCategory = "FusionModules.Usage";
-    private const string HelpLinkFormat = "https://github.com/gandjustas/modulith/blob/main/docs/rules/{0}.md";
+    private const string HelpLinkFormat = "https://github.com/gandjustas/FusionModules/blob/HEAD/docs/rules/{0}.md";
 
     public const string ModuleMustNotExposePublicTypesId = "MOD0001";
     public const string HostingStartupTypeMustBeModuleId = "MOD0002";

@@ -6,8 +6,8 @@
     "name": "Stanislav Vyshchepan",
     "url": "https://github.com/gandjustas"
   },
-  "homepage": "https://github.com/gandjustas/modulith",
-  "repository": "https://github.com/gandjustas/modulith",
+  "homepage": "https://github.com/gandjustas/FusionModules",
+  "repository": "https://github.com/gandjustas/FusionModules",
   "license": "MIT",
   "keywords": ["dotnet", "aspnetcore", "modular-monolith", "microservices", "architecture"]
 }
