@@ -125,10 +125,23 @@ the host. That is the cost of the approach and it is worth knowing before you ad
 Early development, pre-1.0. The public surface is two classes and nine members, locked by
 `PublicAPI.Shipped.txt` so that adding to it is a reviewable change.
 
-Not published: the package id on nuget.org is not claimed, and claiming it has no undo while the
-name is still open — `Modulith` is crowded there and collides with Spring Modulith. `release.yml`
-packs, validates and attaches the artefact to a GitHub release; wiring up the push is one job
-away and one decision away. Install from a local feed in the meantime:
+Not on nuget.org yet: the package id is not claimed, and claiming it has no undo while the name is
+still open — `Modulith` is crowded there and collides with Spring Modulith. The pipeline no longer
+waits on anything but that decision. Pushing a `v*` tag makes `release.yml` build, test, pack,
+consume the package from a scratch project outside the repository, attach it to the GitHub release
+and push it to nuget.org with
+[Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing): the job
+exchanges a GitHub OIDC token for an API key that lives an hour, so there is no `NUGET_API_KEY`
+secret here to leak, rotate or hand to a fork.
+
+Three things have to exist before that first push, and none of them are in the working tree:
+
+- a trusted publishing policy on nuget.org — repository owner `gandjustas`, repository `modulith`,
+  workflow file `release.yml`, environment `nuget.org`;
+- a repository variable `NUGET_USER` holding the nuget.org profile name, not an email address;
+- the `nuget.org` environment, if the push should wait for a reviewer before it runs.
+
+Install from a local feed in the meantime:
 
 ```bash
 dotnet pack src/Modulith/Modulith.csproj -c Release -o local-feed

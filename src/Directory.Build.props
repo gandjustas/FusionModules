@@ -10,6 +10,23 @@
     <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
+  <!--
+    What the package page says, and what the push itself needs. Kept here rather than in the
+    csproj because it is true of anything this repository ever publishes.
+  -->
+  <PropertyGroup>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReleaseNotes>https://github.com/gandjustas/modulith/releases</PackageReleaseNotes>
+
+    <!--
+      Cross-framework validation: the net8.0 and net10.0 surfaces have to agree, so a member added
+      under one target framework and not the other fails the pack instead of the consumer's build.
+      Once 1.0 is on nuget.org, add PackageValidationBaselineVersion here and the same check starts
+      catching breaking changes against the released package.
+    -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="MinVer" PrivateAssets="all" />
   </ItemGroup>

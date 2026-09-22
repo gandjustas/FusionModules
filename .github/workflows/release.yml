@@ -5,17 +5,6 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Publishing is deliberately not wired up. The package id is not claimed on nuget.org, and
-# claiming it is a decision with no undo — see the naming note in the repository README. Until
-# then this job packs, validates and attaches the result to the release, so the artefact exists
-# and can be installed from a local feed.
-#
-# To start publishing: add a `publish` job gated on a repository environment, using Trusted
-# Publishing if the account has it and NUGET_API_KEY otherwise.
-
-permissions:
-  contents: write
-
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -23,6 +12,8 @@ env:
 jobs:
   pack:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Attaching the artefacts to the release.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,3 +69,64 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" local-feed/*.nupkg local-feed/*.snupkg modulith-plugin.zip --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+
+  publish:
+    # Pushes to nuget.org with Trusted Publishing: the job proves its identity with a GitHub OIDC
+    # token and nuget.org hands back an API key valid for an hour. No NUGET_API_KEY secret exists
+    # to leak, rotate or forget, and a fork cannot obtain one — the policy is bound to this
+    # repository and to this workflow file by name.
+    #
+    # One-time setup on nuget.org (Account → Trusted Publishing), all case-insensitive:
+    #   Repository Owner  gandjustas
+    #   Repository        modulith
+    #   Workflow File     release.yml          (file name only, no .github/workflows/ prefix)
+    #   Environment       nuget.org            (must match the `environment:` below, or be empty)
+    # and a repository variable NUGET_USER holding the nuget.org profile name — not an email.
+    #
+    # A policy on a repository nuget.org cannot see yet starts out active for 7 days only; the
+    # first successful push locks it to the repository's numeric id and makes it permanent.
+    needs: pack
+    # Tags only. A workflow_dispatch run has no tag, so MinVer would produce a 0.0.0-preview
+    # version out of the default identifiers and push it to the public feed, where nothing can be
+    # deleted — only unlisted.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Named so the push can be gated on a reviewer, and so the trusted publishing policy has an
+    # environment to be scoped to. Nothing else in this repository runs in it.
+    environment: nuget.org
+    permissions:
+      contents: read
+      id-token: write # The OIDC token the exchange is built on. Nothing else needs it.
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Exchange the OIDC token for a short-lived API key
+        # Deliberately the step before the push and not earlier: the key expires in an hour, and
+        # each OIDC token buys exactly one key.
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to nuget.org
+        # One package at a time because `dotnet nuget push` takes a single path; the .snupkg beside
+        # each .nupkg goes up with it, without being named here. --skip-duplicate so that re-running
+        # the job after a partial failure finishes the job instead of failing on a 409.
+        run: |
+          packages=(artifacts/local-feed/*.nupkg)
+          [ -e "${packages[0]}" ] || { echo "the artefact contains no packages"; exit 1; }
+          for package in "${packages[@]}"; do
+            echo "::group::$package"
+            dotnet nuget push "$package" \
+              --source https://api.nuget.org/v3/index.json \
+              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+              --skip-duplicate
+            echo "::endgroup::"
+          done
