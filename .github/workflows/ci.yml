@@ -149,16 +149,24 @@ jobs:
         # The inner loop uses project references. This is the configuration a reader of the
         # samples actually gets, and it fails differently.
         #
-        # pwsh rather than the job's bash: git-bash on the Windows runner rewrites the `//` in the
-        # nuget.org URL, NuGet stops recognising it as a URI and looks for a directory of that name
-        # next to the project. Nothing here needs a POSIX shell.
+        # The sources come from a config file rather than from --source, because on Windows a URL
+        # passed that way is resolved as a path relative to each project: NuGet reports that
+        # samples\https:\api.nuget.org\v3\index.json does not exist. It surfaces only when a
+        # package actually has to be downloaded, so a machine with a warm package folder — every
+        # developer's — never sees it and CI sees it every time.
+        #
+        # pwsh because the step has to be one step on both images, and nothing in it needs a POSIX
+        # shell.
         shell: pwsh
         run: |
           $package = Get-ChildItem local-feed/FusionModules.*.nupkg | Select-Object -First 1
           $version = $package.BaseName -replace '^FusionModules\.', ''
-          dotnet restore samples/Samples.slnx `
-            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version `
-            --source ./local-feed --source https://api.nuget.org/v3/index.json
+          $config = Join-Path ([IO.Path]::GetTempPath()) 'samples-sources.config'
+          Set-Content $config '<configuration />'
+          dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget --configfile $config
+          dotnet nuget add source (Resolve-Path ./local-feed).Path --name local --configfile $config
+          dotnet restore samples/Samples.slnx --configfile $config `
+            -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build samples/Samples.slnx -c Release --no-restore `
             -p:FusionModulesUseProjectReferences=false -p:FusionModulesVersion=$version
