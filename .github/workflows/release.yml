@@ -107,6 +107,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: The publishing identity is configured
+        # An unset NUGET_USER is how this job fails the first time somebody tags a release, and the
+        # token exchange reports it as an authentication failure rather than as a missing variable.
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          [ -n "$NUGET_USER" ] || {
+            echo "the repository variable NUGET_USER is not set — it holds the nuget.org profile name"
+            exit 1
+          }
+
       - name: Exchange the OIDC token for a short-lived API key
         # Deliberately the step before the push and not earlier: the key expires in an hour, and
         # each OIDC token buys exactly one key.
@@ -119,14 +130,20 @@ jobs:
         # One package at a time because `dotnet nuget push` takes a single path; the .snupkg beside
         # each .nupkg goes up with it, without being named here. --skip-duplicate so that re-running
         # the job after a partial failure finishes the job instead of failing on a 409.
+        #
+        # Found rather than globbed at a fixed path: where an artefact's files land depends on the
+        # common root of the patterns that uploaded them, which is not something this job should
+        # have an opinion about.
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
-          packages=(artifacts/local-feed/*.nupkg)
-          [ -e "${packages[0]}" ] || { echo "the artefact contains no packages"; exit 1; }
+          mapfile -t packages < <(find artifacts -name '*.nupkg')
+          [ "${#packages[@]}" -gt 0 ] || { echo "the artefact contains no packages"; exit 1; }
           for package in "${packages[@]}"; do
             echo "::group::$package"
             dotnet nuget push "$package" \
               --source https://api.nuget.org/v3/index.json \
-              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+              --api-key "$NUGET_API_KEY" \
               --skip-duplicate
             echo "::endgroup::"
           done
