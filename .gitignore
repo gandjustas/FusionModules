@@ -10,4 +10,3 @@ artifacts/
 *.snupkg
 TestResults/
 local-feed/
-skill/plugin/skills/

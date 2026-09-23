@@ -101,12 +101,23 @@ quietly. What they do and how to override them: [docs/msbuild.md](docs/msbuild.m
 
 [`skill/`](skill) holds instructions for an AI agent doing the migration: assess, host, modules,
 data, transports, deployment, and a verification loop that runs after every phase rather than at
-the end. Authored once and generated into a Claude Code plugin, a portable
-[`SKILL.md`](skill/dist/SKILL.md) for any other tool, and a short always-on rules file.
+the end. The same files are a Claude Code plugin and an [Agent Skills](https://agentskills.io)
+directory that Codex, OpenCode, Copilot, Cursor, Gemini CLI and ZCode load as they are; a
+flattened [`SKILL.md`](skill/dist/SKILL.md) and a short always-on rules file cover everything
+else.
+
+In Claude Code:
+
+```
+/plugin marketplace add gandjustas/FusionModules
+/plugin install fusion-modules@fusion-modules
+```
+
+Any other agent, and the other ways in: [skill/README.md](skill/README.md#using-it).
 
 It is also worth reading as prose if you are doing it by hand — particularly
-[troubleshooting](skill/src/references/troubleshooting.md), which lists the failure modes of this
-approach by symptom, because every one of them is silent.
+[troubleshooting](skill/skills/fusion-modules/references/troubleshooting.md), which lists the
+failure modes of this approach by symptom, because every one of them is silent.
 
 ## What is deliberately not here
 

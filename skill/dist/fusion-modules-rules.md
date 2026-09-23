@@ -1,4 +1,4 @@
-<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->
+<!-- Generated from skill/skills/fusion-modules/SKILL.md. The routing layer only; the phases it names are detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->
 
 # Modular monoliths on ASP.NET Core
 

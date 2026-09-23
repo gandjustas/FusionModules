@@ -1,7 +1,8 @@
-// Builds the skill's three shapes from one source.
+// Builds the skill's portable shapes from the one authored copy.
 //
-//   skill/src            the authored form, and also the plugin's shape
-//   skill/plugin         a Claude Code plugin: SKILL.md plus references/ and assets/
+//   skill/skills/fusion-modules
+//                        the authored form. Already a Claude Code plugin skill and an Agent Skills
+//                        directory, so nothing here copies it
 //   skill/dist/SKILL.md  one portable file, references inlined, for tools that take a single
 //                        markdown instruction file
 //   skill/dist/fusion-modules-rules.md
@@ -14,8 +15,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 
 var root = FindRepositoryRoot(AppContext.BaseDirectory);
-var source = Path.Combine(root, "skill", "src");
-var plugin = Path.Combine(root, "skill", "plugin");
+var source = Path.Combine(root, "skill", "skills", "fusion-modules");
 var dist = Path.Combine(root, "skill", "dist");
 
 if (!Directory.Exists(source))
@@ -24,31 +24,11 @@ if (!Directory.Exists(source))
     return 1;
 }
 
-BuildPlugin();
 BuildPortable();
 BuildRules();
 
-Console.WriteLine($"skill/plugin and skill/dist rebuilt from skill/src");
+Console.WriteLine($"skill/dist rebuilt from skill/skills/fusion-modules");
 return 0;
-
-// The plugin form is the source form, so this is a copy — but a copy that deletes first, so a
-// renamed reference does not leave a stale file behind that nothing points at any more.
-void BuildPlugin()
-{
-    var skill = Path.Combine(plugin, "skills", "fusion-modules");
-
-    if (Directory.Exists(skill))
-    {
-        Directory.Delete(skill, recursive: true);
-    }
-
-    foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-    {
-        var target = Path.Combine(skill, Path.GetRelativePath(source, file));
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Copy(file, target, overwrite: true);
-    }
-}
 
 void BuildPortable()
 {
@@ -88,8 +68,8 @@ void BuildRules()
     }
 
     var note =
-        "<!-- Generated from skill/src/SKILL.md. The routing layer only; the phases it names are " +
-        "detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->";
+        "<!-- Generated from skill/skills/fusion-modules/SKILL.md. The routing layer only; the " +
+        "phases it names are detailed in the full skill at https://github.com/gandjustas/FusionModules/blob/HEAD/skill/dist/SKILL.md -->";
 
     Write(Path.Combine(dist, "fusion-modules-rules.md"), $"{note}\n\n{text.Trim()}\n");
 }
