@@ -37,21 +37,27 @@ jobs:
           git diff --exit-code -- skill/dist
 
       - name: Package the Claude Code plugin
-        # The manifest in the repository carries a placeholder version, because nothing in a
-        # working tree knows what the next tag will be. Stamping it here rather than committing a
-        # number keeps MinVer the single source of the version and keeps the skill/dist drift
-        # check honest — the file on disk is never edited by a build that then compares it.
+        # For anyone who cannot add a git marketplace: unzip, then `claude --plugin-dir
+        # fusion-modules`. Only the plugin's own directories go in — skill/dist and the README are
+        # in skill/ for the repository's sake, not the plugin's.
         #
-        # A workflow_dispatch run has no tag, so the placeholder stands and the zip says so.
+        # The manifest carries no version, so that a marketplace install is versioned by commit
+        # and every push reaches it. A zip has no commit behind it, so the tag is stamped into the
+        # staged copy — never into the working tree, which the skill/dist check above compares.
+        # A workflow_dispatch run has no tag and the zip goes out unversioned, which is the honest
+        # answer for a build that is not a release.
         run: |
+          stage="$RUNNER_TEMP/fusion-modules"
+          mkdir -p "$stage"
+          cp -r skill/.claude-plugin skill/commands skill/skills "$stage/"
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
-            manifest=skill/plugin/.claude-plugin/plugin.json
+            manifest="$stage/.claude-plugin/plugin.json"
             jq --arg version "$version" '.version = $version' "$manifest" > "$manifest.tmp"
             mv "$manifest.tmp" "$manifest"
             echo "plugin version set to $version"
           fi
-          cd skill && zip -qr ../fusion-modules-plugin.zip plugin
+          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/fusion-modules-plugin.zip" fusion-modules)
 
       - name: Pack and consume the package as a stranger would
         run: bash eng/pack-validate.sh

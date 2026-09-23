@@ -52,9 +52,9 @@ jobs:
           path: '**/TestResults/**'
 
   skill:
-    # The plugin and the portable file are generated from skill/src. Regenerating them here and
-    # failing on a diff is what stops the three shapes drifting apart, which they would otherwise
-    # do quietly and only be noticed by whoever used the stale one.
+    # The portable files are generated from skill/skills/fusion-modules. Regenerating them here and
+    # failing on a diff is what stops them drifting from it, which they would otherwise do quietly
+    # and only be noticed by whoever used the stale one.
     #
     # On Windows too, because assess.ps1 normalises path separators for exactly one reason and
     # that reason was never exercised.
@@ -73,8 +73,6 @@ jobs:
       - run: dotnet run --project tools/skillgen
 
       - name: The portable skill matches its source
-        # Only skill/dist is committed — the plugin copy is generated at release time, so there is
-        # nothing to drift.
         run: git diff --exit-code -- skill/dist
 
       - name: The collision detector produces both sections
@@ -84,22 +82,35 @@ jobs:
         shell: pwsh
         run: |
           $out = Join-Path ([IO.Path]::GetTempPath()) 'collisions.json'
-          ./skill/src/assets/scripts/assess.ps1 -Path samples -Output $out
+          ./skill/skills/fusion-modules/assets/scripts/assess.ps1 -Path samples -Output $out
           $keys = (Get-Content -Raw $out | ConvertFrom-Json).PSObject.Properties.Name
           foreach ($section in 'routeCollisions', 'configurationKeyCollisions') {
             if ($keys -notcontains $section) { throw "assess.ps1 produced no '$section'" }
           }
 
-      - name: The plugin manifest is well formed
-        # skill/plugin is hand-written and, unlike skill/dist, nothing regenerates it — so nothing
-        # would notice it going malformed until somebody tried to install the released zip.
+      - name: The plugin and its marketplace are well formed
+        # Both manifests are hand-written and nothing regenerates them, so nothing else would
+        # notice one going malformed until somebody ran /plugin install. A version in plugin.json
+        # is a failure, not a nicety: a marketplace install is then versioned by that string
+        # rather than by commit, and until somebody bumps it no push reaches anyone.
         shell: pwsh
         run: |
-          $manifest = Get-Content -Raw skill/plugin/.claude-plugin/plugin.json | ConvertFrom-Json
-          foreach ($field in 'name', 'description', 'version') {
+          $manifest = Get-Content -Raw skill/.claude-plugin/plugin.json | ConvertFrom-Json
+          foreach ($field in 'name', 'description') {
             if (-not $manifest.$field) { throw "plugin.json has no '$field'" }
           }
-          if (-not (Get-ChildItem skill/plugin/commands -Filter *.md)) { throw 'plugin has no commands' }
+          if ($manifest.PSObject.Properties.Name -contains 'version') {
+            throw 'plugin.json has a version, so a marketplace install would never see a new commit'
+          }
+          if (-not (Test-Path skill/skills/$($manifest.name)/SKILL.md)) { throw 'plugin has no skill' }
+          if (-not (Get-ChildItem skill/commands -Filter *.md)) { throw 'plugin has no commands' }
+
+          $marketplace = Get-Content -Raw .claude-plugin/marketplace.json | ConvertFrom-Json
+          $entry = $marketplace.plugins | Where-Object name -eq $manifest.name
+          if (-not $entry) { throw "marketplace.json does not list '$($manifest.name)'" }
+          if (-not (Test-Path (Join-Path $entry.source .claude-plugin/plugin.json))) {
+            throw "marketplace.json points '$($manifest.name)' at '$($entry.source)', which is not the plugin"
+          }
 
       - name: Every relative link resolves
         # The rule pages are what an IDE opens from a squiggle and the README is the only map of

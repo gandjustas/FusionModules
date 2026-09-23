@@ -1,0 +1,15 @@
+{
+  "name": "fusion-modules",
+  "description": "The FusionModules skill and commands for Claude Code.",
+  "owner": {
+    "name": "Stanislav Vyshchepan",
+    "url": "https://github.com/gandjustas"
+  },
+  "plugins": [
+    {
+      "name": "fusion-modules",
+      "source": "./skill",
+      "description": "Build or migrate to a modular monolith on ASP.NET Core HostingStartup modules."
+    }
+  ]
+}
