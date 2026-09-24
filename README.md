@@ -83,8 +83,13 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0009](docs/rules/MOD0009.md) | A hub's client interface must be reachable from SignalR's generated proxy |
 | [MOD0020](docs/rules/MOD0020.md) | The FusionModules package is not referenced |
 
+A host and a test project also get `KnownModules`, generated from their references: every module
+by name, in activation order. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
+the model from `HOSTINGSTARTUPASSEMBLIES` as it stood in your shell, so a factory names the modules
+itself, and a list written by hand is a copy of the project file that nothing keeps honest.
+
 The package also sets a few MSBuild properties, each of them a fix for something that fails
-quietly. What they do and how to override them: [docs/msbuild.md](docs/msbuild.md).
+quietly. What they do, what is generated and how to override either: [docs/msbuild.md](docs/msbuild.md).
 
 ## Samples
 

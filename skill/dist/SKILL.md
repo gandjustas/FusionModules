@@ -474,7 +474,9 @@ whose shape depends on which replica reached it first.
 `dotnet ef` builds the host to find the context, so `HostingStartup` runs and the model follows
 `HOSTINGSTARTUPASSEMBLIES` as set in that shell. So the schema depends on the machine it was
 generated on: unset gives an **empty migration and no error at all**, one topology's value gives
-that topology's tables and no error either. The design-time factory names the modules in code:
+that topology's tables and no error either. The design-time factory names the modules in code, from
+the list FusionModules generates out of the host's references — written by hand it is a copy of the
+project file, and the day it falls behind the migration is missing tables and says nothing:
 
 ```csharp
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
@@ -484,7 +486,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.Names))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

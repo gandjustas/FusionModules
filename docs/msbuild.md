@@ -129,6 +129,43 @@ puts them somewhere else:
 
 Trailing separator included — the file name is appended to it directly.
 
+## `FusionModulesKnownModules`
+
+Default on. For a `Host` or a `Test` project, generates `FusionModules.KnownModules`: every module
+the project references, as a constant.
+
+```csharp
+internal static class KnownModules
+{
+    public const string All = "Customers.Entities;CustomersModule;Orders.Entities;BillingModule";
+
+    public static string[] Names => new string[] { "Customers.Entities", /* … */ };
+}
+```
+
+The case it exists for is `IDesignTimeDbContextFactory`. `dotnet ef` builds the host, so
+HostingStartup runs and the model follows `HOSTINGSTARTUPASSEMBLIES` as it stood in the shell that
+ran the command — empty when unset, one topology's tables when set, and no error either way. A
+factory therefore names the modules itself, and a hand-written list is a copy of the project file
+that nothing keeps honest: add a module, forget the array, and the next migration is missing its
+tables without a word.
+
+Dependencies come first, ties broken by name. That is what puts a composing module after the
+modules it joins, which is the order EF Core applies entity configurations in — and it is derived
+from the reference graph, so it follows the code rather than a convention about naming.
+
+A module never gets it: a module has no business knowing the topology it will be deployed in.
+Without [`FusionModulesProjectKind`](#fusionmodulesprojectkind) — that is, without this package's
+targets — a project that produces a program gets it and a library does not.
+
+Set it to `false` to turn the generator off:
+
+```xml
+<PropertyGroup>
+  <FusionModulesKnownModules>false</FusionModulesKnownModules>
+</PropertyGroup>
+```
+
 ## Properties the samples use
 
 Not part of the package. They belong to this repository's own build and are documented here because

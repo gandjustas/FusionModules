@@ -98,7 +98,10 @@ topology would give you a database whose shape depends on which replica reached 
 `HOSTINGSTARTUPASSEMBLIES` as it stands in your shell — an **empty migration and no error at all**
 when it is unset, one topology's tables when it is not.
 [`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) names every module with
-`ModuleBase.CreateModuleRegistry`, so the migration is the same on every machine.
+`ModuleBase.CreateModuleRegistry`, so the migration is the same on every machine. The names come
+from `KnownModules`, which the package generates from this project's references — with
+`BillingModule` last, because it joins the other two and EF Core applies configurations in
+activation order.
 
 ## Running it
 

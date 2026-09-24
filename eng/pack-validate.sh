@@ -207,11 +207,32 @@ using Microsoft.AspNetCore.Hosting;
 sealed class Module { }
 CS
 
-write_project "$work/consumer/Host" "Microsoft.NET.Sdk.Web" "<OutputType>Exe</OutputType>"
+# A host as a host really is: referencing its module, which is also what gives the generated
+# module list something to name.
+cat > "$work/consumer/Host/Host.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+    <ProjectReference Include="../GoodModule/GoodModule.csproj" />
+  </ItemGroup>
+</Project>
+XML
 cat > "$work/consumer/Host/Program.cs" <<'CS'
+using FusionModules;
+
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 app.UseRouting();
+
+// Compiles only if the generator ran: the host never declares this type.
+app.MapGet("/modules", () => KnownModules.All);
+
 await app.RunAsync();
 CS
 
@@ -281,10 +302,25 @@ else
 fi
 
 log "A host builds clean"
-if dotnet build "$work/consumer/Host" --nologo -v q > "$work/host.log" 2>&1; then
+if dotnet build "$work/consumer/Host" --nologo -v q -p:EmitCompilerGeneratedFiles=true > "$work/host.log" 2>&1; then
     pass "builds"
 else
     fail "did not build"; cat "$work/host.log"
+fi
+
+# Program.cs above would not have compiled if the generator had not run, but a passing build says
+# nothing about what the list holds — and an empty list is the shape of the failure that matters.
+log "The module list is generated"
+known="$(find "$work/consumer/Host/obj" -name 'FusionModules.KnownModules.g.cs' | head -1)"
+if [ -n "$known" ]; then
+    pass "KnownModules generated"
+    if grep -q 'All = "GoodModule";' "$known"; then
+        pass "names the referenced module"
+    else
+        fail "the generated list is not GoodModule:"; grep 'All = ' "$known" || true
+    fi
+else
+    fail "no FusionModules.KnownModules.g.cs under the host's obj"
 fi
 
 # The NuGet-generated imports that carry buildTransitive assets only exist after restore,

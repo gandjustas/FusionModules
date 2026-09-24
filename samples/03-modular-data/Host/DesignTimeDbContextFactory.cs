@@ -17,8 +17,9 @@ namespace ModularData.Host;
 /// <c>dotnet ef</c> does build the host, so <c>HostingStartup</c> runs and the model would follow
 /// <c>HOSTINGSTARTUPASSEMBLIES</c> as it stands in the shell that ran the command — an empty
 /// migration and no error at all when it is unset, one topology's tables when it is not.
-/// <see cref="ModuleBase.CreateModuleRegistry"/> names every module here instead, so the migration
-/// is the same on every machine and in CI.
+/// <see cref="ModuleBase.CreateModuleRegistry"/> names every module instead, and the names come
+/// from <c>KnownModules</c>, which FusionModules generates from this project's references — a list
+/// written out by hand is a copy of the project file that nothing keeps honest.
 /// </para>
 /// </remarks>
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
@@ -28,7 +29,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(AllModules))
+            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.Names))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -38,13 +39,4 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
 
         return new ApplicationDbContext(options, configuration);
     }
-
-    /// <summary>
-    /// Every module, as HOSTINGSTARTUPASSEMBLIES spells them. Deliberately not read from the
-    /// environment: migrations are generated against the union and applied whole, and a variable
-    /// left over from debugging one topology would otherwise produce a migration for that topology
-    /// without saying so.
-    /// </summary>
-    private static readonly string[] AllModules =
-        ["Orders.Entities", "Customers.Entities", "CustomersModule", "BillingModule"];
 }

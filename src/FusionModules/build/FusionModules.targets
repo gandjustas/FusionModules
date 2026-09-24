@@ -5,9 +5,13 @@
     properties ($(OutputType) in particular) are known.
   -->
 
-  <!-- Read by the analyzers: MOD0003 holds hosts to a rule that a test project is exempt from. -->
+  <!--
+    Read by the analyzers: MOD0003 holds hosts to a rule that a test project is exempt from, and
+    the same answer decides who gets the generated KnownModules.
+  -->
   <ItemGroup>
     <CompilerVisibleProperty Include="FusionModulesProjectKind" />
+    <CompilerVisibleProperty Include="FusionModulesKnownModules" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(FusionModulesProjectKind)' == ''">
