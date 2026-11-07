@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Editing;
 using FusionModules.Analyzers;
 
 namespace FusionModules.CodeFixes;
@@ -65,39 +65,13 @@ public sealed class RegisterModuleCodeFixProvider : CodeFixProvider
             return document;
         }
 
-        // The fully qualified name, because an assembly-level attribute sits above any file-scoped
-        // namespace and a bare name would not bind there.
-        var attribute = SyntaxFactory.AttributeList(
-                SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.Attribute(
-                        SyntaxFactory.ParseName(HostingStartupAttributeName),
-                        SyntaxFactory.AttributeArgumentList(
-                            SyntaxFactory.SingletonSeparatedList(
-                                SyntaxFactory.AttributeArgument(
-                                    SyntaxFactory.TypeOfExpression(
-                                        SyntaxFactory.ParseTypeName(type.ToDisplayString()))))))))
-            .WithTarget(SyntaxFactory.AttributeTargetSpecifier(SyntaxFactory.Token(SyntaxKind.AssemblyKeyword)))
-            .NormalizeWhitespace(elasticTrivia: true)
-            // Set after normalisation, which discards trivia applied before it. One line break:
-            // whatever separated the usings from the first declaration is still there below.
-            // Taken from the document rather than hard-coded: injecting a line feed into a file
-            // that uses carriage-return line feed leaves a mixed-ending line nobody asked for.
-            .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(root)));
+        // TypeExpression rather than a parsed display string: it spells nested and generic types
+        // correctly, and the code action's simplifier reduces the global:: it starts with.
+        var generator = SyntaxGenerator.GetGenerator(document);
+        var attribute = generator.Attribute(
+            HostingStartupAttributeName,
+            generator.TypeOfExpression(generator.TypeExpression(type)));
 
-        // After the usings, before everything else, which is where a reader expects it.
-        var updated = unit.AttributeLists.Any()
-            ? unit.AddAttributeLists(attribute)
-            : unit.WithAttributeLists(SyntaxFactory.SingletonList(attribute));
-
-        return document.WithSyntaxRoot(updated);
-    }
-
-    private static string LineBreakOf(SyntaxNode root)
-    {
-        var text = root.GetText();
-
-        return text.Lines.Count > 1
-            ? text.ToString(TextSpan.FromBounds(text.Lines[0].End, text.Lines[0].EndIncludingLineBreak))
-            : Environment.NewLine;
+        return SyntaxEditing.AddAssemblyAttribute(document, unit, attribute);
     }
 }

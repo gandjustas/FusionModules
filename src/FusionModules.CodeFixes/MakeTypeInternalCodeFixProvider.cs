@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using FusionModules.Analyzers;
@@ -65,16 +66,9 @@ public sealed class MakeTypeInternalCodeFixProvider : CodeFixProvider
             return document;
         }
 
-        var publicKeyword = declaration.Modifiers.First(modifier => modifier.IsKind(SyntaxKind.PublicKeyword));
-
-        // Replace rather than remove-and-add, so leading trivia — the doc comment and the blank
-        // line above it — stays attached where it was.
-        var @internal = SyntaxFactory
-            .Token(SyntaxKind.InternalKeyword)
-            .WithLeadingTrivia(publicKeyword.LeadingTrivia)
-            .WithTrailingTrivia(publicKeyword.TrailingTrivia);
-
-        var updated = declaration.WithModifiers(declaration.Modifiers.Replace(publicKeyword, @internal));
+        // Through the generator rather than by swapping tokens: it keeps leading trivia — the doc
+        // comment and the blank line above it — attached where it was.
+        var updated = SyntaxGenerator.GetGenerator(document).WithAccessibility(declaration, Accessibility.Internal);
 
         return document.WithSyntaxRoot(root.ReplaceNode(declaration, updated));
     }

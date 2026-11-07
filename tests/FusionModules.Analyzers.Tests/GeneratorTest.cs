@@ -20,8 +20,6 @@ internal static class GeneratorTest
     /// <summary>A module assembly: its name, and the modules it references.</summary>
     public sealed record Module(string Name, params string[] References);
 
-    private static ImmutableArray<MetadataReference>? baseReferences;
-
     /// <summary>
     /// Generates against a host that references <paramref name="modules"/>, and returns the
     /// generated file, or null when the generator produced nothing.
@@ -33,9 +31,56 @@ internal static class GeneratorTest
         string hostSource = "class Program { static void Main() { } }",
         OutputKind outputKind = OutputKind.ConsoleApplication)
     {
-        var references = await BaseReferencesAsync();
+        var (host, options) = await CreateHostAsync(modules, projectKind, enabled, hostSource, outputKind);
 
-        var framework = Compile("Framework", [AnalyzerTest.FrameworkStubs, AnalyzerTest.ModuleBaseStub], references);
+        var driver = CSharpGeneratorDriver
+            .Create([new KnownModulesGenerator().AsSourceGenerator()], optionsProvider: options)
+            .RunGeneratorsAndUpdateCompilation(host, out var output, out var diagnostics);
+
+        await Assert.That(diagnostics).IsEmpty();
+
+        // The generated file is compiled by the consumer, so "it compiles" is part of the contract.
+        var errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        await Assert.That(errors).IsEmpty();
+
+        var generated = driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).ToList();
+
+        return generated.Count == 0 ? null : generated.Single().SourceText.ToString();
+    }
+
+    /// <summary>
+    /// Generates, edits the host's code without touching its references, generates again, and
+    /// returns why the generator's module step produced what it did the second time.
+    /// </summary>
+    public static async Task<IReadOnlyList<IncrementalStepRunReason>> RunAfterAnEditAsync(params Module[] modules)
+    {
+        var (host, options) = await CreateHostAsync(modules, "Host", null, "class Program { static void Main() { } }", OutputKind.ConsoleApplication);
+
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            [new KnownModulesGenerator().AsSourceGenerator()],
+            optionsProvider: options,
+            driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
+
+        driver = driver.RunGenerators(host);
+        driver = driver.RunGenerators(host.AddSyntaxTrees(CSharpSyntaxTree.ParseText("class Edited { int Value => 42; }")));
+
+        return driver.GetRunResult().Results
+            .Single()
+            .TrackedSteps[KnownModulesGenerator.ModulesStep]
+            .SelectMany(step => step.Outputs)
+            .Select(output => output.Reason)
+            .ToList();
+    }
+
+    private static async Task<(CSharpCompilation Host, AnalyzerConfigOptionsProvider Options)> CreateHostAsync(
+        IEnumerable<Module> modules,
+        string projectKind,
+        string? enabled,
+        string hostSource,
+        OutputKind outputKind)
+    {
+        var references = await AnalyzerTest.BaseReferencesAsync();
+        var framework = await AnalyzerTest.FrameworkAsync();
 
         var compiled = new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -67,7 +112,7 @@ internal static class GeneratorTest
                 }
                 """;
 
-            compiled[module.Name] = Compile(
+            compiled[module.Name] = AnalyzerTest.Compile(
                 module.Name,
                 [source],
                 references.Add(framework).AddRange(module.References.Select(name => compiled[name])));
@@ -90,19 +135,7 @@ internal static class GeneratorTest
             options["build_property.FusionModulesKnownModules"] = enabled;
         }
 
-        var driver = CSharpGeneratorDriver
-            .Create([new KnownModulesGenerator().AsSourceGenerator()], optionsProvider: new Options(options))
-            .RunGeneratorsAndUpdateCompilation(host, out var output, out var diagnostics);
-
-        await Assert.That(diagnostics).IsEmpty();
-
-        // The generated file is compiled by the consumer, so "it compiles" is part of the contract.
-        var errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        await Assert.That(errors).IsEmpty();
-
-        var generated = driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).ToList();
-
-        return generated.Count == 0 ? null : generated.Single().SourceText.ToString();
+        return (host, new Options(options));
     }
 
     /// <summary>The value of the generated <c>All</c> constant.</summary>
@@ -120,28 +153,6 @@ internal static class GeneratorTest
 
         return text[start..end];
     }
-
-    private static MetadataReference Compile(string name, string[] sources, ImmutableArray<MetadataReference> references)
-    {
-        var compilation = CSharpCompilation.Create(
-            name,
-            sources.Select(source => CSharpSyntaxTree.ParseText(source)),
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using var stream = new MemoryStream();
-        var result = compilation.Emit(stream);
-
-        if (!result.Success)
-        {
-            throw new InvalidOperationException($"{name} did not compile: {string.Join("; ", result.Diagnostics)}");
-        }
-
-        return MetadataReference.CreateFromImage(stream.ToArray());
-    }
-
-    private static async Task<ImmutableArray<MetadataReference>> BaseReferencesAsync() =>
-        baseReferences ??= await ReferenceAssemblies.Default.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);
 
     private sealed class Options(Dictionary<string, string> globals) : AnalyzerConfigOptionsProvider
     {

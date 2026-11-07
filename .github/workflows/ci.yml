@@ -36,6 +36,16 @@ jobs:
             8.0.x
             10.0.x
 
+      # Restore is most of a cold job's first minutes, and the package set only moves with the
+      # project files. Not setup-dotnet's own cache, which needs lock files this repository does
+      # not keep. Not in pack-validate either: there a warm packages folder is exactly what would
+      # serve a stale FusionModules package instead of the one just packed.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       # FusionModules.slnx is the product, samples/Samples.slnx the samples: one project list each.
       - run: dotnet build FusionModules.slnx -c Release -warnaserror
       - run: dotnet build samples/Samples.slnx -c Release -warnaserror

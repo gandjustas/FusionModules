@@ -65,6 +65,42 @@ public class ModuleAnalyzerTests
             """);
 
     [Test]
+    public Task EntityConfiguredByANestedConfiguration_IsFine() =>
+        // Configurations grouped inside a static class are common, and EF Core finds them all the same.
+        AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
+            public class Order { }
+
+            internal static class Configurations
+            {
+                internal sealed class OrderConfiguration : Microsoft.EntityFrameworkCore.IEntityTypeConfiguration<Order> { }
+            }
+            """);
+
+    [Test]
+    public Task ClientOfANestedHub_IsReported() =>
+        // A hub declared inside another type is still a hub, and its client still needs the proxy.
+        AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
+            interface {|MOD0009:IPaymentClient|} { }
+
+            internal static class Hubs
+            {
+                internal sealed class PaymentHub : Microsoft.AspNetCore.SignalR.Hub<IPaymentClient> { }
+            }
+            """);
+
+    [Test]
+    public Task SeveralTypesOnTheAllowList_AreFine() =>
+        // The list is read once per file and then asked for each type in it. A comma, not a
+        // semicolon: in an .editorconfig the semicolon starts a comment.
+        AnalyzerTest.VerifyWithOptionAsync<ModuleAnalyzer>("fusion_modules_allowed_public_types", "OrderDto, Invoice", """
+            public class OrderDto { }
+
+            public class Invoice { }
+
+            public class {|MOD0001:Receipt|} { }
+            """);
+
+    [Test]
     public Task EntityWithoutConfiguration_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
             public class {|MOD0001:Order|} { }

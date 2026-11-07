@@ -159,6 +159,55 @@ public class CodeFixTests
             codeActionIndex: 1);
 
     [Test]
+    public Task HubClient_MakePublic_ChangesTheWholeChainInOneGo() =>
+        // Both the interface and its container hide it. Rewriting the container from its original
+        // node would drop the interface's own change, and the fix would take two rounds.
+        VerifyFixAsync<ModuleAnalyzer, HubClientReachableCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            class Contracts
+            {
+                internal interface {|MOD0009:IPaymentClient|} { }
+            }
+
+            sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
+            """,
+            """
+            using Microsoft.AspNetCore.SignalR;
+
+            public class {|MOD0001:Contracts|}
+            {
+                public interface IPaymentClient { }
+            }
+
+            sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
+            """,
+            codeActionIndex: 1);
+
+    [Test]
+    public Task RegisterModule_QualifiesATypeInANamespace() =>
+        // The attribute sits above the namespace, so the type has to be named in full there.
+        VerifyFixAsync<ModuleAnalyzer, RegisterModuleCodeFixProvider>(
+            """
+            using FusionModules;
+
+            namespace Orders.Nested
+            {
+                sealed class {|MOD0005:Outer|} : ModuleBase { }
+            }
+            """,
+            """
+            using FusionModules;
+            [assembly: Microsoft.AspNetCore.Hosting.HostingStartup(typeof(Orders.Nested.Outer))]
+
+            namespace Orders.Nested
+            {
+                sealed class Outer : ModuleBase { }
+            }
+            """);
+
+    [Test]
     public Task HubClient_GrantAccess_IsWrittenOnceForTheWholeFile() =>
         // Two clients, one attribute. Nothing in the provider guards against writing it twice,
         // and nothing needs to: BatchFixer drops the second insertion as conflicting with the
@@ -190,7 +239,7 @@ public class CodeFixTests
             """,
             codeActionIndex: 0);
 
-    private static Task VerifyFixAsync<TAnalyzer, TCodeFix>(
+    private static async Task VerifyFixAsync<TAnalyzer, TCodeFix>(
         string source, string fixedSource, int? codeActionIndex = null)
         where TAnalyzer : DiagnosticAnalyzer, new()
         where TCodeFix : CodeFixProvider, new()
@@ -202,18 +251,9 @@ public class CodeFixTests
             CodeActionIndex = codeActionIndex,
         };
 
-        var framework = new ProjectState("Framework", LanguageNames.CSharp, "/Framework/", "cs");
-        framework.Sources.Add(AnalyzerTest.FrameworkStubs);
-        framework.Sources.Add(AnalyzerTest.ModuleBaseStub);
+        await AnalyzerTest.ArrangeAsync(test.TestState, withModuleBase: true, [AnalyzerTest.RegisteredModule, source]);
+        await AnalyzerTest.ArrangeAsync(test.FixedState, withModuleBase: true, [AnalyzerTest.RegisteredModule, fixedSource]);
 
-        test.TestState.AdditionalProjects.Add("Framework", framework);
-        test.TestState.AdditionalProjectReferences.Add("Framework");
-        test.TestState.Sources.Add(AnalyzerTest.RegisteredModule);
-        test.TestState.Sources.Add(source);
-
-        test.FixedState.Sources.Add(AnalyzerTest.RegisteredModule);
-        test.FixedState.Sources.Add(fixedSource);
-
-        return test.RunAsync(CancellationToken.None);
+        await test.RunAsync(CancellationToken.None);
     }
 }

@@ -326,30 +326,37 @@ fi
 # The NuGet-generated imports that carry buildTransitive assets only exist after restore,
 # so every project queried below has to have been built first.
 log "buildTransitive assets apply"
-kind="$(dotnet msbuild "$work/consumer/Host" -getProperty:FusionModulesProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
+# One evaluation per project: given more than one -getProperty or -getItem, dotnet msbuild answers
+# them all at once, as JSON. Each call is a process start and an evaluation, so asking one thing
+# at a time paid for both again and again.
+host="$(dotnet msbuild "$work/consumer/Host" -getProperty:FusionModulesProjectKind -getProperty:GenerateMvcApplicationPartsAssemblyAttributes -v:q 2>/dev/null | tr -d '\r')"
+module="$(dotnet msbuild "$work/consumer/GoodModule" -getProperty:FusionModulesProjectKind -getItem:Using -getItem:Analyzer -v:q 2>/dev/null | tr -d '\r')"
+
+# A property's value out of that JSON. No jq: it is on neither CI image's PATH by default on Windows.
+property() { grep -o "\"$2\": *\"[^\"]*\"" <<<"$1" | head -1 | sed 's/.*: *"\(.*\)"/\1/'; }
+
+kind="$(property "$host" FusionModulesProjectKind)"
 [ "$kind" = "Host" ] && pass "host detected as FusionModulesProjectKind=Host" || fail "FusionModulesProjectKind was '$kind', expected 'Host'"
 
-parts="$(dotnet msbuild "$work/consumer/Host" -getProperty:GenerateMvcApplicationPartsAssemblyAttributes -v:q 2>/dev/null | tr -d '\r\n ')"
+parts="$(property "$host" GenerateMvcApplicationPartsAssemblyAttributes)"
 [ "$parts" = "false" ] && pass "Application Part Discovery disabled for the host" || fail "GenerateMvcApplicationPartsAssemblyAttributes was '$parts', expected 'false'"
 
-kind="$(dotnet msbuild "$work/consumer/GoodModule" -getProperty:FusionModulesProjectKind -v:q 2>/dev/null | tr -d '\r\n ')"
+kind="$(property "$module" FusionModulesProjectKind)"
 [ "$kind" = "Module" ] && pass "library detected as FusionModulesProjectKind=Module" || fail "FusionModulesProjectKind was '$kind', expected 'Module'"
 
 # The implicit usings a module loses when it stops being a Microsoft.NET.Sdk.Web project.
-usings="$(dotnet msbuild "$work/consumer/GoodModule" -getItem:Using -v:q 2>/dev/null)"
-case "$usings" in
-    *Microsoft.AspNetCore.Builder*) pass "module gets the Web SDK's implicit usings" ;;
+case "$module" in
+    *'"Microsoft.AspNetCore.Builder"'*) pass "module gets the Web SDK's implicit usings" ;;
     *) fail "no Microsoft.AspNetCore.Builder in @(Using) for a module" ;;
 esac
 
 # And the analyzers it loses with them: these live in the Web SDK's own folder, not in the
 # framework reference, so nothing else puts MVC1000 or ASP0000 back.
-analyzers="$(dotnet msbuild "$work/consumer/GoodModule" -getItem:Analyzer -v:q 2>/dev/null)"
-case "$analyzers" in
+case "$module" in
     *Microsoft.AspNetCore.Mvc.Analyzers.dll*) pass "module gets the Web SDK's MVC analyzers" ;;
     *) fail "no Microsoft.AspNetCore.Mvc.Analyzers.dll in @(Analyzer) for a module" ;;
 esac
-case "$analyzers" in
+case "$module" in
     *Microsoft.AspNetCore.Analyzers.dll*) pass "module gets the Web SDK's Startup analyzer" ;;
     *) fail "no Microsoft.AspNetCore.Analyzers.dll in @(Analyzer) for a module" ;;
 esac

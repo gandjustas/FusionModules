@@ -29,67 +29,69 @@ namespace FusionModules.Analyzers;
 [Generator(LanguageNames.CSharp)]
 public sealed class KnownModulesGenerator : IIncrementalGenerator
 {
-    private const string ProjectKindOption = "build_property.FusionModulesProjectKind";
     private const string EnabledOption = "build_property.FusionModulesKnownModules";
     private const string HintName = "FusionModules.KnownModules.g.cs";
+
+    /// <summary>The step whose output decides whether anything is regenerated; named for tests.</summary>
+    internal const string ModulesStep = "Modules";
 
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var settings = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) =>
         {
-            provider.GlobalOptions.TryGetValue(ProjectKindOption, out var kind);
             provider.GlobalOptions.TryGetValue(EnabledOption, out var enabled);
 
-            return (Kind: kind ?? string.Empty, Disabled: string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase));
+            return (
+                Kind: ModuleFacts.GetProjectKind(provider.GlobalOptions),
+                Disabled: string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase));
         });
 
-        // A joined string rather than a collection: the value is what the generated file contains,
-        // and it compares by value, so an edit that leaves the module set alone regenerates nothing.
-        var collected = context.CompilationProvider.Select(static (compilation, token) => Collect(compilation, token));
+        // The settings go in first, so that a module — most projects in a modular solution — or a
+        // project that switched the list off pays for neither the entry point nor the reference
+        // scan, edit after edit. A joined string rather than a collection: the value is what the
+        // generated file contains, and it compares by value, so an edit that leaves the module
+        // set alone regenerates nothing.
+        var modules = context.CompilationProvider
+            .Combine(settings)
+            .Select(static (input, token) => Collect(input.Left, input.Right.Kind, input.Right.Disabled, token))
+            .WithTrackingName(ModulesStep);
 
-        context.RegisterSourceOutput(collected.Combine(settings), static (production, input) =>
+        context.RegisterSourceOutput(modules, static (production, modules) =>
         {
-            var ((modules, hasEntryPoint), (kind, disabled)) = input;
-
-            if (disabled || !ShouldGenerate(kind, hasEntryPoint))
+            if (modules is not null)
             {
-                return;
+                production.AddSource(HintName, SourceText.From(Render(modules), Encoding.UTF8));
             }
-
-            production.AddSource(HintName, SourceText.From(Render(modules), Encoding.UTF8));
         });
     }
 
     /// <summary>
-    /// MSBuild classifies the project and this reads the answer, exactly as MOD0003 does. Without
-    /// the package's targets there is no answer, and then producing a program is what separates a
-    /// host or a test assembly from a module.
+    /// The module list, or null when this project gets none. MSBuild classifies the project and
+    /// this reads the answer, exactly as MOD0003 does; only a host or a test assembly gets the
+    /// list. Without the package's targets there is no answer, and then producing a program is
+    /// what separates a host or a test assembly from a module.
     /// </summary>
-    private static bool ShouldGenerate(string kind, bool hasEntryPoint) => kind switch
+    private static string? Collect(Compilation compilation, ProjectKind kind, bool disabled, CancellationToken token)
     {
-        "Host" or "Test" => true,
-        "Module" => false,
-        _ => hasEntryPoint,
-    };
-
-    private static (string Modules, bool HasEntryPoint) Collect(Compilation compilation, CancellationToken token)
-    {
-        var hasEntryPoint = compilation.GetEntryPoint(token) is not null;
+        if (disabled ||
+            kind == ProjectKind.Module ||
+            (kind == ProjectKind.Unknown && compilation.GetEntryPoint(token) is null))
+        {
+            return null;
+        }
 
         var hostingStartup = compilation.GetTypeByMetadataName(ModuleFacts.HostingStartupAttributeMetadataName);
         var moduleBase = ModuleFacts.GetModuleBaseType(compilation);
 
         if (hostingStartup is null || moduleBase is null)
         {
-            return (string.Empty, hasEntryPoint);
+            return string.Empty;
         }
 
-        var modules = compilation.SourceModule.ReferencedAssemblySymbols
-            .Where(assembly => ModuleFacts.IsModuleAssembly(assembly, hostingStartup, moduleBase))
-            .ToList();
+        var modules = ModuleFacts.GetReferencedModules(compilation, hostingStartup, moduleBase).ToList();
 
-        return (string.Join(";", Order(modules, token)), hasEntryPoint);
+        return string.Join(";", Order(modules, token));
     }
 
     /// <summary>

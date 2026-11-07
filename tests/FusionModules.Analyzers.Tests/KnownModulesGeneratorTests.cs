@@ -110,4 +110,16 @@ public class KnownModulesGeneratorTests
         await Assert.That(program).IsNotNull();
         await Assert.That(library).IsNull();
     }
+
+    [Test]
+    public async Task AnEditThatLeavesTheReferencesAloneRegeneratesNothing()
+    {
+        // In the IDE the generator runs on every keystroke. The module list depends on the
+        // references only, so a keystroke must end at this step with the same value as before,
+        // and the file must not be written again.
+        var reasons = await RunAfterAnEditAsync(new Module("Orders.Entities"), new Module("Customers.Entities"));
+
+        await Assert.That(reasons).IsNotEmpty();
+        await Assert.That(reasons.All(reason => reason is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached)).IsTrue();
+    }
 }

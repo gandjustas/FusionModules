@@ -106,18 +106,8 @@ public class ModuleControllerDiscoveryTests
         return Populate(services);
     }
 
-    private static IReadOnlyList<Type> Populate(IServiceCollection services)
-    {
-        var manager = services
-            .Select(descriptor => descriptor.ImplementationInstance)
-            .OfType<ApplicationPartManager>()
-            .Last();
-
-        var feature = new ControllerFeature();
-        manager.PopulateFeature(feature);
-
-        return feature.Controllers.Select(controller => controller.AsType()).ToArray();
-    }
+    private static IReadOnlyList<Type> Populate(IServiceCollection services) =>
+        Features.Populate<ControllerFeature>(services).Controllers.Select(controller => controller.AsType()).ToArray();
 
     /// <summary>Runs after discovery and empties the result — proving it ran after discovery.</summary>
     private sealed class DropsEverythingItFinds : IApplicationFeatureProvider<ControllerFeature>

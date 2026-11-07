@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -67,17 +68,18 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             SymbolKind.NamedType);
 
         // MOD0001 — only applies to a module assembly, and never to the host's own executable.
-        if (compilation.GetEntryPoint(context.CancellationToken) is not null ||
-            !ModuleFacts.IsModuleAssembly(compilation.Assembly, hostingStartupAttribute, moduleBase))
+        if (!ModuleFacts.IsModuleCompilation(compilation, hostingStartupAttribute, moduleBase, context.CancellationToken))
         {
             return;
         }
 
-        var hubClients = ModuleFacts.GetHubClients(compilation);
+        var declared = ModuleFacts.ScanDeclaredTypes(compilation);
+        var hubClients = declared.HubClients;
 
-        var exemptions = TypeExemptions.Create(compilation, hubClients);
+        var exemptions = TypeExemptions.Create(compilation, declared);
+        var allowed = new AllowedPublicTypes(context.Options.AnalyzerConfigOptionsProvider);
         context.RegisterSymbolAction(
-            symbolContext => CheckTypeIsNotPublic(symbolContext, exemptions),
+            symbolContext => CheckTypeIsNotPublic(symbolContext, exemptions, allowed),
             SymbolKind.NamedType);
 
         // MOD0009 — the mirror image: these types the runtime insists on reaching, and an
@@ -163,7 +165,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             type.Name));
     }
 
-    private static void CheckTypeIsNotPublic(SymbolAnalysisContext context, TypeExemptions exemptions)
+    private static void CheckTypeIsNotPublic(SymbolAnalysisContext context, TypeExemptions exemptions, AllowedPublicTypes allowed)
     {
         var type = (INamedTypeSymbol)context.Symbol;
 
@@ -171,7 +173,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             type.ContainingType is not null ||
             !SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, context.Compilation.Assembly) ||
             exemptions.IsExempt(type) ||
-            IsAllowedByConfiguration(context, type))
+            allowed.Allows(type))
         {
             return;
         }
@@ -204,29 +206,44 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             hub));
     }
 
-    private static bool IsAllowedByConfiguration(SymbolAnalysisContext context, INamedTypeSymbol type)
+    /// <summary>
+    /// The <c>fusion_modules_allowed_public_types</c> list, read once per syntax tree rather than
+    /// once per public type: options can differ by directory, but not by type.
+    /// </summary>
+    private sealed class AllowedPublicTypes(AnalyzerConfigOptionsProvider provider)
     {
-        var tree = type.Locations.FirstOrDefault(l => l.SourceTree is not null)?.SourceTree;
-        if (tree is null)
+        private readonly ConcurrentDictionary<SyntaxTree, HashSet<string>> _byTree = new();
+
+        public bool Allows(INamedTypeSymbol type)
         {
-            return false;
+            var tree = type.Locations.FirstOrDefault(l => l.SourceTree is not null)?.SourceTree;
+            if (tree is null)
+            {
+                return false;
+            }
+
+            var names = _byTree.GetOrAdd(tree, Read);
+
+            return names.Count > 0 &&
+                (names.Contains(type.Name) || names.Contains(type.ToDisplayString()));
         }
 
-        if (!context.Options.AnalyzerConfigOptionsProvider.GetOptions(tree)
-                .TryGetValue($"build_property.{AllowedPublicTypesOption}", out var configured) &&
-            !context.Options.AnalyzerConfigOptionsProvider.GetOptions(tree)
-                .TryGetValue(AllowedPublicTypesOption, out configured))
+        private HashSet<string> Read(SyntaxTree tree)
         {
-            return false;
+            var options = provider.GetOptions(tree);
+            if (!options.TryGetValue($"build_property.{AllowedPublicTypesOption}", out var configured) &&
+                !options.TryGetValue(AllowedPublicTypesOption, out configured))
+            {
+                return [];
+            }
+
+            return new HashSet<string>(
+                configured
+                    .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(entry => entry.Trim())
+                    .Where(entry => entry.Length > 0),
+                StringComparer.Ordinal);
         }
-
-        var name = type.Name;
-        var fullName = type.ToDisplayString();
-
-        return configured
-            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(entry => entry.Trim())
-            .Any(entry => entry.Equals(name, StringComparison.Ordinal) || entry.Equals(fullName, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -242,19 +259,19 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         private readonly HashSet<ITypeSymbol> _entityTypes;
         private readonly Dictionary<ITypeSymbol, string> _hubClients;
 
-        private TypeExemptions(Compilation compilation, Dictionary<ITypeSymbol, string> hubClients)
+        private TypeExemptions(Compilation compilation, DeclaredTypes declared)
         {
             _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
-            _hubClients = hubClients;
+            _hubClients = declared.HubClients;
             _controllerBase = compilation.GetTypeByMetadataName(ModuleFacts.ControllerBaseMetadataName);
             _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
             _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
             _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
-            _entityTypes = ModuleFacts.GetConfiguredEntityTypes(compilation);
+            _entityTypes = declared.EntityTypes;
         }
 
-        public static TypeExemptions Create(Compilation compilation, Dictionary<ITypeSymbol, string> hubClients) =>
-            new(compilation, hubClients);
+        public static TypeExemptions Create(Compilation compilation, DeclaredTypes declared) =>
+            new(compilation, declared);
 
         public bool IsExempt(INamedTypeSymbol type) =>
             _entityTypes.Contains(type) ||
