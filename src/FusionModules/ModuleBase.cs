@@ -20,11 +20,11 @@ namespace FusionModules;
 /// Nothing else is required: no registration in the host, no plugin engine, no manifest.
 /// </para>
 /// <para>
-/// Derived types override <see cref="ConfigureServices(WebHostBuilderContext, IServiceCollection)"/>,
-/// <see cref="Configure"/> and <see cref="ConfigureAppConfiguration"/> — the same shape as the
-/// classic <c>Startup</c> class, so the composition model is one a .NET developer already knows.
-/// <see cref="ConfigureServices(IHostApplicationBuilder)"/> is there for the registrations that
-/// are written against the builder instead.
+/// Derived types override <see cref="ConfigureServices(IHostApplicationBuilder)"/>,
+/// <see cref="Configure"/> and <see cref="ConfigureAppConfiguration"/>. The builder is the type
+/// <c>Program.cs</c> has, so a service's registrations move into its module unchanged; the other
+/// two are the classic <c>Startup</c> class's, so the composition model is one a .NET developer
+/// already knows.
 /// </para>
 /// <para>
 /// The assembly must carry <c>[assembly: HostingStartup(typeof(TModule))]</c>. Forgetting it is a
@@ -37,8 +37,8 @@ namespace FusionModules;
 ///
 /// class Module : ModuleBase
 /// {
-///     protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
-///         =&gt; services.AddScoped&lt;IOrderService, OrderService&gt;();
+///     protected override void ConfigureServices(IHostApplicationBuilder builder)
+///         =&gt; builder.Services.AddScoped&lt;IOrderService, OrderService&gt;();
 ///
 ///     protected override void Configure(IApplicationBuilder app)
 ///         =&gt; app.UseEndpoints(e =&gt; e.MapGroup("/orders").MapGet("/", () =&gt; "orders"));
@@ -61,10 +61,21 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     private bool _validated;
 
     /// <summary>
-    /// Registers the module's services. Runs during host construction, before the application is built.
+    /// Registers the module's services the way the classic <c>Startup</c> did. Obsolete: override
+    /// <see cref="ConfigureServices(IHostApplicationBuilder)"/>, which has the same services,
+    /// configuration and environment.
     /// </summary>
     /// <param name="context">The web host builder context.</param>
     /// <param name="services">The service collection to add to.</param>
+    /// <remarks>
+    /// Still called, after the other overload, so a module written for 0.1 keeps working. Two
+    /// overloads made modules split their registrations between them — mgms's thirteen modules of
+    /// fifteen put the database in one and everything else in the other — and every explanation of
+    /// the module had to say which runs first.
+    /// </remarks>
+    [Obsolete("Override ConfigureServices(IHostApplicationBuilder) instead: builder.Services, builder.Configuration and " +
+              "builder.Environment are what this overload's parameters were. This overload still runs, after that one; " +
+              "the code fix for this warning moves the body across.")]
     protected virtual void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
     {
     }
@@ -76,21 +87,23 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// <param name="builder">A builder over the host's environment, configuration and services.</param>
     /// <remarks>
     /// <para>
-    /// Every Aspire client integration is of that shape, and most component packages —
+    /// The same type <c>Program.cs</c> has, so a service's registrations move into its module unchanged.
+    /// That matters most for what is written as an extension of the builder rather than of
+    /// <see cref="IServiceCollection"/>. Every Aspire client integration is of that shape, and most component packages —
     /// <c>AddNpgsqlDataSource</c>, <c>AddRedisClient</c> and their kind. They do more than register
     /// a client: they resolve the connection string out of <c>ConnectionStrings</c>, add a health
     /// check and instrument the calls. Calling them here keeps all of that; hand-registering the
     /// client keeps none of it.
     /// </para>
     /// <para>
-    /// This runs before <see cref="ConfigureServices(WebHostBuilderContext, IServiceCollection)"/>,
-    /// and both always run. Integrations register with <c>TryAdd</c>, so an explicit registration
-    /// in the other overload wins over an integration's default — which is the way round you want.
+    /// Integrations register with <c>TryAdd</c>, so an explicit registration here wins over an
+    /// integration's default, before or after the call — which is the way round you want.
     /// </para>
     /// <para>
     /// The builder is the module's view of the host, not the host: its configuration is readable
     /// and closed to new sources (use <see cref="ConfigureAppConfiguration"/> for those), and it
-    /// does not choose the container.
+    /// does not choose the container. <see cref="IHostApplicationBuilder.Environment"/> is the web
+    /// host's environment; cast it to <c>IWebHostEnvironment</c> for <c>WebRootPath</c>.
     /// </para>
     /// </remarks>
     /// <example>
@@ -99,6 +112,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// {
     ///     builder.AddNpgsqlDataSource("orders");
     ///     builder.AddRedisClient("cache");
+    ///     builder.Services.AddScoped&lt;IOrders, Orders&gt;();
     /// }
     /// </code>
     /// </example>
@@ -220,7 +234,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
             var assembly = Assembly.Load(new AssemblyName(name));
             if (GetModuleType(assembly) is { } moduleType)
             {
-                entries.Add(new(RegistryKey(assembly), moduleType.AssemblyQualifiedName));
+                entries.Add(new(RegistryKey(assembly.GetName().Name), moduleType.AssemblyQualifiedName));
             }
         }
 
@@ -233,7 +247,9 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         {
             services.AddSingleton<IStartupFilter>(this);
             ConfigureServices(new ModuleHostBuilder(context, services));
+#pragma warning disable CS0618 // still called: a module written for 0.1 keeps working
             ConfigureServices(context, services);
+#pragma warning restore CS0618
         });
 
         builder.ConfigureAppConfiguration((context, configuration) =>
@@ -241,7 +257,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
             var moduleType = GetType();
             configuration.AddInMemoryCollection(
             [
-                new(RegistryKey(moduleType.Assembly), moduleType.AssemblyQualifiedName)
+                new(RegistryKey(moduleType.Assembly.GetName().Name), moduleType.AssemblyQualifiedName)
             ]);
 
             ConfigureAppConfiguration(context, configuration);
@@ -250,61 +266,10 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
     Action<IApplicationBuilder> IStartupFilter.Configure(Action<IApplicationBuilder> next) => app =>
     {
-        Validate(app.ApplicationServices.GetRequiredService<IConfiguration>());
+        ValidateReferences(app.ApplicationServices.GetRequiredService<IConfiguration>());
         next(app);
         Configure(app);
     };
-
-    private void Validate(IConfiguration configuration)
-    {
-        if (_validated)
-        {
-            return;
-        }
-
-        ValidateRequestedModules(configuration);
-        ValidateReferences(configuration);
-
-        _validated = true;
-    }
-
-    /// <summary>
-    /// Fails fast when a name in <c>HOSTINGSTARTUPASSEMBLIES</c> did not produce a module.
-    /// </summary>
-    /// <remarks>
-    /// ASP.NET Core logs a critical message for an assembly it cannot load and then carries on
-    /// starting, so a typo in a deployment variable produces an application that looks healthy,
-    /// passes its readiness probe and serves 404s. This turns that into a startup failure.
-    /// <para>
-    /// It runs from whichever modules did load, which is the price of the host knowing nothing
-    /// about modularity: if every name is misspelled there is nobody left to notice.
-    /// </para>
-    /// </remarks>
-    private static void ValidateRequestedModules(IConfiguration configuration)
-    {
-        foreach (var requested in GetActivationOrder(configuration).Keys)
-        {
-            if (configuration[RegistryKey(requested)] is not null)
-            {
-                continue;
-            }
-
-            var assembly = TryLoad(new AssemblyName(requested), out var failure) ??
-                throw new InvalidOperationException(
-                    $"'{requested}' is listed in HOSTINGSTARTUPASSEMBLIES but could not be loaded. " +
-                    "Check the spelling, and that the assembly is deployed next to the host.", failure);
-
-            // No attribute at all means somebody wrote a module and forgot
-            // [assembly: HostingStartup(typeof(TheModule))]. Anything else — a third-party
-            // hosting startup, say — is not ours to judge.
-            if (assembly.GetCustomAttribute<HostingStartupAttribute>() is null)
-            {
-                throw new InvalidOperationException(
-                    $"'{requested}' is listed in HOSTINGSTARTUPASSEMBLIES but declares no " +
-                    $"[assembly: {nameof(HostingStartupAttribute)}], so nothing in it ran.");
-            }
-        }
-    }
 
     /// <summary>
     /// Fails fast when this module references another module that was not activated.
@@ -317,6 +282,11 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// </remarks>
     private void ValidateReferences(IConfiguration configuration)
     {
+        if (_validated)
+        {
+            return;
+        }
+
         var missing = new List<string>();
 
         foreach (var reference in GetType().Assembly.GetReferencedAssemblies())
@@ -333,6 +303,8 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         {
             throw new InvalidOperationException(BuildMissingModulesMessage(configuration, missing));
         }
+
+        _validated = true;
     }
 
     private string BuildMissingModulesMessage(IConfiguration configuration, List<string> missing)
@@ -347,9 +319,6 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
                $"Add {names} to HOSTINGSTARTUPASSEMBLIES, " +
                "or stop using types from that module so the reference goes away.";
     }
-
-    private static Dictionary<string, int> GetActivationOrder(IConfiguration configuration) =>
-        GetActivationOrder(configuration[WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty);
 
     private static Dictionary<string, int> GetActivationOrder(string requested)
     {
@@ -373,21 +342,19 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     private static bool IsModuleReference(AssemblyName reference) =>
         ModuleReferences.GetOrAdd(
             reference.FullName,
-            static (fullName, reference) => TryLoad(reference, out _) is { } assembly && GetModuleType(assembly) is not null,
+            static (_, reference) => TryLoad(reference) is { } assembly && GetModuleType(assembly) is not null,
             reference);
 
     private static readonly ConcurrentDictionary<string, bool> ModuleReferences = new(StringComparer.OrdinalIgnoreCase);
 
-    private static Assembly? TryLoad(AssemblyName name, out Exception? failure)
+    private static Assembly? TryLoad(AssemblyName name)
     {
         try
         {
-            failure = null;
             return Assembly.Load(name);
         }
         catch (Exception e) when (e is FileNotFoundException or FileLoadException or BadImageFormatException)
         {
-            failure = e;
             return null;
         }
     }
@@ -398,8 +365,6 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         typeof(ModuleBase).IsAssignableFrom(attribute.HostingStartupType)
             ? attribute.HostingStartupType
             : null;
-
-    private static string RegistryKey(Assembly assembly) => RegistryKey(assembly.GetName().Name);
 
     private static string RegistryKey(string? assemblyName) => $"{ConfigurationSection}:{assemblyName}";
 

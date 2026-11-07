@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using FusionModules;
 using Pricing.Contracts;
 using PricingClientModule;
@@ -20,17 +19,17 @@ sealed class Module : ModuleBase
 {
     public const string HttpClientName = "pricing";
 
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
     {
-        var address = context.Configuration["Pricing:BaseAddress"]
+        var address = builder.Configuration["Pricing:BaseAddress"]
                       ?? throw new InvalidOperationException(
                           "Pricing:BaseAddress is required when PricingClientModule is loaded.");
 
         // A named client rather than a typed one, so a test — or a resilience policy — can
         // reconfigure the transport without naming this module's internal types.
-        services.AddHttpClient(HttpClientName, client => client.BaseAddress = new Uri(address));
+        builder.Services.AddHttpClient(HttpClientName, client => client.BaseAddress = new Uri(address));
 
-        services.AddScoped<IPricing, HttpPricing>();
+        builder.Services.AddScoped<IPricing, HttpPricing>();
     }
 }
 

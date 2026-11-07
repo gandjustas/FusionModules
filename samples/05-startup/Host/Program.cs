@@ -1,6 +1,6 @@
 using Startup.Contracts;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 builder.Services.AddSingleton<StartupLog>();
 

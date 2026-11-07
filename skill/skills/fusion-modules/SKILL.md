@@ -31,7 +31,7 @@ time. The application works after every step. This is the low-risk direction and
 prefer when both are on the table.
 
 **Microservices → modules.** Start a new empty host rather than promoting one of the services:
-it inherits no references, so MOD0003 is green from the first build. Then convert services
+it inherits no references, so MOD0004 is green from the first build. Then convert services
 lowest-fan-in first.
 
 **New system.** Start from [samples/01-minimal-api](https://github.com/gandjustas/FusionModules/tree/HEAD/samples/01-minimal-api)

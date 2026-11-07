@@ -69,9 +69,10 @@ namespace OrdersModule;
 
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
     {
-        // everything that was builder.Services.*
+        // everything that was builder.* in Program.cs, unchanged:
+        // builder.Services.Add…, builder.AddNpgsqlDataSource(…), builder.Configuration[…]
     }
 
     protected override void Configure(IApplicationBuilder app) =>
@@ -86,27 +87,35 @@ Middleware the service ran for itself goes at the top of `Configure`, before `Us
 Middleware that was really cross-cutting goes to the host — but only after reconciling it with
 the other services, which was Phase 1's job.
 
-## When a registration wants the builder, not the services
+## The builder is the module's view of the host
 
-A good deal of modern .NET is written as extensions of `IHostApplicationBuilder` rather than of
-`IServiceCollection` — every Aspire client integration, and most component packages. Those are not
-decoration over `AddDbContext`: they resolve `ConnectionStrings:<name>` out of configuration,
-register a health check and instrument the calls. Registering the client by hand keeps none of it.
-
-Override the other `ConfigureServices` and call them unchanged:
+`ConfigureServices` takes an `IHostApplicationBuilder`, the same type `Program.cs` had, so the
+service's registrations move over unchanged. That matters most for what is written as an extension of
+the builder rather than of `IServiceCollection` — every Aspire client integration, and most component
+packages. Those are not decoration over `AddDbContext`: they resolve `ConnectionStrings:<name>` out of
+configuration, register a health check and instrument the calls. Registering the client by hand keeps
+none of it.
 
 ```csharp
 protected override void ConfigureServices(IHostApplicationBuilder builder)
 {
     builder.AddNpgsqlDataSource("orders");
     builder.AddRedisClient("cache");
+    builder.Services.AddScoped<IOrders, Orders>();
 }
 ```
 
 It is the module's view of the host rather than the host: the configuration is readable and closed
 to new sources — `ConfigureAppConfiguration` is where those go, and adding one here throws rather
-than disappearing — and the container is not a module's choice. Both overloads always run, and this
-one runs first, so an explicit registration in the other still beats an integration's `TryAdd`.
+than disappearing — and the container is not a module's choice. `builder.Environment` is the web
+host's environment; cast it to `IWebHostEnvironment` for `WebRootPath`.
+
+Before 0.2 a module had a second overload, `ConfigureServices(WebHostBuilderContext, IServiceCollection)`,
+the shape of the classic `Startup`. It still runs, after this one, and overriding it is a CS0672
+warning whose code fix moves the body here (`services` becomes `builder.Services`, `context.Configuration`
+becomes `builder.Configuration`, `context.HostingEnvironment` becomes `builder.Environment`). Splitting
+registrations across both — the database in one, everything else in the other — was what most
+migrated modules ended up doing, for no reason but that there were two.
 
 ## Five collisions, all silent
 
@@ -175,7 +184,7 @@ a day:
 A hub's client interface needs a second sentence for the opposite reason: MOD0001 leaves it alone,
 but SignalR still has to reach it. The proxy for a `Hub<TClient>` is generated into a dynamic
 assembly of its own, which cannot implement an `internal` interface declared in yours — and nothing
-says so until a client connects and the process throws `TypeLoadException`. MOD0009 asks the
+says so until a client connects and the process throws `TypeLoadException`. MOD0010 asks the
 question at build time; the usual answer is one line:
 
 ```csharp

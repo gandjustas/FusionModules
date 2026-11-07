@@ -19,13 +19,12 @@ public class DescriptorTests
 
     // Found rather than listed: a hand-kept list is how a new analyzer escapes every check below.
     private static DiagnosticAnalyzer[] Analyzers =>
-        typeof(ModuleAnalyzer).Assembly
+        [.. typeof(ModuleAnalyzer).Assembly
             .GetTypes()
             .Where(type => !type.IsAbstract &&
                            typeof(DiagnosticAnalyzer).IsAssignableFrom(type) &&
                            type.IsDefined(typeof(DiagnosticAnalyzerAttribute), inherit: false))
-            .Select(type => (DiagnosticAnalyzer)Activator.CreateInstance(type)!)
-            .ToArray();
+            .Select(type => (DiagnosticAnalyzer)Activator.CreateInstance(type)!)];
 
     public static IEnumerable<Func<DiagnosticDescriptor>> AllDescriptors() =>
         Analyzers
@@ -37,7 +36,7 @@ public class DescriptorTests
     [MethodDataSource(nameof(AllDescriptors))]
     public async Task MessageFormat_HasNoUnfilledPlaceholders(DiagnosticDescriptor descriptor)
     {
-        // MOD0004 shipped with a three-placeholder message and two arguments, so it rendered as
+        // MOD0007 shipped with a three-placeholder message and two arguments, so it rendered as
         // "{2}" to whoever hit it. A format string is only as good as its callers, but at least
         // make sure the placeholders are contiguous from zero.
         var placeholders = Regex.Matches(descriptor.MessageFormat.ToString(CultureInfo.InvariantCulture), @"\{(\d+)\}")
@@ -67,7 +66,7 @@ public class DescriptorTests
     {
         // Descriptor_IsFullyPopulated only checks that the help link contains the id. A rule
         // shipped without its page has a link that resolves to a 404 in the IDE, and nothing
-        // anywhere goes red — which is how MOD0009's page came to be written but untracked.
+        // anywhere goes red — which is how MOD0010's page came to be written but untracked.
         var page = Path.Combine(RepositoryRoot, "docs", "rules", $"{descriptor.Id}.md");
 
         await Assert.That(File.Exists(page)).IsTrue();
@@ -95,7 +94,7 @@ public class DescriptorTests
         // documents behaviour nothing implements.
         var documented = Directory
             .EnumerateFiles(Path.Combine(RepositoryRoot, "docs", "rules"), "MOD*.md")
-            .Select(page => Path.GetFileNameWithoutExtension(page)!)
+            .Select(page => Path.GetFileNameWithoutExtension(page))
             .Order();
 
         var implemented = AllDescriptors().Select(descriptor => descriptor().Id).Order();

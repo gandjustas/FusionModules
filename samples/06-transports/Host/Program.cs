@@ -5,7 +5,7 @@
 //   PricingModule;PricingApiModule                  the pricing service, published
 //   CheckoutModule;PricingModule;PricingApiModule   merged, and still reachable from outside
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 var app = builder.Build();
 

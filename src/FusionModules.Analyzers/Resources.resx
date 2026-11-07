@@ -79,83 +79,103 @@
     <value>ASP.NET Core instantiates this type and casts it to IHostingStartup. Deriving from ModuleBase is also what registers the module and checks that the modules it references were activated.</value>
   </data>
 
-  <data name="MOD0003_Title" xml:space="preserve">
+  <data name="MOD0004_Title" xml:space="preserve">
     <value>The host must not use types from a module</value>
   </data>
-  <data name="MOD0003_Message" xml:space="preserve">
+  <data name="MOD0004_Message" xml:space="preserve">
     <value>The host uses types from module assembly '{0}'</value>
   </data>
-  <data name="MOD0003_Description" xml:space="preserve">
+  <data name="MOD0004_Description" xml:space="preserve">
     <value>A project reference is fine — it orders the build and copies the module to the output. Using the module's types is not: it puts that module in every deployment. Move the shared type to a contracts assembly.</value>
   </data>
 
-  <data name="MOD0004_Title" xml:space="preserve">
+  <data name="MOD0007_Title" xml:space="preserve">
     <value>The host must not declare an ApplicationPart for a module</value>
   </data>
-  <data name="MOD0004_Message" xml:space="preserve">
+  <data name="MOD0007_Message" xml:space="preserve">
     <value>The host declares [assembly: ApplicationPart] for module assembly '{0}'</value>
   </data>
-  <data name="MOD0004_Description" xml:space="preserve">
+  <data name="MOD0007_Description" xml:space="preserve">
     <value>Application Part Discovery does not know about HostingStartup: it loads a module's controllers and pages without running the module. Set GenerateMvcApplicationPartsAssemblyAttributes to false and let each module call AddApplicationPart.</value>
   </data>
 
-  <data name="MOD0005_Title" xml:space="preserve">
+  <data name="MOD0003_Title" xml:space="preserve">
     <value>A module must be named by an assembly-level HostingStartup attribute</value>
   </data>
-  <data name="MOD0005_Message" xml:space="preserve">
+  <data name="MOD0003_Message" xml:space="preserve">
     <value>Module '{0}' is never named by an [assembly: HostingStartup] attribute and will not be loaded</value>
   </data>
-  <data name="MOD0005_Description" xml:space="preserve">
+  <data name="MOD0003_Description" xml:space="preserve">
     <value>Without the attribute the module fails silently: ASP.NET Core loads the assembly, finds no attribute and moves on, so the module's services and endpoints do not exist and nothing is logged.</value>
   </data>
 
-  <data name="MOD0006_Title" xml:space="preserve">
+  <data name="MOD0008_Title" xml:space="preserve">
     <value>A module must not replace the application pipeline</value>
   </data>
-  <data name="MOD0006_Message" xml:space="preserve">
+  <data name="MOD0008_Message" xml:space="preserve">
     <value>'{0}' replaces the whole request pipeline and must not be called from a module</value>
   </data>
-  <data name="MOD0006_Description" xml:space="preserve">
+  <data name="MOD0008_Description" xml:space="preserve">
     <value>IWebHostBuilder.Configure and UseStartup define the pipeline rather than adding to it, discarding whatever the host and every other module set up. Override ModuleBase.Configure instead.</value>
   </data>
 
-  <data name="MOD0007_Title" xml:space="preserve">
+  <data name="MOD0009_Title" xml:space="preserve">
     <value>Redundant IStartupFilter registration</value>
   </data>
-  <data name="MOD0007_Message" xml:space="preserve">
+  <data name="MOD0009_Message" xml:space="preserve">
     <value>'{0}' already registers itself as an IStartupFilter</value>
   </data>
-  <data name="MOD0007_Description" xml:space="preserve">
+  <data name="MOD0009_Description" xml:space="preserve">
     <value>ModuleBase already registers the module as an IStartupFilter. Registering it again runs Configure twice, duplicating every piece of middleware and every endpoint the module adds.</value>
   </data>
 
-  <data name="MOD0008_Title" xml:space="preserve">
-    <value>A hosted service in a module runs in every replica that loads it</value>
+  <data name="MOD0011_Title" xml:space="preserve">
+    <value>The host does not validate its modules</value>
   </data>
-  <data name="MOD0008_Message" xml:space="preserve">
-    <value>Module '{0}' registers a hosted service, which will run once per replica of every topology that loads this module</value>
+  <data name="MOD0011_Message" xml:space="preserve">
+    <value>The builder from '{0}' is never passed to ValidateModules, so a misspelled or missing module in HOSTINGSTARTUPASSEMBLIES starts a healthy-looking application that serves 404s</value>
   </data>
-  <data name="MOD0008_Description" xml:space="preserve">
-    <value>A worker that ran in one replica of one service now runs wherever its module is loaded, and twice if two replicas load it. Choose: leader election, a dedicated worker topology, or once per replica — then suppress.</value>
+  <data name="MOD0011_Description" xml:space="preserve">
+    <value>ASP.NET Core logs a critical message for a hosting startup assembly it cannot load and starts anyway. ValidateModules, generated from the host's references, fails startup instead: every name in HOSTINGSTARTUPASSEMBLIES has to load, and each of the host's modules has to have run. Call it on the builder that loads the modules: WebApplication.CreateBuilder(args).ValidateModules(), or ValidateModules() on a generic host with ConfigureWebHostDefaults or ConfigureWebHost.</value>
   </data>
 
-  <data name="MOD0009_Title" xml:space="preserve">
+  <data name="MOD0006_Title" xml:space="preserve">
+    <value>The host's builder does not load modules</value>
+  </data>
+  <data name="MOD0006_Message" xml:space="preserve">
+    <value>WebApplication.{0} does not run hosting startups, so no module named in HOSTINGSTARTUPASSEMBLIES is loaded; use WebApplication.CreateBuilder</value>
+  </data>
+  <data name="MOD0006_Description" xml:space="preserve">
+    <value>CreateSlimBuilder and CreateEmptyBuilder configure the web host without running hosting startups. HOSTINGSTARTUPASSEMBLIES is read and ignored, so every topology of the host is the host alone, with no error and no log line. Modules need WebApplication.CreateBuilder, which takes the same arguments.</value>
+  </data>
+
+  <data name="MOD0010_Title" xml:space="preserve">
     <value>A hub's client interface must be reachable from SignalR's generated proxy</value>
   </data>
-  <data name="MOD0009_Message" xml:space="preserve">
+  <data name="MOD0010_Message" xml:space="preserve">
     <value>'{0}' is the client interface of hub '{1}' and is not visible outside this assembly</value>
   </data>
-  <data name="MOD0009_Description" xml:space="preserve">
+  <data name="MOD0010_Description" xml:space="preserve">
     <value>SignalR builds the proxy for a Hub&lt;TClient&gt; into a dynamic assembly of its own, which cannot implement an internal interface declared in yours. The project compiles, no other rule fires, and every test that never starts a hub passes; the running process throws TypeLoadException the first time it resolves IHubContext. Grant the proxy access with [assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")], or make the interface public and follow the compiler through its signatures.</value>
   </data>
 
-  <data name="MOD0020_Title" xml:space="preserve">
+  <data name="MOD0005_Title" xml:space="preserve">
+    <value>A library that is not a module must not use types from a module</value>
+  </data>
+  <data name="MOD0005_Message" xml:space="preserve">
+    <value>Library '{0}' uses types from module assembly '{1}'</value>
+  </data>
+  <data name="MOD0005_Description" xml:space="preserve">
+    <value>A library is loaded wherever something that uses it is loaded, and the compiler makes every assembly it uses a dependency of its users. A module used by a plain library ends up in every deployment of every host or module that uses the library. Move the shared type to a contracts assembly, or make the library a module.</value>
+  </data>
+
+  <data name="MOD0012_Title" xml:space="preserve">
     <value>The FusionModules package is not referenced</value>
   </data>
-  <data name="MOD0020_Message" xml:space="preserve">
+  <data name="MOD0012_Message" xml:space="preserve">
     <value>This assembly declares a HostingStartup but does not reference '{0}', so module rules cannot be verified</value>
   </data>
-  <data name="MOD0020_Description" xml:space="preserve">
+  <data name="MOD0012_Description" xml:space="preserve">
     <value>The runtime package is missing, so ModuleBase cannot be found and the rules that depend on it are inactive. The build is green because nothing is being checked.</value>
   </data>
 </root>

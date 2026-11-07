@@ -10,7 +10,7 @@ In order of likelihood:
 1. **The module's assembly is not in `HOSTINGSTARTUPASSEMBLIES`.** Check the actual environment
    variable in the running container, not the compose file you think it came from.
 2. **The module has no `[assembly: HostingStartup(typeof(...))]`.** ASP.NET Core loads the
-   assembly, finds no attribute, and moves on without a word. MOD0005 catches this at build time —
+   assembly, finds no attribute, and moves on without a word. MOD0003 catches this at build time —
    if it did not fire, the build was not run with the analyzers.
 3. **The module's `Configure` maps into a group or area whose prefix you have forgotten.**
 4. **Two modules mapped the same template** and load order decided it.
@@ -39,7 +39,7 @@ module's surface intact:
 [assembly: InternalsVisibleTo("Microsoft.AspNetCore.SignalR.TypedClientBuilder")]
 ```
 
-MOD0009 catches this at build time. It is worth knowing what survives it otherwise: a clean build,
+MOD0010 catches this at build time. It is worth knowing what survives it otherwise: a clean build,
 a green MOD0001, a full test run, and an unchanged route inventory — nothing but a live hub resolve
 triggers it.
 
@@ -90,7 +90,7 @@ package.
 
 Application Part Discovery. The host has
 `GenerateMvcApplicationPartsAssemblyAttributes` unset or true, so the SDK wired the module's
-controllers in at build time, behind `HOSTINGSTARTUPASSEMBLIES`' back. MOD0004 reports it; the
+controllers in at build time, behind `HOSTINGSTARTUPASSEMBLIES`' back. MOD0007 reports it; the
 fix is the property plus each module calling `AddApplicationPart` for itself.
 
 ## Startup fails: "requires X, which was not activated"
@@ -101,17 +101,24 @@ contracts library so the reference goes away.
 
 Do not silence this by removing the project reference: the module would then fail to load at all.
 
-## Startup fails: "listed in HOSTINGSTARTUPASSEMBLIES but could not be loaded"
+## Startup fails: "'X' could not be loaded"
 
-A typo, or the assembly is not deployed next to the host. Check for
+`ValidateModules()` found a name in `HOSTINGSTARTUPASSEMBLIES` that is not loaded in the process:
+a typo, or the assembly is not deployed next to the host. Check for
 `ReferenceOutputAssembly="false"` on the project reference — it stops the module being copied to
 the output, which looks like a routing problem until you look in the folder.
 
+## Startup fails: "'X' is a module, but its startup did not run"
+
+The assembly loaded and is one of the host's modules, but ASP.NET Core never ran it: look for
+`HOSTINGSTARTUPEXCLUDEASSEMBLIES`, or `ASPNETCORE_PREVENTHOSTINGSTARTUP` set to `true`.
+
 ## Nothing at all happens and no module loads
 
-If *every* name in the variable is wrong, there is no module left to notice, and the check cannot
-run. Look at the log for ASP.NET Core's own critical message about the first name it could not
-load.
+The host does not call `ValidateModules()`, so nothing compares the variable with its modules —
+MOD0011 says so at build time, and its code fix adds the call. Add it right after the builder is
+created; until then, look at the log for ASP.NET Core's own
+critical message about the first name it could not load.
 
 ## Behaviour changed after merging, in a way nobody can pin down
 
@@ -130,14 +137,16 @@ The usual suspects, in order:
 | | |
 |---|---|
 | MOD0001 | A module must not expose public types. Make it internal, or move it to a contracts library, or allow it in `.editorconfig` with a reason. |
-| MOD0002 | The type in `[assembly: HostingStartup]` must derive from `ModuleBase`. |
-| MOD0003 | The host uses a module's types. Move the type to a contracts library. Keep the project reference — the model needs it. |
-| MOD0004 | The host declares an `[ApplicationPart]` for a module. Set `GenerateMvcApplicationPartsAssemblyAttributes` to false. |
-| MOD0005 | A module nothing names in `[assembly: HostingStartup]`. It would load and do nothing. |
-| MOD0006 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
-| MOD0007 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. |
-| MOD0008 | A hosted service in a module runs in every replica of every topology that loads it. Decide how many times it should run, then suppress. |
-| MOD0009 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
-| MOD0020 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0002 | The type in `[assembly: HostingStartup]` must derive from `ModuleBase`. The fix converts a hand-written `IHostingStartup`. |
+| MOD0003 | A module nothing names in `[assembly: HostingStartup]`. It would load and do nothing. |
+| MOD0004 | The host uses a module's types. Move the type to a contracts library. Keep the project reference — the model needs it. |
+| MOD0005 | A plain library uses a module's types, and takes the module wherever it goes. Move the type to a contracts library. |
+| MOD0006 | The host is built with `CreateSlimBuilder` or `CreateEmptyBuilder`, which load no module. The fix switches to `CreateBuilder`. |
+| MOD0007 | The host declares an `[ApplicationPart]` for a module. Set `GenerateMvcApplicationPartsAssemblyAttributes` to false. |
+| MOD0008 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
+| MOD0009 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. The fix removes the registration. |
+| MOD0010 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
+| MOD0011 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
+| MOD0012 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

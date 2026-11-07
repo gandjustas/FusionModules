@@ -8,5 +8,8 @@ virtual FusionModules.ModuleBase.ConfigureAppConfiguration(Microsoft.AspNetCore.
 virtual FusionModules.ModuleBase.ConfigureServices(Microsoft.AspNetCore.Hosting.WebHostBuilderContext! context, Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
 virtual FusionModules.ModuleBase.ConfigureServices(Microsoft.Extensions.Hosting.IHostApplicationBuilder! builder) -> void
 FusionModules.ModuleDiscovery
+FusionModules.ModuleDiscovery.extension(Microsoft.Extensions.DependencyInjection.IMvcBuilder!)
+FusionModules.ModuleDiscovery.extension(Microsoft.Extensions.DependencyInjection.IMvcBuilder!).AllowInternalControllers() -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
+FusionModules.ModuleDiscovery.extension(Microsoft.Extensions.DependencyInjection.IMvcBuilder!).AllowInternalViewComponents() -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
 static FusionModules.ModuleDiscovery.AllowInternalControllers(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
 static FusionModules.ModuleDiscovery.AllowInternalViewComponents(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!

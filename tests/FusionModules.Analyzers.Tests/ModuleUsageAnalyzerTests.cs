@@ -2,7 +2,7 @@ namespace FusionModules.Analyzers.Tests;
 
 public class ModuleUsageAnalyzerTests
 {
-    // MOD0006 — a module must not replace the pipeline.
+    // MOD0008 — a module must not replace the pipeline.
 
     [Test]
     public Task ConfigureOnTheWebHostBuilder_IsReported() =>
@@ -12,7 +12,7 @@ public class ModuleUsageAnalyzerTests
 
             sealed class Rogue : ModuleBase
             {
-                void Setup(IWebHostBuilder builder) => {|MOD0006:builder.Configure(app => { })|};
+                void Setup(IWebHostBuilder builder) => {|MOD0008:builder.Configure(app => { })|};
             }
             """);
 
@@ -24,7 +24,7 @@ public class ModuleUsageAnalyzerTests
 
             sealed class Rogue : ModuleBase
             {
-                void Setup(IWebHostBuilder builder) => {|MOD0006:builder.UseStartup<object>()|};
+                void Setup(IWebHostBuilder builder) => {|MOD0008:builder.UseStartup<object>()|};
             }
             """);
 
@@ -39,7 +39,7 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    // MOD0007 — ModuleBase already registers the module as a startup filter.
+    // MOD0009 — ModuleBase already registers the module as a startup filter.
 
     [Test]
     public Task RegisteringTheModuleAsAStartupFilterAgain_IsReported() =>
@@ -50,7 +50,7 @@ public class ModuleUsageAnalyzerTests
 
             sealed class Eager : ModuleBase
             {
-                void Register(IServiceCollection services) => {|MOD0007:services.AddSingleton<IStartupFilter>(this)|};
+                void Register(IServiceCollection services) => {|MOD0009:services.AddSingleton<IStartupFilter>(this)|};
             }
             """);
 
@@ -66,10 +66,44 @@ public class ModuleUsageAnalyzerTests
             }
             """);
 
-    // MOD0008 — a hosted service in a module runs in more places than it used to.
+    [Test]
+    public Task RegisteringTheModuleTypeAsAStartupFilter_IsReported() =>
+        AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+            using FusionModules;
+
+            sealed class Eager : ModuleBase
+            {
+                void Register(IServiceCollection services) => {|MOD0009:services.AddSingleton<IStartupFilter, Eager>()|};
+            }
+            """);
 
     [Test]
-    public Task AHostedServiceInAModule_IsReported() =>
+    public Task RegisteringAnotherStartupFilterFromAModule_IsFine() =>
+        // A module may well have a startup filter of its own; it is the module itself that
+        // ModuleBase has registered already.
+        AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+            using FusionModules;
+
+            sealed class Timing : IStartupFilter
+            {
+                public System.Action<IApplicationBuilder> Configure(System.Action<IApplicationBuilder> next) => next;
+            }
+
+            sealed class Measured : ModuleBase
+            {
+                void Register(IServiceCollection services) => services.AddSingleton<IStartupFilter, Timing>();
+            }
+            """);
+
+    [Test]
+    public Task AHostedServiceInAModule_IsFine() =>
+        // Whether a worker should run in a topology is a question about topologies, not about
+        // the registration.
         AnalyzerTest.VerifyModuleAsync<ModuleUsageAnalyzer>("""
             using Microsoft.Extensions.DependencyInjection;
             using Microsoft.Extensions.Hosting;
@@ -79,7 +113,7 @@ public class ModuleUsageAnalyzerTests
 
             sealed class Background : ModuleBase
             {
-                void Register(IServiceCollection services) => {|MOD0008:services.AddHostedService<Worker>()|};
+                void Register(IServiceCollection services) => services.AddHostedService<Worker>();
             }
             """);
 

@@ -14,14 +14,16 @@ internal static class Diagnostics
 
     public const string ModuleMustNotExposePublicTypesId = "MOD0001";
     public const string HostingStartupTypeMustBeModuleId = "MOD0002";
-    public const string HostMustNotUseModuleTypesId = "MOD0003";
-    public const string ApplicationPartMustNotNameModuleId = "MOD0004";
-    public const string ModuleMustBeRegisteredId = "MOD0005";
-    public const string ModuleMustNotReplacePipelineId = "MOD0006";
-    public const string RedundantStartupFilterId = "MOD0007";
-    public const string HostedServiceInModuleId = "MOD0008";
-    public const string HubClientTypeMustBeReachableId = "MOD0009";
-    public const string PackageNotReferencedId = "MOD0020";
+    public const string ModuleMustBeRegisteredId = "MOD0003";
+    public const string HostMustNotUseModuleTypesId = "MOD0004";
+    public const string LibraryMustNotUseModuleTypesId = "MOD0005";
+    public const string BuilderDoesNotLoadModulesId = "MOD0006";
+    public const string ApplicationPartMustNotNameModuleId = "MOD0007";
+    public const string ModuleMustNotReplacePipelineId = "MOD0008";
+    public const string RedundantStartupFilterId = "MOD0009";
+    public const string HubClientTypeMustBeReachableId = "MOD0010";
+    public const string HostDoesNotValidateModulesId = "MOD0011";
+    public const string PackageNotReferencedId = "MOD0012";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
         Create(ModuleMustNotExposePublicTypesId, DiagnosticSeverity.Error);
@@ -29,26 +31,32 @@ internal static class Diagnostics
     public static readonly DiagnosticDescriptor HostingStartupTypeMustBeModule =
         Create(HostingStartupTypeMustBeModuleId, DiagnosticSeverity.Error);
 
+    public static readonly DiagnosticDescriptor ModuleMustBeRegistered =
+        Create(ModuleMustBeRegisteredId, DiagnosticSeverity.Error);
+
     public static readonly DiagnosticDescriptor HostMustNotUseModuleTypes =
         Create(HostMustNotUseModuleTypesId, DiagnosticSeverity.Error, customTags: WellKnownDiagnosticTags.CompilationEnd);
 
+    public static readonly DiagnosticDescriptor LibraryMustNotUseModuleTypes =
+        Create(LibraryMustNotUseModuleTypesId, DiagnosticSeverity.Error, customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    public static readonly DiagnosticDescriptor BuilderDoesNotLoadModules =
+        Create(BuilderDoesNotLoadModulesId, DiagnosticSeverity.Error);
+
     public static readonly DiagnosticDescriptor ApplicationPartMustNotNameModule =
         Create(ApplicationPartMustNotNameModuleId, DiagnosticSeverity.Error, customTags: WellKnownDiagnosticTags.CompilationEnd);
-
-    public static readonly DiagnosticDescriptor ModuleMustBeRegistered =
-        Create(ModuleMustBeRegisteredId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor ModuleMustNotReplacePipeline =
         Create(ModuleMustNotReplacePipelineId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor RedundantStartupFilter =
-        Create(RedundantStartupFilterId, DiagnosticSeverity.Warning, UsageCategory);
-
-    public static readonly DiagnosticDescriptor HostedServiceInModule =
-        Create(HostedServiceInModuleId, DiagnosticSeverity.Warning, UsageCategory);
+        Create(RedundantStartupFilterId, DiagnosticSeverity.Error, UsageCategory);
 
     public static readonly DiagnosticDescriptor HubClientTypeMustBeReachable =
         Create(HubClientTypeMustBeReachableId, DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor HostDoesNotValidateModules =
+        Create(HostDoesNotValidateModulesId, DiagnosticSeverity.Warning, UsageCategory);
 
     public static readonly DiagnosticDescriptor PackageNotReferenced =
         Create(PackageNotReferencedId, DiagnosticSeverity.Warning);

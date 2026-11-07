@@ -8,25 +8,23 @@ namespace CatalogModule;
 
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
     {
-        services.AddSingleton<Catalog>();
+        builder.Services.AddSingleton<Catalog>();
 
         // The declaration, not the work. The host runs it between Build() and RunAsync(), which is
         // the only window where the container exists and no request can arrive yet.
-        services.AddSingleton(new StartupTask("catalog-seed", (provider, _) =>
+        builder.Services.AddSingleton(new StartupTask("catalog-seed", (provider, _) =>
         {
             provider.GetRequiredService<Catalog>().Seed(["hammer", "nails", "saw"]);
             return Task.CompletedTask;
         }));
 
-#pragma warning disable MOD0008 // Once per replica is intended: this refreshes a per-process cache.
-        services.AddHostedService<CatalogRefresh>();
-#pragma warning restore MOD0008
+        // Once per replica is intended: this refreshes a per-process cache.
+        builder.Services.AddHostedService<CatalogRefresh>();
 
-#pragma warning disable MOD0008 // Likewise, and it is here to be compared with the gate above.
-        services.AddHostedService<WarmCache>();
-#pragma warning restore MOD0008
+        // Likewise, and it is here to be compared with the gate above.
+        builder.Services.AddHostedService<WarmCache>();
     }
 
     protected override void Configure(IApplicationBuilder app) =>

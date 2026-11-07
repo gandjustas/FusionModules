@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,7 +24,7 @@ public class StartupOrderTests
 
         await Assert.That(await client.GetFromJsonAsync<bool>("/catalog/seeded", cancellationToken)).IsTrue();
         await Assert.That(await client.GetFromJsonAsync<string[]>("/catalog", cancellationToken))
-            .IsEquivalentTo(new[] { "hammer", "nails", "saw" });
+            .IsEquivalentTo(["hammer", "nails", "saw"]);
     }
 
     [Test]
@@ -38,16 +37,16 @@ public class StartupOrderTests
 
         // The gate precedes everything, because it is not a hosted service at all. Then every
         // StartingAsync, then every StartAsync in registration order.
-        await Assert.That(events).IsEquivalentTo(new[]
-        {
+        await Assert.That(events).IsEquivalentTo(
+        [
             "task:catalog-seed",
             "lifecycle:starting",
             "worker:start",
-        });
+        ]);
     }
 
     [Test]
-    public async Task AModulesWorkerIsRegisteredBeforeTheWebHost(CancellationToken cancellationToken)
+    public async Task AModulesWorkerIsRegisteredBeforeTheWebHost()
     {
         // Worth asserting because it is the opposite of what the shape suggests, and it is the
         // whole timing argument. A hosting startup configures the builder before the web host adds

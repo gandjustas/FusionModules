@@ -24,25 +24,11 @@ namespace FusionModules;
 /// A module has everything those extensions read. It does not have the shape, and this supplies it.
 /// </para>
 /// </remarks>
-internal sealed class ModuleHostBuilder : IHostApplicationBuilder
+internal sealed class ModuleHostBuilder(WebHostBuilderContext context, IServiceCollection services) : IHostApplicationBuilder
 {
     private static readonly ConditionalWeakTable<IServiceCollection, Dictionary<object, object>> HostProperties = new();
 
-    private readonly ServicesBuilder _builder;
-
-    internal ModuleHostBuilder(IHostEnvironment environment, IConfiguration configuration, IServiceCollection services)
-    {
-        Environment = environment;
-        Services = services;
-        Configuration = new ModuleConfiguration(configuration);
-        Properties = HostProperties.GetOrCreateValue(services);
-        _builder = new ServicesBuilder(services);
-    }
-
-    internal ModuleHostBuilder(WebHostBuilderContext context, IServiceCollection services)
-        : this(context.HostingEnvironment, context.Configuration, services)
-    {
-    }
+    private readonly ServicesBuilder _builder = new(services);
 
     /// <summary>
     /// Per host, as on a real builder — an integration that uses this bag to do something once
@@ -54,11 +40,11 @@ internal sealed class ModuleHostBuilder : IHostApplicationBuilder
     /// one process — which is every integration-test assembly — are handed different ones. So the
     /// sharing and the isolation both fall out of the key, with nothing to reset between tests.
     /// </remarks>
-    public IDictionary<object, object> Properties { get; }
+    public IDictionary<object, object> Properties { get; } = HostProperties.GetOrCreateValue(services);
 
-    public IConfigurationManager Configuration { get; }
+    public IConfigurationManager Configuration { get; } = new ModuleConfiguration(context.Configuration);
 
-    public IHostEnvironment Environment { get; }
+    public IHostEnvironment Environment { get; } = context.HostingEnvironment;
 
     /// <summary>Registers into <see cref="Services"/>: <c>AddFilter</c> is a <c>Configure</c> call.</summary>
     public ILoggingBuilder Logging => _builder;
@@ -66,7 +52,7 @@ internal sealed class ModuleHostBuilder : IHostApplicationBuilder
     /// <summary>Registers into <see cref="Services"/>: <c>AddMeter</c> is a <c>Configure</c> call.</summary>
     public IMetricsBuilder Metrics => _builder;
 
-    public IServiceCollection Services { get; }
+    public IServiceCollection Services { get; } = services;
 
     /// <summary>Always throws: the container is one decision for a process that holds many modules.</summary>
     public void ConfigureContainer<TContainerBuilder>(

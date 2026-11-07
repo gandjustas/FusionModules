@@ -54,7 +54,7 @@ sealed class CatalogRefresh(StartupLog log) : BackgroundService
 /// <see cref="IHostedLifecycleService.StartingAsync"/> runs before any hosted service starts, by
 /// specification rather than by registration order — which is the difference from the worker
 /// above, whose timing is a fact about how the builder happens to be assembled. It costs the same
-/// ordering, and trips MOD0008 the same way.
+/// ordering, and runs once per replica the same way.
 /// </remarks>
 sealed class WarmCache(StartupLog log) : IHostedLifecycleService
 {

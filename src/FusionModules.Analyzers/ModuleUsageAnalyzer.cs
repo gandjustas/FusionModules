@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -8,23 +6,20 @@ using Microsoft.CodeAnalysis.Operations;
 namespace FusionModules.Analyzers;
 
 /// <summary>
-/// What a module does rather than what it exposes: it must not replace the pipeline (MOD0006),
-/// must not register itself twice (MOD0007), and should think twice about hosted services
-/// (MOD0008).
+/// What a module does rather than what it exposes: it must not replace the pipeline (MOD0008)
+/// and must not register itself as a startup filter a second time (MOD0009).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
 {
     private const string WebHostBuilderMetadataName = "Microsoft.AspNetCore.Hosting.IWebHostBuilder";
     private const string StartupFilterMetadataName = "Microsoft.AspNetCore.Hosting.IStartupFilter";
-    private const string HostedServiceMetadataName = "Microsoft.Extensions.Hosting.IHostedService";
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
     [
         Diagnostics.ModuleMustNotReplacePipeline,
         Diagnostics.RedundantStartupFilter,
-        Diagnostics.HostedServiceInModule,
     ];
 
     /// <inheritdoc />
@@ -46,15 +41,8 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        RegisterInvocationChecks(context, moduleBase!);
-    }
-
-    private static void RegisterInvocationChecks(CompilationStartAnalysisContext context, INamedTypeSymbol moduleBase)
-    {
-        var compilation = context.Compilation;
         var webHostBuilder = compilation.GetTypeByMetadataName(WebHostBuilderMetadataName);
         var startupFilter = compilation.GetTypeByMetadataName(StartupFilterMetadataName);
-        var hostedService = compilation.GetTypeByMetadataName(HostedServiceMetadataName);
 
         context.RegisterOperationAction(
             operationContext =>
@@ -62,8 +50,7 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
                 var invocation = (IInvocationOperation)operationContext.Operation;
 
                 CheckPipelineReplacement(operationContext, invocation, webHostBuilder);
-                CheckRedundantStartupFilter(operationContext, invocation, startupFilter, moduleBase);
-                CheckHostedService(operationContext, invocation, hostedService);
+                CheckRedundantStartupFilter(operationContext, invocation, startupFilter, moduleBase!);
             },
             OperationKind.Invocation);
     }
@@ -88,8 +75,9 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             $"IWebHostBuilder.{invocation.TargetMethod.Name}"));
     }
 
-    // ModuleBase already does this. Doing it again runs Configure twice, which duplicates every
-    // endpoint the module maps — and a duplicate endpoint throws at startup.
+    // ModuleBase already registers the module as a startup filter. Doing it again runs Configure
+    // twice, which duplicates every endpoint the module maps, and a duplicate endpoint throws at
+    // startup. Registering some other startup filter is ordinary and none of this rule's business.
     private static void CheckRedundantStartupFilter(
         OperationAnalysisContext context,
         IInvocationOperation invocation,
@@ -103,9 +91,10 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        // Only inside a module: a host or a library registering a startup filter is ordinary.
         var containingType = context.ContainingSymbol.ContainingType;
-        if (containingType is null || !ModuleFacts.InheritsFrom(containingType, moduleBase))
+        if (containingType is null ||
+            !ModuleFacts.InheritsFrom(containingType, moduleBase) ||
+            !RegistersItself(invocation, containingType))
         {
             return;
         }
@@ -116,21 +105,25 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             containingType.Name));
     }
 
-    // A worker that ran in one replica of one service now runs wherever its module is loaded.
-    private static void CheckHostedService(
-        OperationAnalysisContext context,
-        IInvocationOperation invocation,
-        INamedTypeSymbol? hostedService)
-    {
-        if (hostedService is null || invocation.TargetMethod.Name is not "AddHostedService")
+    // AddSingleton<IStartupFilter>(this), AddSingleton<IStartupFilter>(new Module()) or
+    // AddSingleton<IStartupFilter, Module>(): each puts the module in the list a second time.
+    private static bool RegistersItself(IInvocationOperation invocation, INamedTypeSymbol module) =>
+        invocation.TargetMethod.TypeArguments.Any(argument => SymbolEqualityComparer.Default.Equals(argument, module)) ||
+        invocation.Arguments.Any(argument => Unwrap(argument.Value) switch
         {
-            return;
+            IInstanceReferenceOperation => true,
+            IObjectCreationOperation creation => SymbolEqualityComparer.Default.Equals(creation.Type, module),
+            _ => false,
+        });
+
+    private static IOperation Unwrap(IOperation operation)
+    {
+        while (operation is IConversionOperation conversion)
+        {
+            operation = conversion.Operand;
         }
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            Diagnostics.HostedServiceInModule,
-            invocation.Syntax.GetLocation(),
-            context.Compilation.Assembly.Name));
+        return operation;
     }
 
     private static bool ReceiverIs(IInvocationOperation invocation, INamedTypeSymbol type)

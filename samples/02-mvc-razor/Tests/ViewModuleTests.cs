@@ -10,7 +10,7 @@ public class ViewModuleTests
     [Test]
     public async Task NoModules_ServesNoControllersAndNoPages(CancellationToken cancellationToken)
     {
-        // The load-bearing test for MOD0004. Application Part Discovery would have wired the
+        // The load-bearing test for MOD0007. Application Part Discovery would have wired the
         // modules' controllers and pages into the host at build time, entirely behind
         // HOSTINGSTARTUPASSEMBLIES' back — so these routes would answer here, in a topology that
         // asked for no modules at all, and in production too.
@@ -67,7 +67,7 @@ public class ViewModuleTests
     public async Task AModulesStaticAssetsAreServedEvenWhereItsPagesAreNot(CancellationToken cancellationToken)
     {
         // The asymmetry, asserted rather than described. Controllers and pages are gated by
-        // HOSTINGSTARTUPASSEMBLIES, because MOD0004 and GenerateMvcApplicationPartsAssemblyAttributes
+        // HOSTINGSTARTUPASSEMBLIES, because MOD0007 and GenerateMvcApplicationPartsAssemblyAttributes
         // see to it. Static web assets are not: their manifest is built from project references at
         // build time, so this file answers in a topology that named no module at all.
         using var factory = new ModularWebApplicationFactory();

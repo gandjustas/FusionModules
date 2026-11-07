@@ -33,14 +33,14 @@ public class EndpointInventoryTests
 
     [Test]
     public async Task TheHostAloneServesOnlyItsOwnRoute() =>
-        await Assert.That(RoutesFor()).IsEquivalentTo(new[] { "/" });
+        await Assert.That(RoutesFor()).IsEquivalentTo(["/"]);
 
     [Test]
     public async Task EntityModulesContributeTablesAndNoRoutes() =>
         // A topology of nothing but entity modules is a database schema with a web server
         // attached, which is a legitimate thing to deploy and a surprising thing to discover.
         await Assert.That(RoutesFor(Modules.OrdersEntities, Modules.CustomersEntities))
-            .IsEquivalentTo(new[] { "/" });
+            .IsEquivalentTo(["/"]);
 
     [Test]
     public async Task AFeatureModuleBringsItsOwnRoutesAndNobodyElses() =>
@@ -48,10 +48,10 @@ public class EndpointInventoryTests
         // AllowInternalControllers did its job: without it the type is skipped for not being
         // public and the route is simply absent, with nothing said anywhere.
         await Assert.That(RoutesFor(Modules.CustomersEntities, Modules.CustomersApi))
-            .IsEquivalentTo(new[] { "/", "/customers" });
+            .IsEquivalentTo(["/", "/customers"]);
 
     [Test]
     public async Task TheFullTopologyServesEveryModulesRoutes() =>
         await Assert.That(RoutesFor(Modules.All))
-            .IsEquivalentTo(new[] { "/", "/billing/overdue", "/billing/seed", "/customers" });
+            .IsEquivalentTo(["/", "/billing/overdue", "/billing/seed", "/customers"]);
 }

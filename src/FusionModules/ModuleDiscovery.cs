@@ -30,136 +30,138 @@ namespace FusionModules;
 /// </remarks>
 public static class ModuleDiscovery
 {
-    /// <summary>
-    /// Replaces MVC's controller discovery with one that does not require a public type.
-    /// </summary>
     /// <param name="builder">The MVC builder to configure.</param>
-    /// <returns>The same builder.</returns>
-    /// <remarks>
-    /// <para>
-    /// The stock <see cref="ControllerFeatureProvider"/> requires <c>TypeInfo.IsPublic</c>. In a
-    /// module that requirement does not stop at the controller: a public constructor cannot take
-    /// an internal service and a public action cannot return an internal DTO, so the database
-    /// context, the services and every DTO have to go public with it — which is most of the
-    /// module, and the opposite of what MOD0001 is for. Exempting controllers from that rule, as
-    /// the analyzer does, is true and not enough.
-    /// </para>
-    /// <para>
-    /// Turn it round instead: keep the controller internal and let discovery see it. The class
-    /// becomes <c>internal</c>; <b>the constructor stays public</b>, because MVC's activator reads
-    /// <c>GetConstructors()</c>, which is public-only. That is legal and not a contradiction — C#
-    /// bounds a member's effective accessibility by its containing type, so a public constructor
-    /// on an internal class may take internal parameters, and a public action on one may return
-    /// internal types.
-    /// </para>
-    /// <para>
-    /// One call is enough for the whole application: application parts are a single list, and this
-    /// configures how all of them are read. Calling it from several modules is harmless.
-    /// </para>
-    /// </remarks>
-    /// <example>
-    /// <code>
-    /// protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services) =&gt;
-    ///     services.AddControllers()
-    ///         .AddApplicationPart(typeof(Module).Assembly)
-    ///         .AllowInternalControllers();
-    /// </code>
-    /// </example>
-    public static IMvcBuilder AllowInternalControllers(this IMvcBuilder builder)
+    extension(IMvcBuilder builder)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-
-        return builder.ConfigureApplicationPartManager(manager =>
+        /// <summary>
+        /// Replaces MVC's controller discovery with one that does not require a public type.
+        /// </summary>
+        /// <returns>The same builder.</returns>
+        /// <remarks>
+        /// <para>
+        /// The stock <see cref="ControllerFeatureProvider"/> requires <c>TypeInfo.IsPublic</c>. In a
+        /// module that requirement does not stop at the controller: a public constructor cannot take
+        /// an internal service and a public action cannot return an internal DTO, so the database
+        /// context, the services and every DTO have to go public with it — which is most of the
+        /// module, and the opposite of what MOD0001 is for. Exempting controllers from that rule, as
+        /// the analyzer does, is true and not enough.
+        /// </para>
+        /// <para>
+        /// Turn it round instead: keep the controller internal and let discovery see it. The class
+        /// becomes <c>internal</c>; <b>the constructor stays public</b>, because MVC's activator reads
+        /// <c>GetConstructors()</c>, which is public-only. That is legal and not a contradiction — C#
+        /// bounds a member's effective accessibility by its containing type, so a public constructor
+        /// on an internal class may take internal parameters, and a public action on one may return
+        /// internal types.
+        /// </para>
+        /// <para>
+        /// One call is enough for the whole application: application parts are a single list, and this
+        /// configures how all of them are read. Calling it from several modules is harmless.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// protected override void ConfigureServices(IHostApplicationBuilder builder) =&gt;
+        ///     builder.Services.AddControllers()
+        ///         .AddApplicationPart(typeof(Module).Assembly)
+        ///         .AllowInternalControllers();
+        /// </code>
+        /// </example>
+        public IMvcBuilder AllowInternalControllers()
         {
-            var providers = manager.FeatureProviders;
+            ArgumentNullException.ThrowIfNull(builder);
 
-            // In place, not appended: providers run in list order, and a provider that filters
-            // controllers would otherwise run before discovery and see nothing to filter.
-            var index = -1;
-            for (var i = providers.Count - 1; i >= 0; i--)
+            return builder.ConfigureApplicationPartManager(manager =>
             {
-                if (providers[i] is ControllerFeatureProvider)
+                var providers = manager.FeatureProviders;
+
+                // In place, not appended: providers run in list order, and a provider that filters
+                // controllers would otherwise run before discovery and see nothing to filter.
+                var index = -1;
+                for (var i = providers.Count - 1; i >= 0; i--)
                 {
-                    index = i;
-                    providers.RemoveAt(i);
+                    if (providers[i] is ControllerFeatureProvider)
+                    {
+                        index = i;
+                        providers.RemoveAt(i);
+                    }
                 }
-            }
 
-            if (index < 0)
+                if (index < 0)
+                {
+                    // MVC has not registered its own yet — there is nothing to replace, so append.
+                    // Not the double-call case: this provider is itself a ControllerFeatureProvider,
+                    // so a second call finds and removes it above and never reaches here. The guard
+                    // stays because an appended provider must not be appended twice either.
+                    if (providers.Any(provider => provider is ModuleControllerFeatureProvider))
+                    {
+                        return;
+                    }
+
+                    providers.Add(new ModuleControllerFeatureProvider());
+                    return;
+                }
+
+                providers.Insert(index, new ModuleControllerFeatureProvider());
+            });
+        }
+
+        /// <summary>
+        /// Lets MVC find view components that are not public.
+        /// </summary>
+        /// <returns>The same builder.</returns>
+        /// <remarks>
+        /// <para>
+        /// The same cascade as for controllers, and the same answer — but reached differently. MVC's
+        /// test for a view component lives in a static method, not a virtual one, so there is nothing
+        /// to override. There is also nothing to replace: the application part manager runs every
+        /// provider for a feature and the list of view components is open, so this adds a second
+        /// provider that contributes the internal ones and leaves the stock provider alone.
+        /// </para>
+        /// <para>
+        /// Invoke it from a view either by name — <c>Component.InvokeAsync("Tiles")</c> — or through
+        /// the generic overload, <c>Component.InvokeAsync&lt;TilesViewComponent&gt;()</c>. Both are
+        /// resolved at run time against the descriptor collection this provider contributed to, and the
+        /// generic form compiles because the class Razor generates for a view is itself internal and
+        /// lives in the same assembly as the component.
+        /// </para>
+        /// <para>
+        /// <b>What does not work is the <c>&lt;vc:tiles&gt;</c> element.</b> That form is bound by the
+        /// Razor compiler against Roslyn symbols, and it requires a public type for the same reason a
+        /// tag helper does. When it finds none it reports nothing: the element is copied into the page
+        /// as literal HTML, with no error, no warning and no exception. If you want the element syntax,
+        /// the component stays public.
+        /// </para>
+        /// <para>
+        /// As with a controller, the <c>Invoke</c> or <c>InvokeAsync</c> method stays public: MVC finds
+        /// it with public-only binding flags, and a public method on an internal class may still take
+        /// and return internal types.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// protected override void ConfigureServices(IHostApplicationBuilder builder) =&gt;
+        ///     builder.Services.AddControllersWithViews()
+        ///         .AddApplicationPart(typeof(Module).Assembly)
+        ///         .AllowInternalViewComponents();
+        /// </code>
+        /// </example>
+        public IMvcBuilder AllowInternalViewComponents()
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+
+            return builder.ConfigureApplicationPartManager(manager =>
             {
-                // MVC has not registered its own yet — there is nothing to replace, so append.
-                // Not the double-call case: this provider is itself a ControllerFeatureProvider,
-                // so a second call finds and removes it above and never reaches here. The guard
-                // stays because an appended provider must not be appended twice either.
-                if (providers.Any(provider => provider is ModuleControllerFeatureProvider))
+                // Appended rather than substituted, so calling it from several modules is harmless and
+                // so a third-party provider for this feature keeps working.
+                if (manager.FeatureProviders.Any(provider => provider is ModuleViewComponentFeatureProvider))
                 {
                     return;
                 }
 
-                providers.Add(new ModuleControllerFeatureProvider());
-                return;
-            }
-
-            providers.Insert(index, new ModuleControllerFeatureProvider());
-        });
-    }
-
-    /// <summary>
-    /// Lets MVC find view components that are not public.
-    /// </summary>
-    /// <param name="builder">The MVC builder to configure.</param>
-    /// <returns>The same builder.</returns>
-    /// <remarks>
-    /// <para>
-    /// The same cascade as for controllers, and the same answer — but reached differently. MVC's
-    /// test for a view component lives in a static method, not a virtual one, so there is nothing
-    /// to override. There is also nothing to replace: the application part manager runs every
-    /// provider for a feature and the list of view components is open, so this adds a second
-    /// provider that contributes the internal ones and leaves the stock provider alone.
-    /// </para>
-    /// <para>
-    /// Invoke it from a view either by name — <c>Component.InvokeAsync("Tiles")</c> — or through
-    /// the generic overload, <c>Component.InvokeAsync&lt;TilesViewComponent&gt;()</c>. Both are
-    /// resolved at run time against the descriptor collection this provider contributed to, and the
-    /// generic form compiles because the class Razor generates for a view is itself internal and
-    /// lives in the same assembly as the component.
-    /// </para>
-    /// <para>
-    /// <b>What does not work is the <c>&lt;vc:tiles&gt;</c> element.</b> That form is bound by the
-    /// Razor compiler against Roslyn symbols, and it requires a public type for the same reason a
-    /// tag helper does. When it finds none it reports nothing: the element is copied into the page
-    /// as literal HTML, with no error, no warning and no exception. If you want the element syntax,
-    /// the component stays public.
-    /// </para>
-    /// <para>
-    /// As with a controller, the <c>Invoke</c> or <c>InvokeAsync</c> method stays public: MVC finds
-    /// it with public-only binding flags, and a public method on an internal class may still take
-    /// and return internal types.
-    /// </para>
-    /// </remarks>
-    /// <example>
-    /// <code>
-    /// protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services) =&gt;
-    ///     services.AddControllersWithViews()
-    ///         .AddApplicationPart(typeof(Module).Assembly)
-    ///         .AllowInternalViewComponents();
-    /// </code>
-    /// </example>
-    public static IMvcBuilder AllowInternalViewComponents(this IMvcBuilder builder)
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-
-        return builder.ConfigureApplicationPartManager(manager =>
-        {
-            // Appended rather than substituted, so calling it from several modules is harmless and
-            // so a third-party provider for this feature keeps working.
-            if (manager.FeatureProviders.Any(provider => provider is ModuleViewComponentFeatureProvider))
-            {
-                return;
-            }
-
-            manager.FeatureProviders.Add(new ModuleViewComponentFeatureProvider());
-        });
+                manager.FeatureProviders.Add(new ModuleViewComponentFeatureProvider());
+            });
+        }
     }
 
     /// <summary>

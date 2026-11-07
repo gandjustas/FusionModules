@@ -83,7 +83,7 @@ public class OverdueOrdersTests
         Seed(db, Order(1, Now.AddDays(-10)), Order(2, Now.AddDays(-30)), Order(3, Now.AddDays(-20)));
 
         await Assert.That(OverdueOrders.From(db, Now).Select(order => order.OrderId).ToList())
-            .IsEquivalentTo(new[] { 2, 3, 1 });
+            .IsEquivalentTo([2, 3, 1]);
     }
 
     [Test]

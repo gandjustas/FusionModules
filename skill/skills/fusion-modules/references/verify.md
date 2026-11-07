@@ -83,7 +83,7 @@ sequel: boot every topology for real, and put one real request through each modu
 dotnet build -warnaserror
 ```
 
-Zero MOD diagnostics. If MOD0003 fires alongside compiler errors, fix the compiler errors first —
+Zero MOD diagnostics. If MOD0004 fires alongside compiler errors, fix the compiler errors first —
 Roslyn cannot work out which references are used in a broken compilation, and the analyzer
 suppresses itself in that case, so anything you do see is real.
 

@@ -24,6 +24,9 @@ if (!Directory.Exists(source))
     return 1;
 }
 
+var (frontMatter, body) = ReadSkill();
+var references = ReadReferences();
+
 BuildPortable();
 BuildRules();
 
@@ -32,8 +35,6 @@ return 0;
 
 void BuildPortable()
 {
-    var (frontMatter, body) = ReadSkill();
-    var references = ReadReferences();
 
     var output = new StringBuilder();
     output.AppendLine(frontMatter.TrimEnd());
@@ -56,8 +57,6 @@ void BuildPortable()
 // the whole cost.
 void BuildRules()
 {
-    var (_, body) = ReadSkill();
-    var references = ReadReferences();
 
     // Nothing to link to in a single always-on file. The link text stays — it is already the
     // section's short name — and only a bare path, which would read as a dead link, is replaced.

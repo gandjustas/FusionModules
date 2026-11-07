@@ -1,4 +1,3 @@
-using System;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -34,6 +33,32 @@ internal static class SyntaxEditing
             .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(unit)));
 
         return document.WithSyntaxRoot(unit.AddAttributeLists(list));
+    }
+
+    /// <summary>
+    /// Adds <c>using <paramref name="namespaceName"/>;</c> after the existing usings, unless the
+    /// namespace is already in scope at <paramref name="position"/> — by a using in the file, a
+    /// global using or an implicit one.
+    /// </summary>
+    /// <param name="unit">The root to change.</param>
+    /// <param name="model">A semantic model of the document <paramref name="unit"/> came from.</param>
+    /// <param name="position">Where the namespace's members are used, in that document.</param>
+    /// <param name="namespaceName">The namespace to import.</param>
+    public static CompilationUnitSyntax AddUsingIfMissing(
+        CompilationUnitSyntax unit,
+        SemanticModel model,
+        int position,
+        string namespaceName)
+    {
+        var imported = model.GetImportScopes(position)
+            .SelectMany(scope => scope.Imports)
+            .Any(import => import.NamespaceOrType is INamespaceSymbol ns && ns.ToDisplayString() == namespaceName);
+
+        return imported
+            ? unit
+            : unit.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName))
+                .NormalizeWhitespace()
+                .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(unit))));
     }
 
     private static string LineBreakOf(SyntaxNode root)

@@ -162,9 +162,8 @@ order rather than a contract — it has moved once already, between hosting mode
 
 `IHostedLifecycleService.StartingAsync` is the contractual version of the same window: it runs
 before any hosted service starts, by specification. Reach for it when the work answers only to
-itself. MOD0008 fires on the registration either way, correctly — the thing does run once per
-replica — and answering it with "this is a startup gate, not a worker" is a suppression with a
-reason, which is what that rule asks for.
+itself. Either way the thing runs once per replica of every topology that loads the module, and
+that is the decision to record next to the registration.
 
 When ordering across modules matters, let the module declare the work and let the host run it. The
 module puts a descriptor in DI; the host enumerates them between `Build()` and `RunAsync()`:

@@ -12,9 +12,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using FusionModules;
 
-// Without this the module loads and silently does nothing. MOD0005 catches it at build time.
+// Without this the module loads and silently does nothing. MOD0003 catches it at build time.
 [assembly: HostingStartup(typeof(ExampleModule.Module))]
 
 namespace ExampleModule;
@@ -25,11 +26,11 @@ sealed class Module : ModuleBase
         // Defaults belong with the feature that needs them, not in the host's appsettings.json.
         configuration.AddInMemoryCollection([new("Example:PageSize", "50")]);
 
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
     {
         // TryAdd for anything this module provides but does not own: two modules registering the
         // same service type means the winner depends on HOSTINGSTARTUPASSEMBLIES order.
-        services.AddScoped<ExampleService>();
+        builder.Services.AddScoped<ExampleService>();
     }
 
     protected override void Configure(IApplicationBuilder app) =>

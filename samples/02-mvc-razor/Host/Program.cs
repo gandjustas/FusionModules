@@ -4,7 +4,7 @@
 //   HOSTINGSTARTUPASSEMBLIES=DashboardModule dotnet run   -> /Dashboard
 //   HOSTINGSTARTUPASSEMBLIES=StatusModule    dotnet run   -> /status
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 var app = builder.Build();
 
