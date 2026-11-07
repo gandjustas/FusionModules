@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    Takes FusionModules' analyzers and generators out of every compilation, for an A/B of build time:
+      dotnet build -p:CustomAfterMicrosoftCommonTargets=<full path to this file>
+    A project that uses what a generator writes (KnownModules) does not compile without it; compare
+    the number of Csc calls as well as their time.
+  -->
+  <Target Name="RemoveFusionModulesAnalyzers" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Filename)' == 'FusionModules.Analyzers' or '%(Filename)' == 'FusionModules.CodeFixes'" />
+    </ItemGroup>
+  </Target>
+</Project>

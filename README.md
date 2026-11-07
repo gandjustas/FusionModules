@@ -9,6 +9,8 @@ one base class over them, plus the analyzers that stop the architecture from lea
 
 ```csharp
 // OrdersModule/Module.cs — the whole module contract
+using FusionModules;
+
 [assembly: HostingStartup(typeof(Module))]
 
 class Module : ModuleBase
@@ -125,13 +127,14 @@ checks what its modules did:
 
 - **Two modules registering one service with different implementations fail startup**, naming the
   service, both modules and both implementations: in one container the last registration wins, and
-  a module is quietly given its neighbour's. A contract several modules implement on purpose says so
+  a module is quietly given its neighbour's. Two modules that are alternatives — two transports, say —
+  belong in different topologies, not in one. A contract several modules implement on purpose says so
   with an attribute named `MultipleImplementationsAttribute`; a library's type goes in
   `FusionModules:AllowedServiceCollisions`.
 - **Two modules mapping one route** — which the first request would answer with a 500 — and **options
   several modules configure differently** are logged as warnings.
 - One `Topology:` line in the log says what the replica loaded: its modules, the endpoints each
-  serves, the hosted services each registered.
+  serves and the host's own, and the hosted services that run.
 
 What counts, the settings and the report's fields: [docs/runtime.md](docs/runtime.md).
 
@@ -271,6 +274,10 @@ bash eng/pack-validate.sh
 ```
 
 It needs a POSIX shell — git-bash on Windows, where it is also exercised in CI.
+
+What the analyzers and generators add to a build, and what `GetLoadedModules` and `UseModules`
+cost a request, is measured by the scripts in `eng/performance`; how to run and read them, and the
+latest numbers: [docs/performance.md](docs/performance.md).
 
 [`gandjustas/dotnext-2026`](https://github.com/gandjustas/dotnext-2026) does exactly that on its
 `fusionmodules` branch, which is where this package gets used by something it did not grow up
