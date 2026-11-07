@@ -17,8 +17,15 @@ public class DescriptorTests
         .Single(attribute => attribute.Key == "RepositoryRoot")
         .Value!;
 
+    // Found rather than listed: a hand-kept list is how a new analyzer escapes every check below.
     private static DiagnosticAnalyzer[] Analyzers =>
-        [new ModuleAnalyzer(), new HostAnalyzer(), new ModuleUsageAnalyzer()];
+        typeof(ModuleAnalyzer).Assembly
+            .GetTypes()
+            .Where(type => !type.IsAbstract &&
+                           typeof(DiagnosticAnalyzer).IsAssignableFrom(type) &&
+                           type.IsDefined(typeof(DiagnosticAnalyzerAttribute), inherit: false))
+            .Select(type => (DiagnosticAnalyzer)Activator.CreateInstance(type)!)
+            .ToArray();
 
     public static IEnumerable<Func<DiagnosticDescriptor>> AllDescriptors() =>
         Analyzers

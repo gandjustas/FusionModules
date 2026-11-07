@@ -29,8 +29,6 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         context.RegisterCompilationAction(OnCompilation);
     }
 
-    private const string ProjectKindOption = "build_property.FusionModulesProjectKind";
-
     private static void OnCompilation(CompilationAnalysisContext context)
     {
         var compilation = context.Compilation;
@@ -38,7 +36,8 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         // An entry point is how a host is recognised, but a test project has one too — and a test
         // that arranges data through a module's entity types is doing the right thing. MSBuild
         // classifies the project; this only reads the answer.
-        if (compilation.GetEntryPoint(context.CancellationToken) is null || IsTestProject(context))
+        if (compilation.GetEntryPoint(context.CancellationToken) is null ||
+            ModuleFacts.GetProjectKind(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions) == ProjectKind.Test)
         {
             return;
         }
@@ -87,10 +86,6 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static bool IsTestProject(CompilationAnalysisContext context) =>
-        context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(ProjectKindOption, out var kind) &&
-        string.Equals(kind, "Test", StringComparison.OrdinalIgnoreCase);
-
     private static bool HasErrors(CompilationAnalysisContext context) =>
         context.Compilation
             .GetDiagnostics(context.CancellationToken)
@@ -120,10 +115,10 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        foreach (var reference in compilation.References)
+        // The name first: it is the cheap test, and most references fail it.
+        foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
         {
-            if (compilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly ||
-                !declaredParts.Contains(assembly.Name) ||
+            if (!declaredParts.Contains(assembly.Name) ||
                 !ModuleFacts.IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase))
             {
                 continue;

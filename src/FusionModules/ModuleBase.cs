@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -149,17 +150,36 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var activationOrder = GetActivationOrder(configuration);
-
-        return configuration.GetSection(ConfigurationSection)
+        // Asked for on every DbContext a request creates, and resolving each type from its
+        // assembly-qualified name is most of the cost. The answer depends on the registry and the
+        // variable alone, so it is kept per registry: the registry as it stands is the key, and one
+        // that is still being written by activating modules is a different key, never a stale answer.
+        var entries = configuration.GetSection(ConfigurationSection)
             .GetChildren()
+            .Select(entry => (entry.Key, entry.Value))
+            .ToList();
+        var requested = configuration[WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty;
+        var key = requested + "\n" + string.Join("\n", entries.Select(entry => entry.Key + "=" + entry.Value));
+
+        return LoadedModulesByRegistry.GetOrAdd(key, _ => Compose(entries, requested));
+    }
+
+    private static readonly ConcurrentDictionary<string, IReadOnlyList<Assembly>> LoadedModulesByRegistry = new(StringComparer.Ordinal);
+
+    private static IReadOnlyList<Assembly> Compose(List<(string Key, string? Value)> entries, string requested)
+    {
+        var activationOrder = GetActivationOrder(requested);
+
+        // Read-only, not a bare array: the answer is shared, and a caller that cast it back to an
+        // array could otherwise reorder every later caller's modules.
+        return Array.AsReadOnly(entries
             .Select(entry => (entry.Key, Type: ResolveModuleType(entry.Value)))
             .Where(module => module.Type is not null)
             // Configuration children come back sorted by key, so impose the real order here.
             // The entry assembly is activated first and is not named in the variable: rank -1.
             .OrderBy(module => activationOrder.TryGetValue(module.Key, out var rank) ? rank : -1)
             .Select(module => module.Type!.Assembly)
-            .ToArray();
+            .ToArray());
     }
 
     /// <summary>
@@ -196,11 +216,11 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
         foreach (var name in moduleAssemblyNames)
         {
+            // Only a module: at runtime nothing else writes itself to the registry either.
             var assembly = Assembly.Load(new AssemblyName(name));
-            if (assembly.GetCustomAttribute<HostingStartupAttribute>() is { } attribute)
+            if (GetModuleType(assembly) is { } moduleType)
             {
-                entries.Add(new($"{ConfigurationSection}:{assembly.GetName().Name}",
-                    attribute.HostingStartupType.AssemblyQualifiedName));
+                entries.Add(new(RegistryKey(assembly), moduleType.AssemblyQualifiedName));
             }
         }
 
@@ -221,7 +241,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
             var moduleType = GetType();
             configuration.AddInMemoryCollection(
             [
-                new($"{ConfigurationSection}:{moduleType.Assembly.GetName().Name}", moduleType.AssemblyQualifiedName)
+                new(RegistryKey(moduleType.Assembly), moduleType.AssemblyQualifiedName)
             ]);
 
             ConfigureAppConfiguration(context, configuration);
@@ -264,22 +284,15 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     {
         foreach (var requested in GetActivationOrder(configuration).Keys)
         {
-            if (configuration[$"{ConfigurationSection}:{requested}"] is not null)
+            if (configuration[RegistryKey(requested)] is not null)
             {
                 continue;
             }
 
-            Assembly assembly;
-            try
-            {
-                assembly = Assembly.Load(new AssemblyName(requested));
-            }
-            catch (Exception e) when (e is FileNotFoundException or FileLoadException or BadImageFormatException)
-            {
+            var assembly = TryLoad(new AssemblyName(requested), out var failure) ??
                 throw new InvalidOperationException(
                     $"'{requested}' is listed in HOSTINGSTARTUPASSEMBLIES but could not be loaded. " +
-                    "Check the spelling, and that the assembly is deployed next to the host.", e);
-            }
+                    "Check the spelling, and that the assembly is deployed next to the host.", failure);
 
             // No attribute at all means somebody wrote a module and forgot
             // [assembly: HostingStartup(typeof(TheModule))]. Anything else — a third-party
@@ -308,30 +321,9 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
         foreach (var reference in GetType().Assembly.GetReferencedAssemblies())
         {
-            if (reference.Name is not { } name)
-            {
-                continue;
-            }
-
-            if (configuration[$"{ConfigurationSection}:{name}"] is not null)
-            {
-                continue;
-            }
-
-            Assembly referenced;
-            try
-            {
-                referenced = Assembly.Load(reference);
-            }
-            catch (Exception e) when (e is FileNotFoundException or FileLoadException or BadImageFormatException)
-            {
-                continue;
-            }
-
-            // Only FusionModules modules are our business: third-party hosting startups
-            // (Application Insights, for one) are activated by their own rules.
-            if (referenced.GetCustomAttribute<HostingStartupAttribute>() is { } attribute &&
-                typeof(ModuleBase).IsAssignableFrom(attribute.HostingStartupType))
+            if (reference.Name is { } name &&
+                configuration[RegistryKey(name)] is null &&
+                IsModuleReference(reference))
             {
                 missing.Add(name);
             }
@@ -347,17 +339,20 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     {
         var moduleName = GetType().Assembly.GetName().Name;
         var requested = configuration[WebHostDefaults.HostingStartupAssembliesKey];
+        var names = string.Join(", ", missing.Select(m => $"'{m}'"));
 
-        return $"Module '{moduleName}' requires {string.Join(", ", missing.Select(m => $"'{m}'"))}, " +
+        return $"Module '{moduleName}' requires {names}, " +
                $"which {(missing.Count == 1 ? "was" : "were")} not activated." + Environment.NewLine +
                $"HOSTINGSTARTUPASSEMBLIES = '{requested}'" + Environment.NewLine +
-               $"Add {string.Join(", ", missing.Select(m => $"'{m}'"))} to HOSTINGSTARTUPASSEMBLIES, " +
+               $"Add {names} to HOSTINGSTARTUPASSEMBLIES, " +
                "or stop using types from that module so the reference goes away.";
     }
 
-    private static Dictionary<string, int> GetActivationOrder(IConfiguration configuration)
+    private static Dictionary<string, int> GetActivationOrder(IConfiguration configuration) =>
+        GetActivationOrder(configuration[WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty);
+
+    private static Dictionary<string, int> GetActivationOrder(string requested)
     {
-        var requested = configuration[WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty;
         var names = requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var order = new Dictionary<string, int>(names.Length, StringComparer.OrdinalIgnoreCase);
@@ -368,6 +363,45 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
         return order;
     }
+
+    /// <summary>
+    /// Whether a referenced assembly is a module, answered once per process: every module asks it
+    /// about the same framework assemblies, and loading one to read its attributes is the cost.
+    /// Only FusionModules modules count; third-party hosting startups (Application Insights, for
+    /// one) are activated by their own rules. One that cannot be loaded is not a module here.
+    /// </summary>
+    private static bool IsModuleReference(AssemblyName reference) =>
+        ModuleReferences.GetOrAdd(
+            reference.FullName,
+            static (fullName, reference) => TryLoad(reference, out _) is { } assembly && GetModuleType(assembly) is not null,
+            reference);
+
+    private static readonly ConcurrentDictionary<string, bool> ModuleReferences = new(StringComparer.OrdinalIgnoreCase);
+
+    private static Assembly? TryLoad(AssemblyName name, out Exception? failure)
+    {
+        try
+        {
+            failure = null;
+            return Assembly.Load(name);
+        }
+        catch (Exception e) when (e is FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            failure = e;
+            return null;
+        }
+    }
+
+    /// <summary>The module type an assembly declares, or null when it declares none.</summary>
+    private static Type? GetModuleType(Assembly assembly) =>
+        assembly.GetCustomAttribute<HostingStartupAttribute>() is { } attribute &&
+        typeof(ModuleBase).IsAssignableFrom(attribute.HostingStartupType)
+            ? attribute.HostingStartupType
+            : null;
+
+    private static string RegistryKey(Assembly assembly) => RegistryKey(assembly.GetName().Name);
+
+    private static string RegistryKey(string? assemblyName) => $"{ConfigurationSection}:{assemblyName}";
 
     private static Type? ResolveModuleType(string? assemblyQualifiedName) =>
         string.IsNullOrEmpty(assemblyQualifiedName) ? null : Type.GetType(assemblyQualifiedName, throwOnError: false);

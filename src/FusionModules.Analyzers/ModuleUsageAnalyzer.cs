@@ -41,15 +41,12 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
         var moduleBase = ModuleFacts.GetModuleBaseType(compilation);
         var hostingStartupAttribute = compilation.GetTypeByMetadataName(ModuleFacts.HostingStartupAttributeMetadataName);
 
-        if (moduleBase is null ||
-            hostingStartupAttribute is null ||
-            compilation.GetEntryPoint(context.CancellationToken) is not null ||
-            !ModuleFacts.IsModuleAssembly(compilation.Assembly, hostingStartupAttribute, moduleBase))
+        if (!ModuleFacts.IsModuleCompilation(compilation, hostingStartupAttribute, moduleBase, context.CancellationToken))
         {
             return;
         }
 
-        RegisterInvocationChecks(context, moduleBase);
+        RegisterInvocationChecks(context, moduleBase!);
     }
 
     private static void RegisterInvocationChecks(CompilationStartAnalysisContext context, INamedTypeSymbol moduleBase)

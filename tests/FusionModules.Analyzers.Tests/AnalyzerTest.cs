@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Testing;
@@ -12,13 +14,25 @@ namespace FusionModules.Analyzers.Tests;
 /// Most tests compile against <see cref="FrameworkStubs"/> rather than real reference assemblies:
 /// the rules only ever ask about a handful of types by metadata name, and stub declarations make
 /// the suite hermetic, fast and indifferent to which target packs happen to be installed.
-/// The stubs live in their own project, as the real framework does — putting them in the
-/// compilation under test would make MOD0001 fire on ControllerBase itself.
+/// The stubs live in their own assembly, as the real framework does — putting them in the
+/// compilation under test would make MOD0001 fire on ControllerBase itself. That assembly is
+/// compiled once per test run and handed to every test as a metadata reference, rather than
+/// recompiled as a project by each of them.
 /// </remarks>
 internal static class AnalyzerTest
 {
-    private const string FrameworkProject = "Framework";
     private const string ModuleProject = "OrdersModule";
+
+    // Lazy rather than ??=: TUnit runs tests in parallel, and each would otherwise resolve and
+    // compile the same references for itself.
+    private static readonly Lazy<Task<ImmutableArray<MetadataReference>>> BaseReferences = new(
+        () => ReferenceAssemblies.Default.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));
+
+    private static readonly Lazy<Task<MetadataReference>> FrameworkWithModuleBase = new(async () =>
+        Compile("Framework", [FrameworkStubs, ModuleBaseStub], await BaseReferences.Value));
+
+    private static readonly Lazy<Task<MetadataReference>> FrameworkWithoutModuleBase = new(async () =>
+        Compile("Framework", [FrameworkStubs], await BaseReferences.Value));
 
     /// <summary>
     /// Stand-ins for the framework types the rules look up by metadata name.
@@ -131,9 +145,50 @@ internal static class AnalyzerTest
         sealed class TestModule : ModuleBase { }
         """;
 
-    public static Task VerifyAsync<TAnalyzer>(params string[] sources)
+    /// <summary>The reference assemblies every compilation in the suite starts from.</summary>
+    public static Task<ImmutableArray<MetadataReference>> BaseReferencesAsync() => BaseReferences.Value;
+
+    /// <summary>The framework stubs, and by default the <c>ModuleBase</c> stub, as one compiled assembly.</summary>
+    public static Task<MetadataReference> FrameworkAsync(bool withModuleBase = true) =>
+        (withModuleBase ? FrameworkWithModuleBase : FrameworkWithoutModuleBase).Value;
+
+    /// <summary>Compiles sources into an in-memory assembly, failing loudly when they do not compile.</summary>
+    public static MetadataReference Compile(string name, IEnumerable<string> sources, IEnumerable<MetadataReference> references)
+    {
+        var compilation = CSharpCompilation.Create(
+            name,
+            sources.Select(source => CSharpSyntaxTree.ParseText(source)),
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var stream = new MemoryStream();
+        var result = compilation.Emit(stream);
+
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"{name} did not compile: {string.Join("; ", result.Diagnostics)}");
+        }
+
+        return MetadataReference.CreateFromImage(stream.ToArray());
+    }
+
+    /// <summary>
+    /// Points a test's primary project at the framework stubs, with the registered module and
+    /// the given sources in it. The code fix tests share it.
+    /// </summary>
+    public static async Task ArrangeAsync(SolutionState state, bool withModuleBase, IEnumerable<string> sources)
+    {
+        state.AdditionalReferences.Add(await FrameworkAsync(withModuleBase));
+
+        foreach (var source in sources)
+        {
+            state.Sources.Add(source);
+        }
+    }
+
+    public static async Task VerifyAsync<TAnalyzer>(params string[] sources)
         where TAnalyzer : DiagnosticAnalyzer, new() =>
-        Build<TAnalyzer>(withModuleBase: true, sources).RunAsync(CancellationToken.None);
+        await (await BuildAsync<TAnalyzer>(withModuleBase: true, sources)).RunAsync(CancellationToken.None);
 
     /// <summary>Verifies a snippet in an assembly that is a module: a registered module, then the code.</summary>
     public static Task VerifyModuleAsync<TAnalyzer>(string source)
@@ -141,9 +196,9 @@ internal static class AnalyzerTest
         VerifyAsync<TAnalyzer>(RegisteredModule, source);
 
     /// <summary>Verifies a snippet compiled without the runtime package present.</summary>
-    public static Task VerifyWithoutModuleBaseAsync<TAnalyzer>(string source)
+    public static async Task VerifyWithoutModuleBaseAsync<TAnalyzer>(string source)
         where TAnalyzer : DiagnosticAnalyzer, new() =>
-        Build<TAnalyzer>(withModuleBase: false, [source]).RunAsync(CancellationToken.None);
+        await (await BuildAsync<TAnalyzer>(withModuleBase: false, [source])).RunAsync(CancellationToken.None);
 
     /// <summary>Verifies a snippet compiled with no ASP.NET Core types in scope at all.</summary>
     public static Task VerifyWithoutAspNetCoreAsync<TAnalyzer>(string source)
@@ -155,16 +210,16 @@ internal static class AnalyzerTest
         return test.RunAsync(CancellationToken.None);
     }
 
-    public static Task VerifyWithOptionAsync<TAnalyzer>(string key, string value, string source)
+    public static async Task VerifyWithOptionAsync<TAnalyzer>(string key, string value, string source)
         where TAnalyzer : DiagnosticAnalyzer, new()
     {
-        var test = Build<TAnalyzer>(withModuleBase: true, [RegisteredModule, source]);
+        var test = await BuildAsync<TAnalyzer>(withModuleBase: true, [RegisteredModule, source]);
         test.TestState.AnalyzerConfigFiles.Add(("/.editorconfig", $"""
             is_global = true
             {key} = {value}
             """));
 
-        return test.RunAsync(CancellationToken.None);
+        await test.RunAsync(CancellationToken.None);
     }
 
     /// <summary>
@@ -173,7 +228,7 @@ internal static class AnalyzerTest
     /// <param name="source">The host's own code. Must contain an entry point.</param>
     /// <param name="expected">Expected diagnostics. MOD0003 and MOD0004 have no location, so
     /// they cannot be written as markup.</param>
-    public static Task VerifyHostAsync<TAnalyzer>(string source, params DiagnosticResult[] expected)
+    public static async Task VerifyHostAsync<TAnalyzer>(string source, params DiagnosticResult[] expected)
         where TAnalyzer : DiagnosticAnalyzer, new()
     {
         const string moduleAssembly = """
@@ -189,49 +244,28 @@ internal static class AnalyzerTest
             public class OrderLeak { }
             """;
 
-        var test = new CSharpAnalyzerTest<TAnalyzer, DefaultVerifier> { ReferenceAssemblies = ReferenceAssemblies.Default };
-
         // Three assemblies, as in a real solution. The framework has to be separate from the
         // module: with ApplicationPartAttribute inside the module assembly, a host that merely
         // declares the attribute would also count as using a module type.
-        var framework = new ProjectState(FrameworkProject, LanguageNames.CSharp, "/Framework/", "cs");
-        framework.Sources.Add(FrameworkStubs);
-        framework.Sources.Add(ModuleBaseStub);
+        var test = await BuildAsync<TAnalyzer>(withModuleBase: true, [source]);
 
         var module = new ProjectState(ModuleProject, LanguageNames.CSharp, "/Module/", "cs");
         module.Sources.Add(moduleAssembly);
-        module.AdditionalProjectReferences.Add(FrameworkProject);
+        module.AdditionalReferences.Add(await FrameworkAsync());
 
-        test.TestState.AdditionalProjects.Add(FrameworkProject, framework);
         test.TestState.AdditionalProjects.Add(ModuleProject, module);
-        test.TestState.AdditionalProjectReferences.Add(FrameworkProject);
         test.TestState.AdditionalProjectReferences.Add(ModuleProject);
         test.TestState.OutputKind = OutputKind.ConsoleApplication;
-        test.TestState.Sources.Add(source);
         test.TestState.ExpectedDiagnostics.AddRange(expected);
 
-        return test.RunAsync(CancellationToken.None);
+        await test.RunAsync(CancellationToken.None);
     }
 
-    private static CSharpAnalyzerTest<TAnalyzer, DefaultVerifier> Build<TAnalyzer>(bool withModuleBase, string[] sources)
+    private static async Task<CSharpAnalyzerTest<TAnalyzer, DefaultVerifier>> BuildAsync<TAnalyzer>(bool withModuleBase, string[] sources)
         where TAnalyzer : DiagnosticAnalyzer, new()
     {
         var test = new CSharpAnalyzerTest<TAnalyzer, DefaultVerifier> { ReferenceAssemblies = ReferenceAssemblies.Default };
-
-        var framework = new ProjectState(FrameworkProject, LanguageNames.CSharp, "/Framework/", "cs");
-        framework.Sources.Add(FrameworkStubs);
-        if (withModuleBase)
-        {
-            framework.Sources.Add(ModuleBaseStub);
-        }
-
-        test.TestState.AdditionalProjects.Add(FrameworkProject, framework);
-        test.TestState.AdditionalProjectReferences.Add(FrameworkProject);
-
-        foreach (var source in sources)
-        {
-            test.TestState.Sources.Add(source);
-        }
+        await ArrangeAsync(test.TestState, withModuleBase, sources);
 
         return test;
     }

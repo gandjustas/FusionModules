@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace FusionModules.Analyzers;
 
@@ -28,6 +30,9 @@ internal static class ModuleFacts
     /// <c>InternalsVisibleTo</c> is enough to let the proxy implement an internal interface.
     /// </summary>
     public const string TypedClientBuilderAssemblyName = "Microsoft.AspNetCore.SignalR.TypedClientBuilder";
+
+    /// <summary>Set by the package's targets; see <c>FusionModules.targets</c>.</summary>
+    public const string ProjectKindOption = "build_property.FusionModulesProjectKind";
 
     /// <summary>
     /// Resolves <c>FusionModules.ModuleBase</c>. Uses the plural lookup because the type can legitimately
@@ -87,66 +92,105 @@ internal static class ModuleFacts
         GetHostingStartupTypes(assembly, hostingStartupAttribute).Any(type => InheritsFrom(type, moduleBase));
 
     /// <summary>
-    /// Entity types configured by an <c>IEntityTypeConfiguration&lt;T&gt;</c> declared in this
-    /// assembly. EF Core reaches them by reflection, so they have to stay public.
+    /// True when the compilation itself is a module: a library that declares a module. The host's
+    /// own executable may declare one too, and is still held to the host's rules, not a module's.
     /// </summary>
-    public static HashSet<ITypeSymbol> GetConfiguredEntityTypes(Compilation compilation)
+    public static bool IsModuleCompilation(
+        Compilation compilation,
+        INamedTypeSymbol? hostingStartupAttribute,
+        INamedTypeSymbol? moduleBase,
+        CancellationToken cancellationToken) =>
+        hostingStartupAttribute is not null &&
+        moduleBase is not null &&
+        compilation.GetEntryPoint(cancellationToken) is null &&
+        IsModuleAssembly(compilation.Assembly, hostingStartupAttribute, moduleBase);
+
+    /// <summary>
+    /// The modules among the assemblies this compilation references.
+    /// </summary>
+    public static IEnumerable<IAssemblySymbol> GetReferencedModules(
+        Compilation compilation,
+        INamedTypeSymbol? hostingStartupAttribute,
+        INamedTypeSymbol? moduleBase) =>
+        compilation.SourceModule.ReferencedAssemblySymbols
+            .Where(assembly => IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase));
+
+    /// <summary>
+    /// The project's kind as MSBuild classified it (<c>FusionModulesProjectKind</c>), or
+    /// <see cref="ProjectKind.Unknown"/> without the package's targets. MSBuild compares property
+    /// values without regard to case, so this does too.
+    /// </summary>
+    public static ProjectKind GetProjectKind(AnalyzerConfigOptions globalOptions)
     {
-        var result = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        globalOptions.TryGetValue(ProjectKindOption, out var kind);
+
+        return kind?.Trim().ToUpperInvariant() switch
+        {
+            "HOST" => ProjectKind.Host,
+            "TEST" => ProjectKind.Test,
+            "MODULE" => ProjectKind.Module,
+            _ => ProjectKind.Unknown,
+        };
+    }
+
+    /// <summary>
+    /// What this assembly's own types say about which of them the framework reaches by reflection,
+    /// gathered in one walk over every type, nested ones included.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Entity types configured by an <c>IEntityTypeConfiguration&lt;T&gt;</c>: EF Core reaches them
+    /// by reflection, so they have to stay public.
+    /// </para>
+    /// <para>
+    /// Client interfaces named by a <c>Hub&lt;TClient&gt;</c>, each mapped to the name of the hub that
+    /// names it. Keyed by the client rather than the hub: two hubs may share one client interface,
+    /// and the interface is the thing a rule reports on. The first hub found supplies the name,
+    /// because a message needs one and not a list.
+    /// </para>
+    /// </remarks>
+    public static DeclaredTypes ScanDeclaredTypes(Compilation compilation)
+    {
+        var entityTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        var hubClients = new Dictionary<ITypeSymbol, string>(SymbolEqualityComparer.Default);
 
         var configurationInterface = compilation
             .GetTypeByMetadataName(EntityTypeConfigurationMetadataName)
             ?.ConstructUnboundGenericType();
+        var hubOfT = compilation.GetTypeByMetadataName(HubOfTMetadataName)?.ConstructUnboundGenericType();
 
-        if (configurationInterface is null)
+        if (configurationInterface is null && hubOfT is null)
         {
-            return result;
+            return new DeclaredTypes(entityTypes, hubClients);
         }
 
         foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
         {
-            foreach (var @interface in type.AllInterfaces)
+            if (configurationInterface is not null)
             {
-                if (@interface.IsGenericType &&
-                    SymbolEqualityComparer.Default.Equals(@interface.ConstructUnboundGenericType(), configurationInterface))
+                foreach (var @interface in type.AllInterfaces)
                 {
-                    result.Add(@interface.TypeArguments[0]);
+                    if (@interface.IsGenericType &&
+                        SymbolEqualityComparer.Default.Equals(@interface.ConstructUnboundGenericType(), configurationInterface))
+                    {
+                        entityTypes.Add(@interface.TypeArguments[0]);
+                    }
                 }
             }
-        }
 
-        return result;
-    }
+            if (hubOfT is null)
+            {
+                continue;
+            }
 
-    /// <summary>
-    /// Client interfaces named by a <c>Hub&lt;TClient&gt;</c> declared in this assembly, each
-    /// mapped to the name of the hub that names it.
-    /// </summary>
-    /// <remarks>
-    /// Keyed by the client rather than the hub: two hubs may share one client interface, and the
-    /// interface is the thing a rule reports on. The first hub found supplies the name, because a
-    /// message needs one and not a list.
-    /// </remarks>
-    public static Dictionary<ITypeSymbol, string> GetHubClients(Compilation compilation)
-    {
-        var result = new Dictionary<ITypeSymbol, string>(SymbolEqualityComparer.Default);
-
-        var hubOfT = compilation.GetTypeByMetadataName(HubOfTMetadataName)?.ConstructUnboundGenericType();
-        if (hubOfT is null)
-        {
-            return result;
-        }
-
-        foreach (var type in GetAllTypes(compilation.Assembly.GlobalNamespace))
-        {
             for (var current = type.BaseType; current is not null; current = current.BaseType)
             {
                 if (current.IsGenericType &&
                     SymbolEqualityComparer.Default.Equals(current.ConstructUnboundGenericType(), hubOfT))
                 {
-                    if (!result.ContainsKey(current.TypeArguments[0]))
+                    if (!hubClients.ContainsKey(current.TypeArguments[0]))
                     {
-                        result[current.TypeArguments[0]] = type.Name;
+                        hubClients[current.TypeArguments[0]] = type.Name;
                     }
 
                     break;
@@ -154,7 +198,7 @@ internal static class ModuleFacts
             }
         }
 
-        return result;
+        return new DeclaredTypes(entityTypes, hubClients);
     }
 
     /// <summary>
@@ -208,23 +252,54 @@ internal static class ModuleFacts
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol root)
     {
-        var stack = new Stack<INamespaceSymbol>();
+        var stack = new Stack<INamespaceOrTypeSymbol>();
         stack.Push(root);
 
         while (stack.Count > 0)
         {
-            foreach (var member in stack.Pop().GetMembers())
+            var current = stack.Pop();
+            if (current is INamedTypeSymbol type)
             {
-                switch (member)
+                yield return type;
+
+                foreach (var nested in type.GetTypeMembers())
                 {
-                    case INamespaceSymbol nested:
-                        stack.Push(nested);
-                        break;
-                    case INamedTypeSymbol type:
-                        yield return type;
-                        break;
+                    stack.Push(nested);
                 }
+
+                continue;
+            }
+
+            foreach (var member in ((INamespaceSymbol)current).GetMembers())
+            {
+                stack.Push(member);
             }
         }
     }
+}
+
+/// <summary>The result of <see cref="ModuleFacts.ScanDeclaredTypes"/>.</summary>
+internal sealed class DeclaredTypes(HashSet<ITypeSymbol> entityTypes, Dictionary<ITypeSymbol, string> hubClients)
+{
+    /// <summary>Entity types configured by an <c>IEntityTypeConfiguration&lt;T&gt;</c> in this assembly.</summary>
+    public HashSet<ITypeSymbol> EntityTypes { get; } = entityTypes;
+
+    /// <summary>Hub client interfaces, each with the name of a hub that names it.</summary>
+    public Dictionary<ITypeSymbol, string> HubClients { get; } = hubClients;
+}
+
+/// <summary>How MSBuild classified the project.</summary>
+internal enum ProjectKind
+{
+    /// <summary>No classification: the package's targets did not run.</summary>
+    Unknown,
+
+    /// <summary>An executable that composes modules.</summary>
+    Host,
+
+    /// <summary>A test project, which has an entry point and may use module types.</summary>
+    Test,
+
+    /// <summary>A library: a module or something a module uses.</summary>
+    Module,
 }

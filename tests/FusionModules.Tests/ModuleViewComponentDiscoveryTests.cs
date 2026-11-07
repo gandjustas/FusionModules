@@ -79,15 +79,7 @@ public class ModuleViewComponentDiscoveryTests
 
         configure(builder);
 
-        var manager = services
-            .Select(descriptor => descriptor.ImplementationInstance)
-            .OfType<ApplicationPartManager>()
-            .Last();
-
-        var feature = new ViewComponentFeature();
-        manager.PopulateFeature(feature);
-
-        return feature.ViewComponents.Select(component => component.AsType()).ToArray();
+        return Features.Populate<ViewComponentFeature>(services).ViewComponents.Select(component => component.AsType()).ToArray();
     }
 }
 

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Immutable;
 using System.Composition;
 using System.Linq;
@@ -9,7 +8,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Editing;
 using FusionModules.Analyzers;
 
 namespace FusionModules.CodeFixes;
@@ -69,33 +68,17 @@ public sealed class HubClientReachableCodeFixProvider : CodeFixProvider
 
     private static async Task<Document> GrantAccessAsync(Document document, CancellationToken cancellationToken)
     {
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        if (root is not CompilationUnitSyntax unit)
+        if (await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false) is not CompilationUnitSyntax unit)
         {
             return document;
         }
 
-        // Fully qualified: an assembly-level attribute sits above any file-scoped namespace, where
-        // a bare name would not bind.
-        var attribute = SyntaxFactory.AttributeList(
-                SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.Attribute(
-                        SyntaxFactory.ParseName(InternalsVisibleToAttributeName),
-                        SyntaxFactory.AttributeArgumentList(
-                            SyntaxFactory.SingletonSeparatedList(
-                                SyntaxFactory.AttributeArgument(
-                                    SyntaxFactory.LiteralExpression(
-                                        SyntaxKind.StringLiteralExpression,
-                                        SyntaxFactory.Literal(ModuleFacts.TypedClientBuilderAssemblyName))))))))
-            .WithTarget(SyntaxFactory.AttributeTargetSpecifier(SyntaxFactory.Token(SyntaxKind.AssemblyKeyword)))
-            .NormalizeWhitespace(elasticTrivia: true)
-            .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(root)));
+        var generator = SyntaxGenerator.GetGenerator(document);
+        var attribute = generator.Attribute(
+            InternalsVisibleToAttributeName,
+            generator.LiteralExpression(ModuleFacts.TypedClientBuilderAssemblyName));
 
-        var updated = unit.AttributeLists.Any()
-            ? unit.AddAttributeLists(attribute)
-            : unit.WithAttributeLists(SyntaxFactory.SingletonList(attribute));
-
-        return document.WithSyntaxRoot(updated);
+        return SyntaxEditing.AddAssemblyAttribute(document, unit, attribute);
     }
 
     private static async Task<Document> MakePublicAsync(
@@ -123,65 +106,12 @@ public sealed class HubClientReachableCodeFixProvider : CodeFixProvider
             return document;
         }
 
+        // The generator knows every spelling of accessibility — none at all, `protected internal`,
+        // `private protected` — and keeps the doc comment where it was. The rewritten node, not
+        // the original: a container's rewrite has to carry the nested type's along with it.
+        var generator = SyntaxGenerator.GetGenerator(document);
+
         return document.WithSyntaxRoot(
-            root.ReplaceNodes(chain, (original, _) => MakePublic(original)));
-    }
-
-    private static BaseTypeDeclarationSyntax MakePublic(BaseTypeDeclarationSyntax declaration)
-    {
-        var @public = SyntaxFactory.Token(SyntaxKind.PublicKeyword);
-
-        var existing = declaration.Modifiers.FirstOrDefault(modifier =>
-            modifier.IsKind(SyntaxKind.InternalKeyword) ||
-            modifier.IsKind(SyntaxKind.PrivateKeyword) ||
-            modifier.IsKind(SyntaxKind.ProtectedKeyword));
-
-        if (existing != default)
-        {
-            // Replace rather than remove-and-add, so the doc comment above stays where it was.
-            // `protected internal` and `private protected` are two tokens; the first goes, and
-            // dropping the rest is what makes the result mean what the fix says it does.
-            var modifiers = declaration.Modifiers.Replace(
-                existing,
-                @public.WithLeadingTrivia(existing.LeadingTrivia).WithTrailingTrivia(existing.TrailingTrivia));
-
-            foreach (var redundant in modifiers
-                .Where(modifier => modifier != existing &&
-                                   (modifier.IsKind(SyntaxKind.InternalKeyword) ||
-                                    modifier.IsKind(SyntaxKind.PrivateKeyword) ||
-                                    modifier.IsKind(SyntaxKind.ProtectedKeyword)))
-                .ToArray())
-            {
-                modifiers = modifiers.Remove(redundant);
-            }
-
-            return declaration.WithModifiers(modifiers);
-        }
-
-        // No accessibility at all — the default. The leading trivia belongs to whichever token
-        // currently comes first, and has to move to the keyword being put in front of it.
-        var first = declaration.Modifiers.Count > 0
-            ? declaration.Modifiers[0]
-            : declaration.ChildTokens().First();
-
-        var leading = first.LeadingTrivia;
-        var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
-
-        var updated = declaration.Modifiers.Count > 0
-            ? declaration.WithModifiers(declaration.Modifiers.Replace(first, stripped))
-            : declaration.ReplaceToken(first, stripped);
-
-        return updated.WithModifiers(updated.Modifiers.Insert(
-            0,
-            @public.WithLeadingTrivia(leading).WithTrailingTrivia(SyntaxFactory.Space)));
-    }
-
-    private static string LineBreakOf(SyntaxNode root)
-    {
-        var text = root.GetText();
-
-        return text.Lines.Count > 1
-            ? text.ToString(TextSpan.FromBounds(text.Lines[0].End, text.Lines[0].EndIncludingLineBreak))
-            : Environment.NewLine;
+            root.ReplaceNodes(chain, (_, rewritten) => generator.WithAccessibility(rewritten, Accessibility.Public)));
     }
 }
