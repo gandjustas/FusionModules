@@ -4,4 +4,21 @@
   <Import Project="$(MSBuildThisFileDirectory)../src/FusionModules/build/FusionModules.targets"
           Condition="'$(FusionModulesUseProjectReferences)' == 'true'" />
 
+  <!--
+    Each sample's topology tests (every one is a Tests.csproj) use FusionModules.Testing, consumed
+    the same two ways as FusionModules (Directory.Build.props): a consumer needs only its
+    PackageReference. They also run Microsoft.AspNetCore.Mvc.Testing at the version
+    Directory.Packages.props pins: FusionModules.Testing alone would bring it at the package's floor,
+    8.0.0 or 10.0.0, which is what a consumer may run with but not what this repository tests.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Tests'">
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Tests' and '$(FusionModulesUseProjectReferences)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../src/FusionModules.Testing/FusionModules.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Tests' and '$(FusionModulesUseProjectReferences)' != 'true'">
+    <PackageReference Include="FusionModules.Testing" VersionOverride="$(FusionModulesVersion)" />
+  </ItemGroup>
+
 </Project>

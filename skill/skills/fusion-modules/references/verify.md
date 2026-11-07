@@ -21,12 +21,15 @@ Read off the endpoint table, not probed over HTTP: an HTTP probe cannot tell "no
 "deployed and broken", and it drags a database into a question about composition. Swagger JSON
 works too if the services already produce it.
 
-Store one file per service, then one per topology, and diff them.
+Store one file per service, then one per topology, and diff them. After the conversion the topology
+side can come from `Routes()` (section 4): `Routes().Select(route => $"{route.Method} {route.Pattern}").Distinct().Order(StringComparer.Ordinal)`
+writes the template's lines — one method per line, `*` for any.
 
 Normalise the leading slash. An attribute route is stored without one and a minimal-API route with
 one, so `/orders` and `orders` are the same URL written two ways — and converting a controller to a
 minimal API would otherwise diff every route it touched while changing none of them. The template
-does this; if you write your own, do it too.
+does this, and so does `Routes()` from FusionModules.Testing (section 4); if you write your own, do
+it too.
 
 ### When every service declares `Program` in the global namespace
 
@@ -89,20 +92,19 @@ suppresses itself in that case, so anything you do see is real.
 
 ## 4. Boot every topology
 
-```csharp
-internal sealed class ModularWebApplicationFactory(params string[] modules) : WebApplicationFactory<Program>
-{
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.UseSetting(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', modules));
-        base.ConfigureWebHost(builder);
-    }
-}
+```
+dotnet add package FusionModules.Testing
 ```
 
-Ten lines, copied into the test project — there is no package for this, because there is nothing
-in it but a setting. Keep the module names in one place in the test project: they are the same
-strings a deployment writes, and a typo in them fails startup with a message naming the module.
+```csharp
+using var factory = new ModularWebApplicationFactory<Program>("Orders.Entities", "OrdersModule");
+```
+
+`ModularWebApplicationFactory<TEntryPoint>` is a `WebApplicationFactory` that sets
+`HOSTINGSTARTUPASSEMBLIES` to the names it is given, and nothing else; it works with any test
+framework. Keep the module names in one place in the test project: they are the same strings a
+deployment writes, and a typo in them fails startup with a message naming the module — when the host
+calls `ValidateModules()`.
 
 This is the other half of section 1, not a later step: everything section 2 lists is found here or
 in production.
@@ -113,23 +115,41 @@ hangs or fails for a reason that has nothing to do with composition. The questio
 what composed, not what connected, so take them out and leave the one that builds the pipeline:
 
 ```csharp
-builder.ConfigureTestServices(services =>
+internal sealed class OfflineTopology(params string[] modules) : ModularWebApplicationFactory<Program>(modules)
 {
-    foreach (var descriptor in services
-        .Where(d => d.ServiceType == typeof(IHostedService) &&
-                    d.ImplementationType?.FullName != "Microsoft.AspNetCore.Hosting.GenericWebHostService")
-        .ToList())
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        services.Remove(descriptor);
+        builder
+            .UseConnectionStrings(("Postgres", "Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused"))
+            .WithoutApplicationHostedServices()
+            .UseSetting("Database:Migrate", "false");
+        base.ConfigureWebHost(builder);
     }
-});
+}
 ```
 
-`GenericWebHostService` stays because it is what builds the pipeline, and therefore the route table
-the test came for. Two things go with it. Connection strings have to be present and syntactically
-valid even though nothing connects — Npgsql and the Redis client both connect lazily, so an address
-nothing is listening on is enough. And whatever switch keeps the second replica from migrating in
-the compose file turns the startup gate off here too.
+`WithoutApplicationHostedServices` keeps `GenericWebHostService` because it is what builds the
+pipeline, and therefore the route table the test came for. `UseConnectionStrings` and the host's
+own startup switch do the rest. Connection strings have to be present and parse even though nothing
+connects — Npgsql and the Redis client both connect lazily, so an address nothing is listening on is
+enough. It sets each one verbatim, so write each in its own client's format: an Npgsql-style string
+handed to EasyNetQ starts the host and fails on the first use of the bus. Port 1 on the loopback
+address, per client: `Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused`
+(Npgsql), `Server=127.0.0.1,1;Database=unused;User Id=unused;Password=unused;TrustServerCertificate=true;Connect Timeout=1`
+(SQL Server), `host=127.0.0.1;port=1` (EasyNetQ), `127.0.0.1:1,abortConnect=false` (Redis). And whatever switch keeps the second
+replica from migrating in the compose file turns the startup gate off here too:
+`Database:Migrate=false` is the samples' convention — use your host's own key if it has another.
+
+The factory refuses to start when the test process has `ASPNETCORE_HOSTINGSTARTUPASSEMBLIES` set:
+ASP.NET Core would run those modules beside the ones the test named. Unset it for the test run.
+
+`factory.Services.Routes()` is section 1's inventory for a topology, with the module that serves
+each route: `GET /orders/{id} (OrdersModule)`. The module is a loaded module, or `host`
+(`ModuleRoute.Host`) for the host's own assembly — whether or not the host is a module too, as the
+startup report counts it; a route whose handler is the framework's or a library's — `MapOpenApi`'s document, a health
+check — has none, and the startup report does not count it either. Static assets (`MapStaticAssets`,
+an endpoint per file and per fingerprinted copy) are left out unless you ask with
+`Routes(includeStaticAssets: true)`.
 
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is

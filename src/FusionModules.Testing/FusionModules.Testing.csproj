@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <PackageId>FusionModules.Testing</PackageId>
+    <AssemblyName>FusionModules.Testing</AssemblyName>
+    <RootNamespace>FusionModules.Testing</RootNamespace>
+    <PackageTags>$(PackageTags);testing;integration-testing;webapplicationfactory</PackageTags>
+    <Description>Integration tests for a FusionModules host, one topology at a time: a WebApplicationFactory that boots the host with the modules a test names, exactly as HOSTINGSTARTUPASSEMBLIES does in a deployment; settings that keep a topology test off the database and away from the modules' workers; and the host's routes with the module that serves each. Works with any test framework.</Description>
+  </PropertyGroup>
+
+  <!--
+    A package of its own so that FusionModules does not depend on Microsoft.AspNetCore.Mvc.Testing:
+    only test projects need it. The project reference becomes a package dependency on FusionModules
+    of the same version; Microsoft.AspNetCore.Mvc.Testing comes with it, and so do its
+    buildTransitive targets, which copy the host's .deps.json next to the tests.
+
+    Microsoft.AspNetCore.Mvc.Testing at the first release of each major version, not at the version
+    Directory.Packages.props pins: the version referenced here becomes the floor of the package's
+    dependency, and a pinned floor raised every consumer to the latest patch. The floor is what a
+    consumer may run with, not what anything here runs: the tests and the samples reference the
+    package themselves, at the pinned version. eng/pack-validate.sh checks the floors in the nuspec.
+  -->
+  <PropertyGroup>
+    <MvcTestingFloor Condition="'$(TargetFramework)' == 'net8.0'">8.0.0</MvcTestingFloor>
+    <MvcTestingFloor Condition="'$(TargetFramework)' != 'net8.0'">10.0.0</MvcTestingFloor>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\FusionModules\FusionModules.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" VersionOverride="$(MvcTestingFloor)" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Whose an endpoint is: the same file the startup checks compile, so that the route inventory and
+    the startup report never disagree about an owner. Compiled in rather than reached through
+    InternalsVisibleTo: this package depends on FusionModules at a minimum version, and an internal
+    member of a later FusionModules is no contract for an earlier FusionModules.Testing.
+  -->
+  <ItemGroup>
+    <Compile Include="..\FusionModules\EndpointTable.Owner.cs" Link="Shared\EndpointTable.Owner.cs" />
+  </ItemGroup>
+
+</Project>

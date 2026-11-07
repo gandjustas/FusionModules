@@ -57,6 +57,7 @@ database connection in `StartAsync` therefore fails every topology test on a mac
 database — for a reason that has nothing to do with composition, which is the only thing those
 tests ask about.
 
-The last test strips them and keeps `GenericWebHostService`, which is what builds the pipeline and
-therefore the route table the test came for. The gate still runs, because it is the host's and not
-a hosted service.
+The last test strips them with `WithoutApplicationHostedServices()` from
+[FusionModules.Testing](../../docs/testing.md), which keeps `GenericWebHostService`: it is what
+builds the pipeline and therefore the route table the test came for. The gate still runs, because it
+is the host's and not a hosted service.

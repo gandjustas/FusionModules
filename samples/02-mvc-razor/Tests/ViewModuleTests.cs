@@ -1,4 +1,5 @@
 using System.Net;
+using FusionModules.Testing;
 
 namespace Sample.Mvc.Tests;
 
@@ -14,7 +15,7 @@ public class ViewModuleTests
         // modules' controllers and pages into the host at build time, entirely behind
         // HOSTINGSTARTUPASSEMBLIES' back — so these routes would answer here, in a topology that
         // asked for no modules at all, and in production too.
-        using var factory = new ModularWebApplicationFactory();
+        using var factory = new ModularWebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
         await Assert.That((await client.GetAsync("/Dashboard", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
@@ -24,7 +25,7 @@ public class ViewModuleTests
     [Test]
     public async Task MvcModule_ServesItsAreaAndOnlyItsArea(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(DashboardModule);
+        using var factory = new ModularWebApplicationFactory<Program>(DashboardModule);
         var client = factory.CreateClient();
 
         // The controller behind this is internal, and so are the service it takes and the model
@@ -43,7 +44,7 @@ public class ViewModuleTests
     [Test]
     public async Task RazorPagesModule_ServesItsPages(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(StatusModule);
+        using var factory = new ModularWebApplicationFactory<Program>(StatusModule);
         var client = factory.CreateClient();
 
         await Assert.That(await client.GetStringAsync("/status", cancellationToken)).Contains("<h1>Status</h1>");
@@ -54,7 +55,7 @@ public class ViewModuleTests
     {
         // Razor class library semantics put a module's wwwroot under _content/<AssemblyName>/,
         // so two modules can both ship site.css without knowing about each other.
-        using var factory = new ModularWebApplicationFactory(StatusModule);
+        using var factory = new ModularWebApplicationFactory<Program>(StatusModule);
         var client = factory.CreateClient();
 
         var css = await client.GetAsync("/_content/StatusModule/status.css", cancellationToken);
@@ -70,7 +71,7 @@ public class ViewModuleTests
         // HOSTINGSTARTUPASSEMBLIES, because MOD0007 and GenerateMvcApplicationPartsAssemblyAttributes
         // see to it. Static web assets are not: their manifest is built from project references at
         // build time, so this file answers in a topology that named no module at all.
-        using var factory = new ModularWebApplicationFactory();
+        using var factory = new ModularWebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
         await Assert.That((await client.GetAsync("/status", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
@@ -80,7 +81,7 @@ public class ViewModuleTests
     [Test]
     public async Task BothModules_Coexist(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(DashboardModule, StatusModule);
+        using var factory = new ModularWebApplicationFactory<Program>(DashboardModule, StatusModule);
         var client = factory.CreateClient();
 
         await Assert.That((await client.GetAsync("/Dashboard", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.OK);

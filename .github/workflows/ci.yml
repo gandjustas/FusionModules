@@ -180,7 +180,8 @@ jobs:
         # shell.
         shell: pwsh
         run: |
-          # FusionModules.<digit>: FusionModules.* also matches FusionModules.EntityFrameworkCore.
+          # FusionModules.<digit>: FusionModules.* also matches FusionModules.EntityFrameworkCore and
+          # FusionModules.Testing, which pack-validate put in the same feed at the same version.
           $package = Get-ChildItem local-feed/FusionModules.*.nupkg | Where-Object Name -match '^FusionModules\.\d' | Select-Object -First 1
           $version = $package.BaseName -replace '^FusionModules\.', ''
           $config = Join-Path ([IO.Path]::GetTempPath()) 'samples-sources.config'

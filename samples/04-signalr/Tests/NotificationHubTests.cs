@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using FusionModules.Testing;
 
 namespace Sample.SignalR.Tests;
 
@@ -23,7 +24,7 @@ public class NotificationHubTests
     [Test]
     public async Task NoModules_HasNoHub(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory();
+        using var factory = new ModularWebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
         await Assert.That((await client.GetAsync("/hubs/notifications", cancellationToken)).StatusCode)
@@ -35,7 +36,7 @@ public class NotificationHubTests
     [Test]
     public async Task ASubscribedClientReceivesThePush(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(NotificationsModule);
+        using var factory = new ModularWebApplicationFactory<Program>(NotificationsModule);
 
         await using var connection = Connect(factory);
         var received = new TaskCompletionSource<NotificationDto>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -64,7 +65,7 @@ public class NotificationHubTests
     [Test]
     public async Task AClientOutsideTheGroupIsNotPushedTo(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(NotificationsModule);
+        using var factory = new ModularWebApplicationFactory<Program>(NotificationsModule);
 
         await using var connection = Connect(factory);
         var received = new TaskCompletionSource<NotificationDto>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -87,7 +88,7 @@ public class NotificationHubTests
     /// Long polling because the transport has to travel through the in-memory test server's own
     /// handler; WebSockets would need a socket the test server is not offering.
     /// </summary>
-    private static HubConnection Connect(ModularWebApplicationFactory factory) =>
+    private static HubConnection Connect(ModularWebApplicationFactory<Program> factory) =>
         new HubConnectionBuilder()
             .WithUrl(new Uri(factory.Server.BaseAddress, "hubs/notifications"), options =>
             {

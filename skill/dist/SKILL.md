@@ -418,7 +418,7 @@ every context with the same options, keyed by context type. Two hosts with diffe
 in one process — every integration test assembly — would share the first one's model. `UseModules`
 replaces EF Core's `IModelCacheKeyFactory` with one whose key includes the module set. A context
 that replaces `IModelCacheKeyFactory` itself — a schema per tenant, say — replaces this one too,
-and its own key has to include the module set as well.
+and its own key has to include `context.GetModuleSetKey()` as well.
 
 Once per set of modules the package logs, in the category `FusionModules.EntityFrameworkCore`, which
 modules the model was composed from and in what order, which had no configurations, and which
@@ -809,8 +809,10 @@ is going to change behaviour — decide which, deliberately.
 From here on the host checks what its modules register, every time it starts: two modules
 registering one service with different implementations fail startup, and two modules mapping one
 route or configuring the same options differently are logged as warnings. Each start also logs one
-line beginning `Topology:` — the modules, the endpoints each serves and the hosted services each
-registered. Read it after every module you convert. What each check counts and how to answer it:
+line beginning `Topology:` — `modules: …; endpoints: …; hosted services: …; library hosted
+services: …; shared on purpose: …`, each part left out when empty: the modules, the endpoints each
+serves (and the host's own, as `host`), the modules that serve none, and the hosted services that
+run — a worker removed after the modules registered it is not listed. Read it after every module you convert. What each check counts and how to answer it:
 the [runtime reference](https://github.com/gandjustas/FusionModules/blob/HEAD/docs/runtime.md) and
 [troubleshooting](#when-it-fails-quietly).
 
@@ -1179,9 +1181,13 @@ and something is simply missing. Work from the symptom.
 
 ### An endpoint returns 404 in a topology that should have it
 
-Read the `Topology:` line in the startup log first: its `endpoints` part counts what each loaded
-module serves. A module that is not in the list was not loaded; one listed with `0` was loaded and
-mapped nothing.
+Read the `Topology:` line in the startup log first: its `endpoints:` part counts what each loaded
+module serves, and the host's own as `host` (even when the host is a module itself), and names the
+modules that serve nothing —
+`(none from Local, Orders.Entities)`. A module missing from `modules:` was not loaded. One under
+`none from` was loaded and mapped nothing: expected of a transport or a module of entities,
+suspicious only for a module meant to serve requests. Endpoints whose handler is the framework's or a
+library's (a health check, `MapOpenApi`) are not counted for anyone.
 
 In order of likelihood:
 
@@ -1211,7 +1217,11 @@ implementation. Startup refuses instead, naming the service, both modules and bo
 The fix is **not** `TryAdd`: that turns last-wins into first-wins, and one module still gets the
 wrong implementation. Instead:
 
-- register **keyed**, one key per module; or
+- if the two modules are **alternatives** — two transports, two implementations of one capability
+  that each deployment chooses between — no topology should load them together: remove one from
+  `HOSTINGSTARTUPASSEMBLIES`. This comes first in the message, and it is the fix whenever it applies;
+  keying the registration would only hide the mistake;
+- otherwise register **keyed**, one key per module; or
 - register a **type of each module's own**: a concrete type, or a module-internal interface;
 - if the type is meant to be consumed as `IEnumerable<T>` (seeders, handlers, listeners), put an
   attribute named `MultipleImplementationsAttribute` on it — declared in the contracts library
@@ -1224,7 +1234,9 @@ There is no setting that turns the check off. What is and is not a collision is 
 MOD0014 asks the same question in the host's build, for every pair of modules the host references,
 from the registrations written in the modules' own code. Modules that are alternatives — never
 loaded together — go in `fusion_modules_allowed_service_collisions` (`.editorconfig` or an MSBuild
-property); that list silences the build warning only.
+property); that list silences the build warning only. `ValidateModules()` hands it to the startup
+check as `FusionModules:AlternativeServices`, so when two of those modules load together after all,
+startup still fails and the message says plainly to load only one of them.
 
 ### A warning at startup: "Routes mapped by more than one module"
 
@@ -1297,8 +1309,8 @@ empty, or short. Generate migrations through a design-time factory that names ev
 EF Core's model cache, keyed by context type, shared across hosts in one process. The second
 topology in a test run gets the first one's model. Nothing throws. `UseModules` from
 `FusionModules.EntityFrameworkCore` puts a key that includes the module set in place; a context that
-replaces `IModelCacheKeyFactory` itself after it loses that key and has to include the module set in
-its own — [data.md](#phase-3-data).
+replaces `IModelCacheKeyFactory` itself after it loses that key and has to include
+`context.GetModuleSetKey()` in its own — [data.md](#phase-3-data).
 
 If it happens at runtime rather than in tests, look at what the model is composed from. An
 `AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly
@@ -1398,12 +1410,15 @@ Read off the endpoint table, not probed over HTTP: an HTTP probe cannot tell "no
 "deployed and broken", and it drags a database into a question about composition. Swagger JSON
 works too if the services already produce it.
 
-Store one file per service, then one per topology, and diff them.
+Store one file per service, then one per topology, and diff them. After the conversion the topology
+side can come from `Routes()` (section 4): `Routes().Select(route => $"{route.Method} {route.Pattern}").Distinct().Order(StringComparer.Ordinal)`
+writes the template's lines — one method per line, `*` for any.
 
 Normalise the leading slash. An attribute route is stored without one and a minimal-API route with
 one, so `/orders` and `orders` are the same URL written two ways — and converting a controller to a
 minimal API would otherwise diff every route it touched while changing none of them. The template
-does this; if you write your own, do it too.
+does this, and so does `Routes()` from FusionModules.Testing (section 4); if you write your own, do
+it too.
 
 #### When every service declares `Program` in the global namespace
 
@@ -1466,20 +1481,19 @@ suppresses itself in that case, so anything you do see is real.
 
 ### 4. Boot every topology
 
-```csharp
-internal sealed class ModularWebApplicationFactory(params string[] modules) : WebApplicationFactory<Program>
-{
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.UseSetting(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', modules));
-        base.ConfigureWebHost(builder);
-    }
-}
+```
+dotnet add package FusionModules.Testing
 ```
 
-Ten lines, copied into the test project — there is no package for this, because there is nothing
-in it but a setting. Keep the module names in one place in the test project: they are the same
-strings a deployment writes, and a typo in them fails startup with a message naming the module.
+```csharp
+using var factory = new ModularWebApplicationFactory<Program>("Orders.Entities", "OrdersModule");
+```
+
+`ModularWebApplicationFactory<TEntryPoint>` is a `WebApplicationFactory` that sets
+`HOSTINGSTARTUPASSEMBLIES` to the names it is given, and nothing else; it works with any test
+framework. Keep the module names in one place in the test project: they are the same strings a
+deployment writes, and a typo in them fails startup with a message naming the module — when the host
+calls `ValidateModules()`.
 
 This is the other half of section 1, not a later step: everything section 2 lists is found here or
 in production.
@@ -1490,23 +1504,41 @@ hangs or fails for a reason that has nothing to do with composition. The questio
 what composed, not what connected, so take them out and leave the one that builds the pipeline:
 
 ```csharp
-builder.ConfigureTestServices(services =>
+internal sealed class OfflineTopology(params string[] modules) : ModularWebApplicationFactory<Program>(modules)
 {
-    foreach (var descriptor in services
-        .Where(d => d.ServiceType == typeof(IHostedService) &&
-                    d.ImplementationType?.FullName != "Microsoft.AspNetCore.Hosting.GenericWebHostService")
-        .ToList())
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        services.Remove(descriptor);
+        builder
+            .UseConnectionStrings(("Postgres", "Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused"))
+            .WithoutApplicationHostedServices()
+            .UseSetting("Database:Migrate", "false");
+        base.ConfigureWebHost(builder);
     }
-});
+}
 ```
 
-`GenericWebHostService` stays because it is what builds the pipeline, and therefore the route table
-the test came for. Two things go with it. Connection strings have to be present and syntactically
-valid even though nothing connects — Npgsql and the Redis client both connect lazily, so an address
-nothing is listening on is enough. And whatever switch keeps the second replica from migrating in
-the compose file turns the startup gate off here too.
+`WithoutApplicationHostedServices` keeps `GenericWebHostService` because it is what builds the
+pipeline, and therefore the route table the test came for. `UseConnectionStrings` and the host's
+own startup switch do the rest. Connection strings have to be present and parse even though nothing
+connects — Npgsql and the Redis client both connect lazily, so an address nothing is listening on is
+enough. It sets each one verbatim, so write each in its own client's format: an Npgsql-style string
+handed to EasyNetQ starts the host and fails on the first use of the bus. Port 1 on the loopback
+address, per client: `Host=127.0.0.1;Port=1;Database=unused;Username=unused;Password=unused`
+(Npgsql), `Server=127.0.0.1,1;Database=unused;User Id=unused;Password=unused;TrustServerCertificate=true;Connect Timeout=1`
+(SQL Server), `host=127.0.0.1;port=1` (EasyNetQ), `127.0.0.1:1,abortConnect=false` (Redis). And whatever switch keeps the second
+replica from migrating in the compose file turns the startup gate off here too:
+`Database:Migrate=false` is the samples' convention — use your host's own key if it has another.
+
+The factory refuses to start when the test process has `ASPNETCORE_HOSTINGSTARTUPASSEMBLIES` set:
+ASP.NET Core would run those modules beside the ones the test named. Unset it for the test run.
+
+`factory.Services.Routes()` is section 1's inventory for a topology, with the module that serves
+each route: `GET /orders/{id} (OrdersModule)`. The module is a loaded module, or `host`
+(`ModuleRoute.Host`) for the host's own assembly — whether or not the host is a module too, as the
+startup report counts it; a route whose handler is the framework's or a library's — `MapOpenApi`'s document, a health
+check — has none, and the startup report does not count it either. Static assets (`MapStaticAssets`,
+an endpoint per file and per fingerprinted copy) are left out unless you ask with
+`Routes(includeStaticAssets: true)`.
 
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is

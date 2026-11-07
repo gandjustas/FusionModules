@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using FusionModules.Testing;
 
 namespace Sample.Startup.Tests;
 
@@ -19,7 +19,7 @@ public class StartupOrderTests
     {
         // Which is the whole claim. The endpoint is not asked to seed anything and does not check
         // whether seeding happened: by the time it can be reached, it has.
-        using var factory = new ModularWebApplicationFactory(CatalogModule);
+        using var factory = new ModularWebApplicationFactory<Program>(CatalogModule);
         var client = factory.CreateClient();
 
         await Assert.That(await client.GetFromJsonAsync<bool>("/catalog/seeded", cancellationToken)).IsTrue();
@@ -30,7 +30,7 @@ public class StartupOrderTests
     [Test]
     public async Task TheGateRunsBeforeAnyHostedService(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory(CatalogModule);
+        using var factory = new ModularWebApplicationFactory<Program>(CatalogModule);
         var client = factory.CreateClient();
 
         var events = await client.GetFromJsonAsync<string[]>("/startup-log", cancellationToken) ?? [];
@@ -55,7 +55,7 @@ public class StartupOrderTests
         //
         // It is registration order, not a contract. StartingAsync is the contractual version, and
         // neither gives ordering between modules, which is why the seed is a descriptor instead.
-        using var factory = new ModularWebApplicationFactory(CatalogModule);
+        using var factory = new ModularWebApplicationFactory<Program>(CatalogModule);
         _ = factory.CreateClient();
 
         var hosted = factory.Services
@@ -72,7 +72,7 @@ public class StartupOrderTests
     [Test]
     public async Task NoModules_HasNoCatalogAndNothingToSeed(CancellationToken cancellationToken)
     {
-        using var factory = new ModularWebApplicationFactory();
+        using var factory = new ModularWebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
         await Assert.That((await client.GetAsync("/catalog", cancellationToken)).StatusCode)
@@ -82,10 +82,10 @@ public class StartupOrderTests
     [Test]
     public async Task ATopologyTestCanStripTheModulesWorkers(CancellationToken cancellationToken)
     {
-        // The recipe from the verification reference. A module's hosted services really run inside
-        // WebApplicationFactory, so a worker that opens a database connection in StartAsync fails
-        // every topology test on a machine that has no database — for a reason that has nothing to
-        // do with composition, which is the only thing these tests ask about.
+        // WithoutApplicationHostedServices, from FusionModules.Testing. A module's hosted services
+        // really run inside WebApplicationFactory, so a worker that opens a database connection in
+        // StartAsync fails every topology test on a machine that has no database — for a reason that
+        // has nothing to do with composition, which is the only thing these tests ask about.
         using var factory = new OfflineFactory(CatalogModule);
         var client = factory.CreateClient();
 
@@ -102,28 +102,15 @@ public class StartupOrderTests
     }
 
     /// <summary>
-    /// The factory template plus the offline helper, which is how a real topology project would
-    /// have it: the strip is opt-in, because a module with no infrastructure-touching worker does
-    /// not need it.
+    /// The topology with its modules' workers taken out, which is how a real topology project would
+    /// have it: opt-in, because a module with no infrastructure-touching worker does not need it.
     /// </summary>
-    private sealed class OfflineFactory(params string[] modules)
-        : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>
+    private sealed class OfflineFactory(params string[] modules) : ModularWebApplicationFactory<Program>(modules)
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.UseSetting(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', modules));
-
-            builder.ConfigureTestServices(services =>
-            {
-                foreach (var descriptor in services
-                    .Where(d => d.ServiceType == typeof(IHostedService) &&
-                                d.ImplementationType?.FullName != "Microsoft.AspNetCore.Hosting.GenericWebHostService")
-                    .ToList())
-                {
-                    services.Remove(descriptor);
-                }
-            });
-
+            // Every hosted service but GenericWebHostService, which builds the pipeline.
+            builder.WithoutApplicationHostedServices();
             base.ConfigureWebHost(builder);
         }
     }

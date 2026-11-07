@@ -27,11 +27,12 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures=$((failures + 1)); }
 
 log "Packing"
 rm -rf "$feed"
-# Both packages, one version: MinVer reads it from the same tag.
-for project in FusionModules FusionModules.EntityFrameworkCore; do
+# Every package, one version: MinVer reads it from the same tag.
+for project in FusionModules FusionModules.EntityFrameworkCore FusionModules.Testing; do
     dotnet pack "$root/src/$project/$project.csproj" -c Release -o "$feed" --nologo -v q
 done
-# FusionModules.<digit>: FusionModules.* alone also matches FusionModules.EntityFrameworkCore.
+# FusionModules.<digit>: FusionModules.* alone also matches FusionModules.EntityFrameworkCore and
+# FusionModules.Testing.
 version="$(basename "$(ls "$feed"/FusionModules.[0-9]*.nupkg | grep -v symbols | head -1)" .nupkg)"
 version="${version#FusionModules.}"
 echo "  FusionModules $version"
@@ -51,25 +52,45 @@ do
     if grep -qx "$expected" <<<"$contents"; then pass "$expected"; else fail "missing $expected"; fi
 done
 
-ef_nupkg="$(native "$feed/FusionModules.EntityFrameworkCore.$version.nupkg")"
-if [ -f "$feed/FusionModules.EntityFrameworkCore.$version.nupkg" ]; then
-    ef_contents="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$ef_nupkg').Entries.FullName" | tr -d '\r')"
-    for expected in \
-        "lib/net8.0/FusionModules.EntityFrameworkCore.dll" \
-        "lib/net10.0/FusionModules.EntityFrameworkCore.dll"
-    do
-        if grep -qx "$expected" <<<"$ef_contents"; then pass "EntityFrameworkCore: $expected"; else fail "EntityFrameworkCore: missing $expected"; fi
-    done
-    # Its FusionModules is the one packed with it: a project reference becomes a dependency on the same version.
-    ef_nuspec="$(pwsh -NoProfile -Command "\$z = [IO.Compression.ZipFile]::OpenRead('$ef_nupkg'); \$e = \$z.GetEntry('FusionModules.EntityFrameworkCore.nuspec'); (New-Object IO.StreamReader(\$e.Open())).ReadToEnd()" | tr -d '\r')"
-    if grep -q "id=\"FusionModules\" version=\"$version\"" <<<"$ef_nuspec"; then
-        pass "EntityFrameworkCore depends on FusionModules $version"
-    else
-        fail "EntityFrameworkCore does not depend on FusionModules $version"; grep -i "dependency" <<<"$ef_nuspec" || true
+# A package that ships beside FusionModules: its assemblies for both target frameworks, and its
+# FusionModules the one packed with it — a project reference becomes a dependency on the same version.
+# Its one other dependency has to be at the floor the project names, per target framework, not at the
+# patch Directory.Packages.props pins for the tests: a pinned floor raised a consumer on EF 10.0.7 to
+# EF Core 10.0.14 beside its own 10.0.7 provider.
+check_companion() {
+    local id="$1" dependency="$2" net8="$3" net10="$4" path entries nuspec groups tfm floor
+    path="$feed/$id.$version.nupkg"
+    if [ ! -f "$path" ]; then
+        fail "no $id.$version.nupkg: the packages were packed at different versions"
+        return
     fi
-else
-    fail "no FusionModules.EntityFrameworkCore.$version.nupkg: the two packages were packed at different versions"
-fi
+    path="$(native "$path")"
+    entries="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$path').Entries.FullName" | tr -d '\r')"
+    for expected in "lib/net8.0/$id.dll" "lib/net10.0/$id.dll"; do
+        if grep -qx "$expected" <<<"$entries"; then pass "$id: $expected"; else fail "$id: missing $expected"; fi
+    done
+    nuspec="$(pwsh -NoProfile -Command "\$z = [IO.Compression.ZipFile]::OpenRead('$path'); \$e = \$z.GetEntry('$id.nuspec'); (New-Object IO.StreamReader(\$e.Open())).ReadToEnd()" | tr -d '\r')"
+    if grep -q "id=\"FusionModules\" version=\"$version\"" <<<"$nuspec"; then
+        pass "$id depends on FusionModules $version"
+    else
+        fail "$id does not depend on FusionModules $version"; grep -i "dependency" <<<"$nuspec" || true
+    fi
+    # One line per <group>, so a dependency is read with the target framework it belongs to.
+    groups="$(tr -d '\n' <<<"$nuspec" | sed 's/<group /\n<group /g')"
+    for tfm in net8.0 net10.0; do
+        [ "$tfm" = net8.0 ] && floor="$net8" || floor="$net10"
+        if grep "targetFramework=\"$tfm\"" <<<"$groups" | grep -q "id=\"$dependency\" version=\"$floor\""; then
+            pass "$id depends on $dependency >= $floor on $tfm"
+        else
+            fail "$id does not depend on $dependency >= $floor on $tfm:"; grep "targetFramework=\"$tfm\"" <<<"$groups" | grep -o "<dependency [^>]*>" || true
+        fi
+    done
+}
+
+# The floors: the lowest versions each package supports (see the two csproj files for why EF Core 8's
+# is 8.0.10).
+check_companion FusionModules.EntityFrameworkCore Microsoft.EntityFrameworkCore 8.0.10 10.0.0
+check_companion FusionModules.Testing Microsoft.AspNetCore.Mvc.Testing 8.0.0 10.0.0
 
 # A stranger does not have our global packages folder, and that is not a detail here: NuGet serves
 # a PackageReference out of it whenever that id and version are already extracted there, and never
@@ -425,6 +446,55 @@ public static class ShopDataExtensions
 }
 CS
 
+# A topology test through FusionModules.Testing, with nothing else: Microsoft.AspNetCore.Mvc.Testing
+# has to come with the package, and so do its buildTransitive targets, which copy the host's
+# .deps.json here — without them WebApplicationFactory cannot start the host at all. So this one is
+# run, not only built. No test framework either: the package has to need none.
+mkdir -p "$work/consumer/HostTests"
+cat > "$work/consumer/HostTests/HostTests.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+    <PackageReference Include="FusionModules.Testing" Version="$version" />
+    <ProjectReference Include="../Host/Host.csproj" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/HostTests/Topology.cs" <<'CS'
+using FusionModules.Testing;
+using Microsoft.AspNetCore.Hosting;
+
+sealed class GoodTopology() : ModularWebApplicationFactory<Program>("GoodModule")
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseConnectionStrings(("Default", "Host=127.0.0.1;Port=1")).WithoutApplicationHostedServices();
+        base.ConfigureWebHost(builder);
+    }
+}
+
+static class Check
+{
+    static int Main()
+    {
+        using var factory = new GoodTopology();
+        foreach (var route in factory.Services.Routes())
+        {
+            Console.WriteLine(route);
+        }
+
+        return 0;
+    }
+}
+CS
+
 log "A well-formed module builds clean"
 if dotnet build "$work/consumer/GoodModule" --nologo -v q > "$work/good.log" 2>&1; then
     pass "builds"
@@ -536,6 +606,28 @@ if [ -n "$known" ]; then
     fi
 else
     fail "no FusionModules.KnownModules.g.cs under the host's obj"
+fi
+
+# After the host's own build above: this one builds the host too, and an up-to-date host compiles
+# nothing, so the generated files that step looks for would not be emitted.
+log "A topology test through FusionModules.Testing"
+if dotnet build "$work/consumer/HostTests" --nologo -v q > "$work/hosttests.log" 2>&1; then
+    pass "builds against FusionModules.Testing"
+    if grep -q "MOD0" "$work/hosttests.log"; then fail "unexpected diagnostics:"; grep "MOD0" "$work/hosttests.log"; else pass "no diagnostics"; fi
+    # From its output folder, as a test runner starts it: WebApplicationFactory finds the host's
+    # content root through MvcTestingAppManifest.json in the working directory.
+    if (cd "$work/consumer/HostTests/bin/Debug/net10.0" && dotnet HostTests.dll) > "$work/hosttests-run.log" 2>&1; then
+        pass "starts the host with GoodModule"
+        if grep -q "^GET /modules (host)" "$work/hosttests-run.log"; then
+            pass "Routes() names the host's route and its owner"
+        else
+            fail "Routes() did not report GET /modules (host):"; cat "$work/hosttests-run.log"
+        fi
+    else
+        fail "did not start the host"; cat "$work/hosttests-run.log"
+    fi
+else
+    fail "did not build"; cat "$work/hosttests.log"
 fi
 
 # The NuGet-generated imports that carry buildTransitive assets only exist after restore,

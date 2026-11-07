@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The host FusionModules.Testing.Tests starts: a web application with an entry point, which is what
+    WebApplicationFactory needs and a test assembly is not. It references its module as a host does,
+    so the module is built and copied with it; whether it runs is the tests' choice.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>FusionModules.Testing.TestHost</RootNamespace>
+    <!-- tests/Directory.Build.props makes everything under tests/ a test project; this is a host. -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Wired up as samples/Directory.Build.props does it, so the host gets the generated ValidateModules. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FusionModules\FusionModules.csproj" />
+    <ProjectReference Include="..\..\src\FusionModules.Analyzers\FusionModules.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+    <ProjectReference Include="..\FusionModules.Testing.TestModule\FusionModules.Testing.TestModule.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\src\FusionModules\build\FusionModules.targets" />
+
+</Project>

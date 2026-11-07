@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Both of the package's target frameworks: WebApplicationFactory 8 and 10 start the host. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>FusionModules.Testing.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+    <!--
+      Only for its version: FusionModules.Testing brings it at the package's floor (8.0.0, 10.0.0),
+      and these tests run the version Directory.Packages.props pins. Its targets, which copy the
+      host's .deps.json next to these tests, come with FusionModules.Testing either way; a test
+      project that references only the package is what eng/pack-validate.sh starts.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FusionModules.Testing\FusionModules.Testing.csproj" />
+    <ProjectReference Include="..\FusionModules.Testing.TestHost\FusionModules.Testing.TestHost.csproj" />
+  </ItemGroup>
+
+</Project>

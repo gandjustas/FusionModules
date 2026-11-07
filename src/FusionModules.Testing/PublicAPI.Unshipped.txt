@@ -1,0 +1,28 @@
+#nullable enable
+FusionModules.Testing.EndpointInventory
+static FusionModules.Testing.EndpointInventory.Routes(this System.IServiceProvider! services, bool includeStaticAssets = false) -> System.Collections.Generic.IReadOnlyList<FusionModules.Testing.ModuleRoute!>!
+FusionModules.Testing.ModularWebApplicationFactory<TEntryPoint>
+override FusionModules.Testing.ModularWebApplicationFactory<TEntryPoint>.ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder! builder) -> void
+FusionModules.Testing.ModularWebApplicationFactory<TEntryPoint>.ModularWebApplicationFactory(params string![]! modules) -> void
+FusionModules.Testing.ModularWebApplicationFactory<TEntryPoint>.Modules.get -> System.Collections.Generic.IReadOnlyList<string!>!
+FusionModules.Testing.ModularWebHostBuilderExtensions
+static FusionModules.Testing.ModularWebHostBuilderExtensions.UseConnectionStrings(this Microsoft.AspNetCore.Hosting.IWebHostBuilder! builder, params (string! Name, string! ConnectionString)[]! connectionStrings) -> Microsoft.AspNetCore.Hosting.IWebHostBuilder!
+static FusionModules.Testing.ModularWebHostBuilderExtensions.WithoutApplicationHostedServices(this Microsoft.AspNetCore.Hosting.IWebHostBuilder! builder) -> Microsoft.AspNetCore.Hosting.IWebHostBuilder!
+FusionModules.Testing.ModuleRoute
+FusionModules.Testing.ModuleRoute.<Clone>$() -> FusionModules.Testing.ModuleRoute!
+const FusionModules.Testing.ModuleRoute.AnyMethod = "*" -> string!
+const FusionModules.Testing.ModuleRoute.Host = "host" -> string!
+FusionModules.Testing.ModuleRoute.Deconstruct(out string? Module, out string! Method, out string! Pattern) -> void
+FusionModules.Testing.ModuleRoute.Equals(FusionModules.Testing.ModuleRoute? other) -> bool
+override FusionModules.Testing.ModuleRoute.Equals(object? obj) -> bool
+override FusionModules.Testing.ModuleRoute.GetHashCode() -> int
+FusionModules.Testing.ModuleRoute.Method.get -> string!
+FusionModules.Testing.ModuleRoute.Method.init -> void
+FusionModules.Testing.ModuleRoute.Module.get -> string?
+FusionModules.Testing.ModuleRoute.Module.init -> void
+FusionModules.Testing.ModuleRoute.ModuleRoute(string? Module, string! Method, string! Pattern) -> void
+FusionModules.Testing.ModuleRoute.Pattern.get -> string!
+FusionModules.Testing.ModuleRoute.Pattern.init -> void
+override FusionModules.Testing.ModuleRoute.ToString() -> string!
+static FusionModules.Testing.ModuleRoute.operator !=(FusionModules.Testing.ModuleRoute? left, FusionModules.Testing.ModuleRoute? right) -> bool
+static FusionModules.Testing.ModuleRoute.operator ==(FusionModules.Testing.ModuleRoute? left, FusionModules.Testing.ModuleRoute? right) -> bool

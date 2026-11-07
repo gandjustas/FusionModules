@@ -4,10 +4,14 @@
     <Project Path="src/FusionModules.Analyzers/FusionModules.Analyzers.csproj" />
     <Project Path="src/FusionModules.CodeFixes/FusionModules.CodeFixes.csproj" />
     <Project Path="src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj" />
+    <Project Path="src/FusionModules.Testing/FusionModules.Testing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FusionModules.Analyzers.Tests/FusionModules.Analyzers.Tests.csproj" />
     <Project Path="tests/FusionModules.EntityFrameworkCore.Tests/FusionModules.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/FusionModules.Testing.TestHost/FusionModules.Testing.TestHost.csproj" />
+    <Project Path="tests/FusionModules.Testing.TestModule/FusionModules.Testing.TestModule.csproj" />
+    <Project Path="tests/FusionModules.Testing.Tests/FusionModules.Testing.Tests.csproj" />
     <Project Path="tests/FusionModules.Tests/FusionModules.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

@@ -88,7 +88,7 @@ internal service provider shared by every context with the same options, keyed b
 Two hosts with different module sets in one process — which is every integration test assembly —
 would otherwise share the first one's model. Nothing throws; you just get the wrong tables.
 `ModelCompositionTests.TopologiesInOneProcessDoNotShareAModel` fails without it. A context that
-replaces `IModelCacheKeyFactory` itself has to include the module set in its own key.
+replaces `IModelCacheKeyFactory` itself has to include `context.GetModuleSetKey()` in its own key.
 
 ## Migrations
 
@@ -128,16 +128,18 @@ migrations; the others take the database as they find it.
 Two kinds, and the difference is the point.
 
 **[`Tests/`](Tests) — topology.** Modules appear only as the names handed to
-`ModularWebApplicationFactory`, exactly as a deployment names them. The assertions are the model's
-tables and the route table, never entity types: a test that reaches for a module's types is
-testing that module, not the composition. No database is involved — building an EF model needs a
-provider, not a connection.
+`TopologyFactory`, exactly as a deployment names them — a `ModularWebApplicationFactory<Program>`
+from [FusionModules.Testing](../../docs/testing.md) with `UseConnectionStrings(("Postgres", "Host=127.0.0.1;Port=1;…"))`. The
+assertions are the model's tables and the route table, never entity types: a test that reaches for
+a module's types is testing that module, not the composition. No database is involved — building an
+EF model needs a provider, not a connection, and migrations are off (`Database:Migrate=false`, the
+switch `Program.cs` reads).
 
-Route presence is read off `EndpointDataSource` rather than probed over HTTP, because an HTTP
-probe of an endpoint that queries the database cannot tell "not deployed" from "deployed and
-broken". That inventory is also the snapshot worth keeping when migrating an existing service
-into a module: a mechanical migration that preserves the route table is very likely correct, and
-one that does not gives you a reviewable diff.
+Route presence is read off the endpoint table with `Routes()`, which also names the module serving
+each route, rather than probed over HTTP, because an HTTP probe of an endpoint that queries the
+database cannot tell "not deployed" from "deployed and broken". That inventory is also the snapshot
+worth keeping when migrating an existing service into a module: a mechanical migration that
+preserves the route table is very likely correct, and one that does not gives you a reviewable diff.
 
 **[`UnitTests/`](UnitTests) — business logic, no host.** Nothing goes through
 `HOSTINGSTARTUPASSEMBLIES`. The module assemblies are referenced and used like any other library,

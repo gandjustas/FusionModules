@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using FusionModules.Testing;
 
 namespace Sample.Transports.Tests;
 
@@ -9,7 +10,7 @@ namespace Sample.Transports.Tests;
 [InheritsTests]
 public sealed class MergedTopology : PricingContractTests
 {
-    private readonly ModularWebApplicationFactory _factory = new("CheckoutModule", "PricingModule");
+    private readonly ModularWebApplicationFactory<Program> _factory = new("CheckoutModule", "PricingModule");
 
     protected override Task<HttpClient> CheckoutAsync() => Task.FromResult(_factory.CreateClient());
 
@@ -28,7 +29,7 @@ public sealed class MergedTopology : PricingContractTests
 [InheritsTests]
 public sealed class RemoteTopology : PricingContractTests
 {
-    private readonly ModularWebApplicationFactory _pricing = new("PricingModule", "PricingApiModule");
+    private readonly ModularWebApplicationFactory<Program> _pricing = new("PricingModule", "PricingApiModule");
     private CheckoutFactory? _checkout;
 
     protected override Task<HttpClient> CheckoutAsync()
@@ -52,7 +53,7 @@ public sealed class RemoteTopology : PricingContractTests
     public async Task TheMergedTopologyDoesNotPublishIt(CancellationToken cancellationToken)
     {
         // The negative half, and the one that says the topology is real rather than a label.
-        using var merged = new ModularWebApplicationFactory("CheckoutModule", "PricingModule");
+        using var merged = new ModularWebApplicationFactory<Program>("CheckoutModule", "PricingModule");
 
         var response = await merged.CreateClient().GetAsync("/pricing/quote?sku=hammer&quantity=1", cancellationToken);
 
@@ -70,7 +71,7 @@ public sealed class RemoteTopology : PricingContractTests
     /// Checkout with the remote client, its transport pointed at the pricing host in this process.
     /// </summary>
     private sealed class CheckoutFactory(TestServer pricing)
-        : ModularWebApplicationFactory("CheckoutModule", "PricingClientModule")
+        : ModularWebApplicationFactory<Program>("CheckoutModule", "PricingClientModule")
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -84,5 +85,26 @@ public sealed class RemoteTopology : PricingContractTests
 
             base.ConfigureWebHost(builder);
         }
+    }
+}
+
+/// <summary>Both transports in one topology: the mistake the host's build already warned about.</summary>
+public sealed class BothTransports
+{
+    [Test]
+    public async Task FailStartup_AndTheMessageNamesThemAsAlternatives()
+    {
+        // Host.csproj lists IPricing in fusion_modules_allowed_service_collisions; ValidateModules hands
+        // that to the startup check, which still refuses the topology and says what the build knew.
+        using var both = new ModularWebApplicationFactory<Program>("CheckoutModule", "PricingModule", "PricingClientModule")
+            .WithWebHostBuilder(builder => builder.UseSetting("Pricing:BaseAddress", "http://pricing.invalid"));
+
+        var error = Assert.Throws<InvalidOperationException>(() => both.CreateClient());
+
+        await Assert.That(error.Message).Contains(
+            "Pricing.Contracts.IPricing is listed in the host's build as implemented by alternative modules (fusion_modules_allowed_service_collisions): load only one of ");
+        await Assert.That(error.Message).Contains("PricingModule");
+        await Assert.That(error.Message).Contains("PricingClientModule");
+        await Assert.That(error.Message).DoesNotContain("If these modules are alternatives");
     }
 }

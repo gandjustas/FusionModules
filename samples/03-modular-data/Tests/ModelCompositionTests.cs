@@ -17,7 +17,7 @@ public class ModelCompositionTests
 {
     private static IModel ModelFor(params string[] modules)
     {
-        using var factory = new ModularWebApplicationFactory(modules);
+        using var factory = new TopologyFactory(modules);
         using var scope = factory.Services.CreateScope();
 
         // Modules depend on DbContext, so a test can too, and never needs the host's context type.
@@ -80,7 +80,7 @@ public class ModelCompositionTests
     {
         // BillingModule uses types from both entity modules, so the compiler records references
         // to them, so ModuleBase requires them to be activated. Nothing had to be declared.
-        using var factory = new ModularWebApplicationFactory(Modules.OrdersEntities, Modules.Billing);
+        using var factory = new TopologyFactory(Modules.OrdersEntities, Modules.Billing);
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 

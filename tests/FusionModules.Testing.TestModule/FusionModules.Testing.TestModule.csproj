@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The module FusionModules.Testing.Tests names; the test host references it, as a host does. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>FusionModules.Testing.TestModule</RootNamespace>
+    <!-- tests/Directory.Build.props makes everything under tests/ a test project; this is a module. -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Wired up as samples/Directory.Build.props does it: the rules apply to it as to any module. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FusionModules\FusionModules.csproj" />
+    <ProjectReference Include="..\..\src\FusionModules.Analyzers\FusionModules.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <Import Project="..\..\src\FusionModules\build\FusionModules.targets" />
+
+</Project>

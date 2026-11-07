@@ -1,10 +1,9 @@
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
+using FusionModules.Testing;
 
 namespace ModularData.Tests;
 
 /// <summary>
-/// Which routes each topology serves.
+/// Which routes each topology serves, and which module serves each.
 /// </summary>
 /// <remarks>
 /// Read off the endpoint table rather than probed over HTTP: an HTTP probe of an endpoint that
@@ -15,43 +14,42 @@ namespace ModularData.Tests;
 /// </remarks>
 public class EndpointInventoryTests
 {
-    private static string[] RoutesFor(params string[] modules)
+    private static IReadOnlyList<ModuleRoute> RoutesFor(params string[] modules)
     {
-        using var factory = new ModularWebApplicationFactory(modules);
+        using var factory = new TopologyFactory(modules);
 
-        return [.. factory.Services.GetRequiredService<EndpointDataSource>()
-            .Endpoints
-            .OfType<RouteEndpoint>()
-            // An attribute route is stored without its leading slash and a minimal-API route with
-            // one, so /customers and customers are the same URL written two ways. CustomersModule
-            // serves its route from a controller and BillingModule from MapGet; without this the
-            // inventory would report the difference between the two styles as a difference in
-            // what is deployed.
-            .Select(endpoint => "/" + endpoint.RoutePattern.RawText!.TrimStart('/'))
-            .Order(StringComparer.Ordinal)];
+        // CustomersModule serves its route from a controller, whose attribute route is stored
+        // without a leading slash, and BillingModule from MapGet, whose route keeps one. Routes()
+        // writes both with one, so the difference between the two styles does not read as a
+        // difference in what is deployed.
+        return factory.Services.Routes();
     }
+
+    private static string[] PatternsFor(params string[] modules) =>
+        [.. RoutesFor(modules).Select(route => route.Pattern).Distinct()];
 
     [Test]
     public async Task TheHostAloneServesOnlyItsOwnRoute() =>
-        await Assert.That(RoutesFor()).IsEquivalentTo(["/"]);
+        await Assert.That(PatternsFor()).IsEquivalentTo(["/"]);
 
     [Test]
     public async Task EntityModulesContributeTablesAndNoRoutes() =>
         // A topology of nothing but entity modules is a database schema with a web server
         // attached, which is a legitimate thing to deploy and a surprising thing to discover.
-        await Assert.That(RoutesFor(Modules.OrdersEntities, Modules.CustomersEntities))
+        await Assert.That(PatternsFor(Modules.OrdersEntities, Modules.CustomersEntities))
             .IsEquivalentTo(["/"]);
 
     [Test]
     public async Task AFeatureModuleBringsItsOwnRoutesAndNobodyElses() =>
         // /customers is served by an internal controller, so this also asserts that
         // AllowInternalControllers did its job: without it the type is skipped for not being
-        // public and the route is simply absent, with nothing said anywhere.
-        await Assert.That(RoutesFor(Modules.CustomersEntities, Modules.CustomersApi))
-            .IsEquivalentTo(["/", "/customers"]);
+        // public and the route is simply absent, with nothing said anywhere. And it is
+        // CustomersModule's: the module that serves a route is part of the inventory.
+        await Assert.That(RoutesFor(Modules.CustomersEntities, Modules.CustomersApi).Select(route => route.ToString()))
+            .IsEquivalentTo(["GET / (host)", $"GET /customers ({Modules.CustomersApi})"]);
 
     [Test]
     public async Task TheFullTopologyServesEveryModulesRoutes() =>
-        await Assert.That(RoutesFor(Modules.All))
+        await Assert.That(PatternsFor(Modules.All))
             .IsEquivalentTo(["/", "/billing/overdue", "/billing/seed", "/customers"]);
 }
