@@ -1,7 +1,7 @@
 using FusionModules;
 using WeatherModule;
 
-// Without this attribute the module loads and silently does nothing. MOD0005 catches it.
+// Without this attribute the module loads and silently does nothing. MOD0003 catches it.
 [assembly: HostingStartup(typeof(Module))]
 
 namespace WeatherModule;

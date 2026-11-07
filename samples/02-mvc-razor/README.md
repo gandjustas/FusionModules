@@ -22,7 +22,7 @@ including the ones that deliberately left the module out.
 
 The FusionModules MSBuild assets set `GenerateMvcApplicationPartsAssemblyAttributes` to false once
 the project is detected as a host, and each module calls `AddApplicationPart` for itself inside its
-own `ConfigureServices` — where it also registers everything its controllers need. MOD0004 is the
+own `ConfigureServices` — where it also registers everything its controllers need. MOD0007 is the
 backstop if someone puts the attribute back.
 
 `ViewModuleTests.NoModules_ServesNoControllersAndNoPages` is the test that would fail if any of

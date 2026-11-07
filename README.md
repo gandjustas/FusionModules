@@ -13,8 +13,8 @@ one base class over them, plus the analyzers that stop the architecture from lea
 
 class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
-        => services.AddScoped<IOrderService, OrderService>();
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
+        => builder.Services.AddScoped<IOrderService, OrderService>();
 
     protected override void Configure(IApplicationBuilder app)
         => app.UseEndpoints(e => e.MapGroup("/orders").MapGet("/unpaid", (IOrderService s) => s.Unpaid()));
@@ -23,7 +23,8 @@ class Module : ModuleBase
 
 ```csharp
 // the host — note that it knows nothing about any module
-var builder = WebApplication.CreateBuilder(args);
+// (ValidateModules is generated from its references and checks HOSTINGSTARTUPASSEMBLIES)
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 var app = builder.Build();
 app.UseRouting();
 app.Run();
@@ -49,18 +50,19 @@ That is the whole dependency. The analyzers come with it. `net8.0` and `net10.0`
 Because the approach has sharp edges, and every one of them fails quietly:
 
 - A module that forgets `[assembly: HostingStartup]` loads and does nothing. The application
-  starts, the readiness probe passes, and the first sign is a 404. **MOD0005** makes it a build
+  starts, the readiness probe passes, and the first sign is a 404. **MOD0003** makes it a build
   error.
 - A typo in `HOSTINGSTARTUPASSEMBLIES` makes ASP.NET Core log a critical message and carry on
-  starting. `ModuleBase` fails startup instead.
+  starting. `builder.ValidateModules()`, generated from the host's references, fails startup
+  instead — every name has to load, and every one of the host's modules has to have run.
 - The Razor SDK wires a module's controllers into the host behind `HOSTINGSTARTUPASSEMBLIES`'
   back, so they appear in topologies that excluded the module. The MSBuild assets turn that off;
-  **MOD0004** is the backstop.
+  **MOD0007** is the backstop.
 - The host using one type from one module quietly puts that module in every deployment.
-  **MOD0003** catches it while allowing the project reference the model needs.
+  **MOD0004** catches it while allowing the project reference the model needs.
 - A `Hub<TClient>` whose client interface is internal — which is what every other rule here asks
   for — compiles, passes its tests and throws `TypeLoadException` the first time a client
-  connects. **MOD0009** asks the question at build time.
+  connects. **MOD0010** asks the question at build time.
 
 And one thing it makes possible rather than prevents: MVC requires a controller or a view component
 to be public, which drags its constructor's services and its actions' models public with it, until
@@ -74,19 +76,23 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 |---|---|
 | [MOD0001](docs/rules/MOD0001.md) | A module must not expose public types |
 | [MOD0002](docs/rules/MOD0002.md) | The type named by HostingStartup must be a module |
-| [MOD0003](docs/rules/MOD0003.md) | The host must not use types from a module |
-| [MOD0004](docs/rules/MOD0004.md) | The host must not declare an ApplicationPart for a module |
-| [MOD0005](docs/rules/MOD0005.md) | A module must be named by an assembly-level HostingStartup attribute |
-| [MOD0006](docs/rules/MOD0006.md) | A module must not replace the application pipeline |
-| [MOD0007](docs/rules/MOD0007.md) | Redundant IStartupFilter registration |
-| [MOD0008](docs/rules/MOD0008.md) | A hosted service in a module runs in every replica that loads it |
-| [MOD0009](docs/rules/MOD0009.md) | A hub's client interface must be reachable from SignalR's generated proxy |
-| [MOD0020](docs/rules/MOD0020.md) | The FusionModules package is not referenced |
+| [MOD0003](docs/rules/MOD0003.md) | A module must be named by an assembly-level HostingStartup attribute |
+| [MOD0004](docs/rules/MOD0004.md) | The host must not use types from a module |
+| [MOD0005](docs/rules/MOD0005.md) | A library that is not a module must not use types from a module |
+| [MOD0006](docs/rules/MOD0006.md) | The host's builder does not load modules |
+| [MOD0007](docs/rules/MOD0007.md) | The host must not declare an ApplicationPart for a module |
+| [MOD0008](docs/rules/MOD0008.md) | A module must not replace the application pipeline |
+| [MOD0009](docs/rules/MOD0009.md) | Redundant IStartupFilter registration |
+| [MOD0010](docs/rules/MOD0010.md) | A hub's client interface must be reachable from SignalR's generated proxy |
+| [MOD0011](docs/rules/MOD0011.md) | The host does not validate its modules |
+| [MOD0012](docs/rules/MOD0012.md) | The FusionModules package is not referenced |
 
 A host and a test project also get `KnownModules`, generated from their references: every module
 by name, in activation order. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
 the model from `HOSTINGSTARTUPASSEMBLIES` as it stood in your shell, so a factory names the modules
 itself, and a list written by hand is a copy of the project file that nothing keeps honest.
+With it comes `ValidateModules()`, an extension on the builder that checks `HOSTINGSTARTUPASSEMBLIES`
+against that list at startup.
 
 The package also sets a few MSBuild properties, each of them a fix for something that fails
 quietly. What they do, what is generated and how to override either: [docs/msbuild.md](docs/msbuild.md).

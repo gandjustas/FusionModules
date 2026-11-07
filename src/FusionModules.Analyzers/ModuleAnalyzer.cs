@@ -1,8 +1,5 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -13,7 +10,7 @@ namespace FusionModules.Analyzers;
 /// <summary>
 /// Rules that apply to a module assembly: it keeps its types to itself (MOD0001), the type it
 /// names in <c>[assembly: HostingStartup]</c> really is a module (MOD0002), and every module it
-/// declares is actually registered (MOD0005).
+/// declares is actually registered (MOD0003).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ModuleAnalyzer : DiagnosticAnalyzer
@@ -50,7 +47,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         var declaredStartups = ModuleFacts.GetHostingStartupTypes(compilation.Assembly, hostingStartupAttribute).ToArray();
         var moduleBase = ModuleFacts.GetModuleBaseType(compilation);
 
-        // MOD0002 / MOD0020 — check what the assembly declares.
+        // MOD0002 / MOD0012 — check what the assembly declares.
         if (declaredStartups.Length > 0)
         {
             RegisterHostingStartupAttributeCheck(context, hostingStartupAttribute, moduleBase);
@@ -61,7 +58,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        // MOD0005 — every module type must be named by an attribute.
+        // MOD0003 — every module type must be named by an attribute.
         var registered = new HashSet<ISymbol>(declaredStartups, SymbolEqualityComparer.Default);
         context.RegisterSymbolAction(
             symbolContext => CheckModuleIsRegistered(symbolContext, moduleBase, registered),
@@ -76,13 +73,13 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         var declared = ModuleFacts.ScanDeclaredTypes(compilation);
         var hubClients = declared.HubClients;
 
-        var exemptions = TypeExemptions.Create(compilation, declared);
+        var exemptions = new TypeExemptions(compilation, declared);
         var allowed = new AllowedPublicTypes(context.Options.AnalyzerConfigOptionsProvider);
         context.RegisterSymbolAction(
             symbolContext => CheckTypeIsNotPublic(symbolContext, exemptions, allowed),
             SymbolKind.NamedType);
 
-        // MOD0009 — the mirror image: these types the runtime insists on reaching, and an
+        // MOD0010 — the mirror image: these types the runtime insists on reaching, and an
         // InternalsVisibleTo to the proxy's assembly is the cheaper of the two ways to allow it.
         if (hubClients.Count > 0 &&
             !ModuleFacts.HasInternalsVisibleTo(compilation, ModuleFacts.TypedClientBuilderAssemblyName))
@@ -249,35 +246,19 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
     /// <summary>
     /// Types the framework has to reach by reflection, which therefore cannot be internal.
     /// </summary>
-    private sealed class TypeExemptions
+    private sealed class TypeExemptions(Compilation compilation, DeclaredTypes declared)
     {
-        private readonly INamedTypeSymbol? _controllerBase;
-        private readonly INamedTypeSymbol? _pageModel;
-        private readonly INamedTypeSymbol? _viewComponentAttribute;
-        private readonly INamedTypeSymbol? _tagHelper;
-        private readonly INamedTypeSymbol? _hub;
-        private readonly HashSet<ITypeSymbol> _entityTypes;
-        private readonly Dictionary<ITypeSymbol, string> _hubClients;
-
-        private TypeExemptions(Compilation compilation, DeclaredTypes declared)
-        {
-            _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
-            _hubClients = declared.HubClients;
-            _controllerBase = compilation.GetTypeByMetadataName(ModuleFacts.ControllerBaseMetadataName);
-            _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
-            _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
-            _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
-            _entityTypes = declared.EntityTypes;
-        }
-
-        public static TypeExemptions Create(Compilation compilation, DeclaredTypes declared) =>
-            new(compilation, declared);
+        private readonly INamedTypeSymbol? _controllerBase = compilation.GetTypeByMetadataName(ModuleFacts.ControllerBaseMetadataName);
+        private readonly INamedTypeSymbol? _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
+        private readonly INamedTypeSymbol? _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
+        private readonly INamedTypeSymbol? _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
+        private readonly INamedTypeSymbol? _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
 
         public bool IsExempt(INamedTypeSymbol type) =>
-            _entityTypes.Contains(type) ||
-            // A hub is found by reflection like a controller; its client interface is one MOD0009
+            declared.EntityTypes.Contains(type) ||
+            // A hub is found by reflection like a controller; its client interface is one MOD0010
             // may require to be public, and two rules must not argue over the same line.
-            _hubClients.ContainsKey(type) ||
+            declared.HubClients.ContainsKey(type) ||
             (_hub is not null && ModuleFacts.InheritsFrom(type, _hub)) ||
             (_controllerBase is not null && ModuleFacts.InheritsFrom(type, _controllerBase)) ||
             (_pageModel is not null && ModuleFacts.InheritsFrom(type, _pageModel)) ||

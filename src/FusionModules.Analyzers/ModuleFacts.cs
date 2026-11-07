@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -33,6 +30,20 @@ internal static class ModuleFacts
 
     /// <summary>Set by the package's targets; see <c>FusionModules.targets</c>.</summary>
     public const string ProjectKindOption = "build_property.FusionModulesProjectKind";
+
+    public const string HostApplicationBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostApplicationBuilder";
+    public const string HostBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostBuilder";
+    public const string WebHostDefaultsMetadataName = "Microsoft.AspNetCore.Hosting.WebHostDefaults";
+    public const string WebApplicationMetadataName = "Microsoft.AspNetCore.Builder.WebApplication";
+
+    /// <summary>
+    /// The class <c>KnownModulesGenerator</c> writes <see cref="ValidateModulesMethodName"/> into,
+    /// and the namespace it puts it in: the builder's own, so that no using is needed.
+    /// </summary>
+    public const string ValidateModulesNamespace = "Microsoft.Extensions.Hosting";
+    public const string ValidateModulesClassName = "FusionModulesHostApplicationBuilderExtensions";
+    public const string ValidateModulesClassMetadataName = ValidateModulesNamespace + "." + ValidateModulesClassName;
+    public const string ValidateModulesMethodName = "ValidateModules";
 
     /// <summary>
     /// Resolves <c>FusionModules.ModuleBase</c>. Uses the plural lookup because the type can legitimately

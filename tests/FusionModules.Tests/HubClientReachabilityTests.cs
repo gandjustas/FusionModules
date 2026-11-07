@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FusionModules.Tests;
 
 /// <summary>
-/// The runtime behaviour MOD0009 is built on, asserted rather than described.
+/// The runtime behaviour MOD0010 is built on, asserted rather than described.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,7 +27,7 @@ public class HubClientReachabilityTests
     public async Task InternalClientInterface_FailsWhenTheProxyIsBuilt()
     {
         // Clean build, no other rule, green tests — and this, the first time a client connects.
-        var failure = Record(() => Resolve<InternalClientHub, IInternalPaymentClient>());
+        var failure = Record(Resolve<InternalClientHub, IInternalPaymentClient>);
 
         await Assert.That(failure).IsNotNull();
         await Assert.That(failure).IsTypeOf<TypeLoadException>();
@@ -38,7 +38,7 @@ public class HubClientReachabilityTests
     public async Task PublicClientInterface_Works()
     {
         // The other half: the failure above is about visibility and nothing else.
-        var failure = Record(() => Resolve<PublicClientHub, IPublicPaymentClient>());
+        var failure = Record(Resolve<PublicClientHub, IPublicPaymentClient>);
 
         await Assert.That(failure).IsNull();
     }

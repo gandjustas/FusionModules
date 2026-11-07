@@ -1,8 +1,5 @@
 using System.Collections.Immutable;
 using System.Composition;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -14,7 +11,7 @@ using FusionModules.Analyzers;
 namespace FusionModules.CodeFixes;
 
 /// <summary>
-/// Makes a hub's client interface reachable from SignalR's generated proxy (MOD0009).
+/// Makes a hub's client interface reachable from SignalR's generated proxy (MOD0010).
 /// </summary>
 /// <remarks>
 /// Two ways out, and the order matters. Granting the proxy's assembly access to internals is one
@@ -92,7 +89,7 @@ public sealed class HubClientReachableCodeFixProvider : CodeFixProvider
             return document;
         }
 
-        // The whole chain, not just the reported type. MOD0009 reports a public interface nested
+        // The whole chain, not just the reported type. MOD0010 reports a public interface nested
         // in an internal one, because the proxy outside the assembly cannot see it either way —
         // and there the type to change is the container.
         var chain = declaration

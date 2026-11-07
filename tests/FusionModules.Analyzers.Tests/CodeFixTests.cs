@@ -1,4 +1,3 @@
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -9,7 +8,7 @@ namespace FusionModules.Analyzers.Tests;
 
 /// <summary>
 /// The fixes a migration leans on: MOD0001's Fix All turns a converted service's hundred public
-/// types into one operation, and MOD0005's adds the attribute whose absence is otherwise silent.
+/// types into one operation, and MOD0003's adds the attribute whose absence is otherwise silent.
 /// </summary>
 public class CodeFixTests
 {
@@ -73,7 +72,7 @@ public class CodeFixTests
             """
             using FusionModules;
 
-            sealed class {|MOD0005:Orders|} : ModuleBase { }
+            sealed class {|MOD0003:Orders|} : ModuleBase { }
             """,
             """
             using FusionModules;
@@ -91,7 +90,7 @@ public class CodeFixTests
             """
             using Microsoft.AspNetCore.SignalR;
 
-            interface {|MOD0009:IPaymentClient|} { }
+            interface {|MOD0010:IPaymentClient|} { }
 
             sealed class PaymentHub : Hub<IPaymentClient> { }
             """,
@@ -112,7 +111,7 @@ public class CodeFixTests
             using Microsoft.AspNetCore.SignalR;
 
             /// <summary>What the server pushes to a payment client.</summary>
-            interface {|MOD0009:IPaymentClient|} { }
+            interface {|MOD0010:IPaymentClient|} { }
 
             sealed class PaymentHub : Hub<IPaymentClient> { }
             """,
@@ -128,7 +127,7 @@ public class CodeFixTests
 
     [Test]
     public Task HubClient_MakePublic_TakesTheContainingTypeWithIt() =>
-        // The case MOD0009 exists to report and the fix used to break: the interface is already
+        // The case MOD0010 exists to report and the fix used to break: the interface is already
         // public, and what hides it from the proxy is the type it sits in. Making the interface
         // "public" again would emit `public public` and change nothing that mattered.
         //
@@ -141,7 +140,7 @@ public class CodeFixTests
 
             class Contracts
             {
-                public interface {|MOD0009:IPaymentClient|} { }
+                public interface {|MOD0010:IPaymentClient|} { }
             }
 
             sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
@@ -168,7 +167,7 @@ public class CodeFixTests
 
             class Contracts
             {
-                internal interface {|MOD0009:IPaymentClient|} { }
+                internal interface {|MOD0010:IPaymentClient|} { }
             }
 
             sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
@@ -194,7 +193,7 @@ public class CodeFixTests
 
             namespace Orders.Nested
             {
-                sealed class {|MOD0005:Outer|} : ModuleBase { }
+                sealed class {|MOD0003:Outer|} : ModuleBase { }
             }
             """,
             """
@@ -208,6 +207,147 @@ public class CodeFixTests
             """);
 
     [Test]
+    public Task ValidateModules_IsCalledWhereTheBuilderIsCreated() =>
+        VerifyFixAsync<HostValidationAnalyzer, ValidateModulesCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.Extensions.Hosting;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.Extensions.Hosting;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args).ValidateModules();
+                }
+            }
+            """,
+            generated: AnalyzerTest.GeneratedForAHost);
+
+    [Test]
+    public Task ValidateModules_FollowsTheWebHostOnAGenericHost() =>
+        VerifyFixAsync<HostValidationAnalyzer, ValidateModulesCodeFixProvider>(
+            """
+            using Microsoft.Extensions.Hosting;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var host = Host.CreateDefaultBuilder(args)
+                        .{|MOD0011:ConfigureWebHostDefaults|}(web => { });
+                }
+            }
+            """,
+            """
+            using Microsoft.Extensions.Hosting;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var host = Host.CreateDefaultBuilder(args)
+                        .ConfigureWebHostDefaults(web => { }).ValidateModules();
+                }
+            }
+            """,
+            generated: AnalyzerTest.GeneratedForAHost);
+
+    [Test]
+    public Task SlimBuilder_BecomesTheDefaultBuilder() =>
+        VerifyFixAsync<SlimBuilderAnalyzer, UseCreateBuilderCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.{|MOD0006:CreateSlimBuilder|}(args);
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args);
+                }
+            }
+            """,
+            projectKind: "Host");
+
+    [Test]
+    public Task EmptyBuilder_BecomesTheDefaultBuilderWithTheSameOptions() =>
+        VerifyFixAsync<SlimBuilderAnalyzer, UseCreateBuilderCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.{|MOD0006:CreateEmptyBuilder|}(new WebApplicationOptions { Args = args });
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args });
+                }
+            }
+            """,
+            projectKind: "Host");
+
+    [Test]
+    public Task ValidateModules_BringsItsUsingWhenItIsNotInScope() =>
+        // A host with implicit usings turned off does not have the builder's namespace.
+        VerifyFixAsync<HostValidationAnalyzer, ValidateModulesCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.Extensions.Hosting;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args).ValidateModules();
+                }
+            }
+            """,
+            generated: AnalyzerTest.GeneratedForAHost);
+
+    [Test]
     public Task HubClient_GrantAccess_IsWrittenOnceForTheWholeFile() =>
         // Two clients, one attribute. Nothing in the provider guards against writing it twice,
         // and nothing needs to: BatchFixer drops the second insertion as conflicting with the
@@ -217,9 +357,9 @@ public class CodeFixTests
             """
             using Microsoft.AspNetCore.SignalR;
 
-            interface {|MOD0009:IPaymentClient|} { }
+            interface {|MOD0010:IPaymentClient|} { }
 
-            interface {|MOD0009:IRefundClient|} { }
+            interface {|MOD0010:IRefundClient|} { }
 
             sealed class PaymentHub : Hub<IPaymentClient> { }
 
@@ -240,7 +380,7 @@ public class CodeFixTests
             codeActionIndex: 0);
 
     private static async Task VerifyFixAsync<TAnalyzer, TCodeFix>(
-        string source, string fixedSource, int? codeActionIndex = null)
+        string source, string fixedSource, int? codeActionIndex = null, string? generated = null, string? projectKind = null)
         where TAnalyzer : DiagnosticAnalyzer, new()
         where TCodeFix : CodeFixProvider, new()
     {
@@ -251,8 +391,24 @@ public class CodeFixTests
             CodeActionIndex = codeActionIndex,
         };
 
-        await AnalyzerTest.ArrangeAsync(test.TestState, withModuleBase: true, [AnalyzerTest.RegisteredModule, source]);
-        await AnalyzerTest.ArrangeAsync(test.FixedState, withModuleBase: true, [AnalyzerTest.RegisteredModule, fixedSource]);
+        string[] shared = generated is null ? [AnalyzerTest.RegisteredModule] : [AnalyzerTest.RegisteredModule, generated];
+        await AnalyzerTest.ArrangeAsync(test.TestState, withModuleBase: true, [.. shared, source]);
+        await AnalyzerTest.ArrangeAsync(test.FixedState, withModuleBase: true, [.. shared, fixedSource]);
+
+        // The generated host code comes with a host, and a host with modules references them.
+        if (generated is not null)
+        {
+            test.TestState.AdditionalReferences.Add(await AnalyzerTest.ModuleReference.Value);
+            test.FixedState.AdditionalReferences.Add(await AnalyzerTest.ModuleReference.Value);
+        }
+
+        if (projectKind is not null)
+        {
+            test.TestState.AnalyzerConfigFiles.Add(("/.globalconfig", $"""
+                is_global = true
+                build_property.FusionModulesProjectKind = {projectKind}
+                """));
+        }
 
         await test.RunAsync(CancellationToken.None);
     }

@@ -60,7 +60,7 @@ export NUGET_PACKAGES="$(native "$work/packages")"
 
 # A scratch consumer outside the repository, so none of our own Directory.Build.props reaches it.
 rm -rf "$work/consumer"
-mkdir -p "$work/consumer/GoodModule" "$work/consumer/BadModule" "$work/consumer/Host" "$work/consumer/BadHost" "$work/consumer/NoPackage"
+mkdir -p "$work/consumer/GoodModule" "$work/consumer/BadModule" "$work/consumer/Host" "$work/consumer/BadHost" "$work/consumer/BadLibrary" "$work/consumer/NoModules" "$work/consumer/NoPackage"
 
 feed_for_nuget="$(native "$feed")"
 
@@ -101,10 +101,17 @@ using FusionModules;
 sealed class Module : ModuleBase { }
 
 // Public on purpose, and allowed by name in .editorconfig below. Two things at once: it proves
-// MOD0001's escape hatch survives packaging, and it gives BadHost a type to misuse for MOD0003.
+// MOD0001's escape hatch survives packaging, and it gives BadHost a type to misuse for MOD0004.
 public class Contract
 {
     public static string Name => "contract";
+}
+
+// A type in a namespace every web host imports. Without /doc the compiler counts the module as
+// used by any host that imports it; MOD0004 must not take that for use.
+namespace Microsoft.Extensions.Hosting
+{
+    internal static class GoodModuleHostingExtensions { }
 }
 CS
 cat > "$work/consumer/GoodModule/.editorconfig" <<'INI'
@@ -129,28 +136,22 @@ using FusionModules;
 
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+    protected override void ConfigureServices(IHostApplicationBuilder builder)
     {
-        services.AddSingleton<IStartupFilter>(this);   // MOD0007
-        services.AddHostedService<Worker>();           // MOD0008
+        builder.Services.AddSingleton<IStartupFilter>(this);   // MOD0009
     }
 
     public static void Replace(IWebHostBuilder builder) =>
-        builder.Configure(app => { });                 // MOD0006
+        builder.Configure(app => { });                 // MOD0008
 }
 
 public class Leaked { }                                // MOD0001
 
-sealed class Forgotten : ModuleBase { }                // MOD0005
+sealed class Forgotten : ModuleBase { }                // MOD0003
 
 sealed class NotAModule { }
 
-sealed class Worker : BackgroundService
-{
-    protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.CompletedTask;
-}
-
-interface IPaymentClient                               // MOD0009
+interface IPaymentClient                               // MOD0010
 {
     Task Paid(string reference);
 }
@@ -158,7 +159,7 @@ interface IPaymentClient                               // MOD0009
 sealed class PaymentHub : Hub<IPaymentClient> { }
 CS
 
-# MOD0003 and MOD0004 belong to the host, so they need a host that gets them wrong.
+# MOD0004 and MOD0007 belong to the host, so they need a host that gets them wrong.
 cat > "$work/consumer/BadHost/BadHost.csproj" <<XML
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
@@ -176,15 +177,56 @@ XML
 cat > "$work/consumer/BadHost/Program.cs" <<'CS'
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 
-[assembly: ApplicationPart("GoodModule")]   // MOD0004
+[assembly: ApplicationPart("GoodModule")]   // MOD0007
 
 var builder = WebApplication.CreateBuilder(args);
+_ = WebApplication.CreateSlimBuilder(args); // MOD0006
 var app = builder.Build();
-app.MapGet("/", () => Contract.Name);       // MOD0003
+app.MapGet("/", () => Contract.Name);       // MOD0004
 await app.RunAsync();
 CS
 
-# MOD0020 says the runtime package is missing, so the project has to have the analyzer without it.
+# MOD0005: a plain library that uses a module's type takes the module wherever it goes.
+cat > "$work/consumer/BadLibrary/BadLibrary.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+    <ProjectReference Include="../GoodModule/GoodModule.csproj" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/BadLibrary/Quotes.cs" <<'CS'
+public static class Quotes
+{
+    public static string For() => Contract.Name;   // MOD0005
+}
+CS
+
+# The package added to a web project with no module yet: nothing to validate, nothing to say.
+cat > "$work/consumer/NoModules/NoModules.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/NoModules/Program.cs" <<'CS'
+var app = WebApplication.CreateBuilder(args).Build();
+await app.RunAsync();
+CS
+
+# MOD0012 says the runtime package is missing, so the project has to have the analyzer without it.
 # ExcludeAssets=compile leaves the analyzer and the MSBuild assets and removes ModuleBase.
 cat > "$work/consumer/NoPackage/NoPackage.csproj" <<XML
 <Project Sdk="Microsoft.NET.Sdk">
@@ -202,7 +244,7 @@ XML
 cat > "$work/consumer/NoPackage/Module.cs" <<'CS'
 using Microsoft.AspNetCore.Hosting;
 
-[assembly: HostingStartup(typeof(Module))]   // MOD0020
+[assembly: HostingStartup(typeof(Module))]   // MOD0012
 
 sealed class Module { }
 CS
@@ -226,7 +268,8 @@ XML
 cat > "$work/consumer/Host/Program.cs" <<'CS'
 using FusionModules;
 
-var builder = WebApplication.CreateBuilder(args);
+// ValidateModules too compiles only if the generator ran.
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 var app = builder.Build();
 app.UseRouting();
 
@@ -252,20 +295,21 @@ expect() {
 
 log "Rules fire from the packaged analyzer"
 dotnet build "$work/consumer/BadModule" --nologo -v q > "$work/bad.log" 2>&1 || true
-for rule in MOD0001 MOD0002 MOD0005 MOD0006 MOD0009; do
+for rule in MOD0001 MOD0002 MOD0003 MOD0008 MOD0009 MOD0010; do
     expect "$work/bad.log" error "$rule"
-done
-for rule in MOD0007 MOD0008; do
-    expect "$work/bad.log" warning "$rule"
 done
 
 dotnet build "$work/consumer/BadHost" --nologo -v q > "$work/badhost.log" 2>&1 || true
-for rule in MOD0003 MOD0004; do
+expect "$work/badhost.log" warning MOD0011
+for rule in MOD0004 MOD0007 MOD0006; do
     expect "$work/badhost.log" error "$rule"
 done
 
+dotnet build "$work/consumer/BadLibrary" --nologo -v q > "$work/badlibrary.log" 2>&1 || true
+expect "$work/badlibrary.log" error MOD0005
+
 dotnet build "$work/consumer/NoPackage" --nologo -v q > "$work/nopackage.log" 2>&1 || true
-expect "$work/nopackage.log" warning MOD0020
+expect "$work/nopackage.log" warning MOD0012
 
 log "Help links reach the documentation"
 if grep -q "docs/rules/MOD0001.md" "$work/bad.log"; then pass "help link present"; else fail "no help link"; fi
@@ -301,9 +345,18 @@ else
     fail "net8.0 did not build"; cat "$work/net8.log"
 fi
 
+log "A web project without modules builds clean"
+if dotnet build "$work/consumer/NoModules" --nologo -v q > "$work/nomodules.log" 2>&1; then
+    pass "builds"
+    if grep -q "MOD" "$work/nomodules.log"; then fail "unexpected diagnostics:"; grep "MOD" "$work/nomodules.log"; else pass "no diagnostics"; fi
+else
+    fail "did not build"; cat "$work/nomodules.log"
+fi
+
 log "A host builds clean"
 if dotnet build "$work/consumer/Host" --nologo -v q -p:EmitCompilerGeneratedFiles=true > "$work/host.log" 2>&1; then
     pass "builds"
+    if grep -q "MOD0004" "$work/host.log"; then fail "MOD0004 for an imported namespace:"; grep "MOD0004" "$work/host.log"; else pass "no MOD0004 for an imported namespace"; fi
 else
     fail "did not build"; cat "$work/host.log"
 fi

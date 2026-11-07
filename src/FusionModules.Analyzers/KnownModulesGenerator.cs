@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -35,6 +31,7 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
     /// <summary>The step whose output decides whether anything is regenerated; named for tests.</summary>
     internal const string ModulesStep = "Modules";
 
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -59,20 +56,21 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(modules, static (production, modules) =>
         {
-            if (modules is not null)
+            if (modules is var (names, canValidate))
             {
-                production.AddSource(HintName, SourceText.From(Render(modules), Encoding.UTF8));
+                production.AddSource(HintName, SourceText.From(Render(names, canValidate), Encoding.UTF8));
             }
         });
     }
 
     /// <summary>
-    /// The module list, or null when this project gets none. MSBuild classifies the project and
-    /// this reads the answer, exactly as MOD0003 does; only a host or a test assembly gets the
-    /// list. Without the package's targets there is no answer, and then producing a program is
-    /// what separates a host or a test assembly from a module.
+    /// The module list, and whether the hosting types <c>ValidateModules</c> is written against
+    /// are there to compile it; or null when this project gets nothing. MSBuild classifies the
+    /// project and this reads the answer, exactly as MOD0004 does; only a host or a test assembly
+    /// gets the list. Without the package's targets there is no answer, and then producing a
+    /// program is what separates a host or a test assembly from a module.
     /// </summary>
-    private static string? Collect(Compilation compilation, ProjectKind kind, bool disabled, CancellationToken token)
+    private static (string Modules, bool CanValidate)? Collect(Compilation compilation, ProjectKind kind, bool disabled, CancellationToken token)
     {
         if (disabled ||
             kind == ProjectKind.Module ||
@@ -86,12 +84,16 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
 
         if (hostingStartup is null || moduleBase is null)
         {
-            return string.Empty;
+            return (string.Empty, false);
         }
 
         var modules = ModuleFacts.GetReferencedModules(compilation, hostingStartup, moduleBase).ToList();
+        var canValidate =
+            compilation.GetTypeByMetadataName(ModuleFacts.HostApplicationBuilderMetadataName) is not null &&
+            compilation.GetTypeByMetadataName(ModuleFacts.HostBuilderMetadataName) is not null &&
+            compilation.GetTypeByMetadataName(ModuleFacts.WebHostDefaultsMetadataName) is not null;
 
-        return string.Join(";", Order(modules, token));
+        return (string.Join(";", Order(modules, token)), canValidate);
     }
 
     /// <summary>
@@ -142,7 +144,7 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
         return ordered;
     }
 
-    private static string Render(string modules)
+    private static string Render(string modules, bool canValidate)
     {
         // new string[] rather than a collection expression: the file is compiled by the consumer,
         // whose LangVersion is theirs to choose, and generated code has no business raising it.
@@ -178,7 +180,103 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
                     public static string[] Names => {{literals}};
                 }
             }
-
+            {{(canValidate ? Validation : string.Empty)}}
             """;
     }
+
+    /// <summary>
+    /// The startup check, written against <c>KnownModules</c>. In <c>Microsoft.Extensions.Hosting</c>,
+    /// beside the builder's own extensions, so that <c>builder.</c> finds it without a using.
+    /// </summary>
+    /// <remarks>
+    /// ASP.NET Core runs the hosting startups while it creates the builder, and for a name it cannot
+    /// load it logs a critical message and carries on: the application comes up, passes its readiness
+    /// probe and serves 404s. The modules cannot catch that themselves — when every name is wrong
+    /// none of them is there to look — so the host does, against the list its references produced.
+    /// Fully qualified throughout and no newer syntax than the file around it: the consumer's
+    /// compiler and usings decide what this means.
+    /// </remarks>
+    internal const string Validation = $$"""
+
+        namespace {{ModuleFacts.ValidateModulesNamespace}}
+        {
+            /// <summary>
+            /// Checks <c>HOSTINGSTARTUPASSEMBLIES</c> against the modules this project references.
+            /// </summary>
+            internal static class {{ModuleFacts.ValidateModulesClassName}}
+            {
+                /// <summary>
+                /// Fails startup when <c>HOSTINGSTARTUPASSEMBLIES</c> names an assembly that is not
+                /// loaded in the process, or a module from <c>KnownModules</c> whose startup did not run.
+                /// </summary>
+                /// <remarks>
+                /// Call it right after the builder is created: the hosting startups have run by then.
+                /// A name that is not one of this project's modules — a third-party hosting startup —
+                /// only has to load.
+                /// </remarks>
+                public static TBuilder {{ModuleFacts.ValidateModulesMethodName}}<TBuilder>(this TBuilder builder)
+                    where TBuilder : global::Microsoft.Extensions.Hosting.IHostApplicationBuilder
+                {
+                    Validate(builder.Configuration);
+                    return builder;
+                }
+
+                /// <summary>
+                /// The same check for a generic host with a web host configured on it
+                /// (<c>ConfigureWebHostDefaults</c>, <c>ConfigureWebHost</c>): it runs when the host is
+                /// built, after the hosting startups, wherever in the chain it is called.
+                /// </summary>
+                public static global::Microsoft.Extensions.Hosting.IHostBuilder {{ModuleFacts.ValidateModulesMethodName}}(this global::Microsoft.Extensions.Hosting.IHostBuilder builder)
+                {
+                    return builder.ConfigureServices((context, services) => Validate(context.Configuration));
+                }
+
+                private static void Validate(global::Microsoft.Extensions.Configuration.IConfiguration configuration)
+                {
+                    var requested = configuration[global::Microsoft.AspNetCore.Hosting.WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty;
+
+                    var loaded = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.OrdinalIgnoreCase);
+                    foreach (var assembly in global::System.AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        loaded.Add(assembly.GetName().Name ?? string.Empty);
+                    }
+
+                    var started = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.OrdinalIgnoreCase);
+                    foreach (var assembly in global::FusionModules.ModuleBase.GetLoadedModules(configuration))
+                    {
+                        started.Add(assembly.GetName().Name ?? string.Empty);
+                    }
+
+                    var known = new global::System.Collections.Generic.HashSet<string>(global::FusionModules.KnownModules.Names, global::System.StringComparer.OrdinalIgnoreCase);
+                    var problems = new global::System.Collections.Generic.List<string>();
+
+                    foreach (var entry in requested.Split(';'))
+                    {
+                        var name = entry.Trim();
+                        if (name.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        if (!loaded.Contains(name))
+                        {
+                            problems.Add("'" + name + "' could not be loaded. Check the spelling, and that the assembly is deployed next to the host.");
+                        }
+                        else if (known.Contains(name) && !started.Contains(name))
+                        {
+                            problems.Add("'" + name + "' is a module, but its startup did not run.");
+                        }
+                    }
+
+                    if (problems.Count > 0)
+                    {
+                        throw new global::System.InvalidOperationException(
+                            "HOSTINGSTARTUPASSEMBLIES = '" + requested + "'" + global::System.Environment.NewLine +
+                            string.Join(global::System.Environment.NewLine, problems));
+                    }
+                }
+            }
+        }
+
+        """;
 }

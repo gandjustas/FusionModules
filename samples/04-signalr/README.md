@@ -29,7 +29,7 @@ connects.
 
 The generated assembly is built with `AssemblyBuilderAccess.Run` and is therefore unsigned, so its
 name is all the attribute needs. Comment the line out and the build fails with
-[MOD0009](../../docs/rules/MOD0009.md) instead of the process failing later — which is the whole
+[MOD0010](../../docs/rules/MOD0010.md) instead of the process failing later — which is the whole
 point of the rule.
 
 Making the interface `public` is the other way, and it spreads: a public interface member cannot

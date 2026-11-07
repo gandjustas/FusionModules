@@ -23,10 +23,10 @@ result of the migration, not a precondition for it.
 ## Microservices → modules: a new, empty one
 
 Do not promote one of the services. It carries references to everything it used to call, so
-MOD0003 fires on day one and the noise hides real findings. A new project starts green.
+MOD0004 fires on day one and the noise hides real findings. A new project starts green.
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 var app = builder.Build();
 

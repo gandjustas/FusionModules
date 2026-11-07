@@ -17,7 +17,7 @@ assembly, subtracts `HOSTINGSTARTUPEXCLUDEASSEMBLIES`, and for each name:
 Three consequences worth holding on to:
 
 - **An assembly with no `HostingStartupAttribute` is loaded and ignored.** No error, no log. This
-  is why MOD0005 exists.
+  is why MOD0003 exists.
 - **An assembly that cannot be loaded logs a critical message and startup continues.** The
   application comes up healthy and serves 404s. `ModuleBase` turns this into a startup failure,
   but only if at least one other module did load — see the limit below.
@@ -36,7 +36,7 @@ others. Useful for cross-cutting setup that belongs in every topology.
 sealed class Module : ModuleBase
 {
     protected override void ConfigureAppConfiguration(WebHostBuilderContext ctx, IConfigurationBuilder cfg) { }
-    protected override void ConfigureServices(WebHostBuilderContext ctx, IServiceCollection services) { }
+    protected override void ConfigureServices(IHostApplicationBuilder builder) { }
     protected override void Configure(IApplicationBuilder app) { }
 }
 ```
@@ -94,10 +94,12 @@ is therefore not a module and whose types are meant to be public.
 
 ### The limit, stated plainly
 
-The "module did not activate" check runs from the modules that *did* activate. If every name in
-`HOSTINGSTARTUPASSEMBLIES` is misspelled, nothing loads and nothing notices. Closing that would
-mean the host knowing it has modules, which is the property the whole model exists to preserve.
-MOD0005 covers the same class of mistake at build time.
+A module checks the modules it references from inside itself, so when nothing loads it is not
+there to look. The host closes that with `builder.ValidateModules()`: generated from the host's
+project references, it fails startup when a name in `HOSTINGSTARTUPASSEMBLIES` did not load or one
+of the host's modules did not run — and the host's own code still names no module. A host that does
+not call it is back to ASP.NET Core's critical log message and a healthy-looking process. MOD0003
+covers the same class of mistake at build time.
 
 ## Project shapes
 
@@ -119,7 +121,7 @@ to the host so it can be loaded by name. The host still never uses its types.
 
 **Do not set `ReferenceOutputAssembly="false"`.** It looks like hardening. The analyzer tolerates
 it and the module then stops being copied to the output at all, so nothing loads and the failure
-presents as a routing problem. MOD0003 is the enforcement mechanism, not MSBuild.
+presents as a routing problem. MOD0004 is the enforcement mechanism, not MSBuild.
 
 ## MVC and Razor Pages
 

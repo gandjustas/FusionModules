@@ -1,8 +1,5 @@
 using System.Collections.Immutable;
 using System.Composition;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -14,7 +11,7 @@ using FusionModules.Analyzers;
 namespace FusionModules.CodeFixes;
 
 /// <summary>
-/// Adds the missing <c>[assembly: HostingStartup(typeof(TModule))]</c> (MOD0005).
+/// Adds the missing <c>[assembly: HostingStartup(typeof(TModule))]</c> (MOD0003).
 /// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(RegisterModuleCodeFixProvider)), Shared]
 public sealed class RegisterModuleCodeFixProvider : CodeFixProvider

@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using FusionModules;
@@ -69,21 +70,33 @@ public class TopologyTests
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
-        await Assert.That(error!.Message).Contains("WeatherModul");
+        await Assert.That(error.Message).Contains("WeatherModul");
         await Assert.That(error.Message).Contains("HOSTINGSTARTUPASSEMBLIES");
     }
 
     [Test]
-    public async Task ATypoInEveryModuleNameIsNotCaught(CancellationToken cancellationToken)
+    public async Task ATypoInEveryModuleNameFailsStartupToo()
     {
-        // The limit of the check, recorded so it is a known shape rather than a surprise: it runs
-        // from the modules that did load, so when none of them did there is nobody left to
-        // notice. Closing this would mean the host knowing it has modules, which is the whole
-        // thing the model is built to avoid. In practice a deployment misspells one name in a
-        // list, not all of them.
+        // The check used to run from the modules that did load, so when none of them did there
+        // was nobody left to notice. It runs from the host now, against the list its references
+        // produced, and the host still names no module in its own code.
         using var factory = new ModularWebApplicationFactory("WeatherModul");
-        var client = factory.CreateClient();
 
-        await Assert.That((await client.GetAsync("/weather", cancellationToken)).StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        await Assert.That(error.Message).Contains("WeatherModul");
+    }
+
+    [Test]
+    public async Task AModuleWhoseStartupDidNotRunFailsStartup()
+    {
+        // Listed, loadable, one of the host's own modules — and excluded, so ASP.NET Core never
+        // ran it. Exactly the module that is there and does nothing.
+        using var factory = new ModularWebApplicationFactory(GreetingModule, WeatherModule)
+            .WithWebHostBuilder(builder => builder.UseSetting(WebHostDefaults.HostingStartupExcludeAssembliesKey, WeatherModule));
+
+        var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        await Assert.That(error.Message).Contains(WeatherModule);
     }
 }

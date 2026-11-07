@@ -1,8 +1,6 @@
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Testing;
 
 namespace FusionModules.Analyzers.Tests;
 
@@ -79,8 +77,8 @@ internal static class GeneratorTest
         string hostSource,
         OutputKind outputKind)
     {
-        var references = await AnalyzerTest.BaseReferencesAsync();
-        var framework = await AnalyzerTest.FrameworkAsync();
+        var references = await AnalyzerTest.BaseReferences.Value;
+        var framework = await AnalyzerTest.Framework.Value;
 
         var compiled = new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);

@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.TestHost;
 
 namespace Sample.SignalR.Tests;
 
@@ -14,7 +13,7 @@ namespace Sample.SignalR.Tests;
 /// The last part is what this sample exists for. SignalR generates the implementation of
 /// <c>INotificationClient</c> into a dynamic assembly, so an internal interface is unreachable to
 /// it unless the module says otherwise — and the failure is a <c>TypeLoadException</c> at the first
-/// resolve, invisible to the build, to every MOD rule but MOD0009, and to any test that does not
+/// resolve, invisible to the build, to every MOD rule but MOD0010, and to any test that does not
 /// actually start a hub. Which is why this test does.
 /// </remarks>
 public class NotificationHubTests

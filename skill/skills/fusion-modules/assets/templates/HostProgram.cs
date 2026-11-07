@@ -2,8 +2,12 @@
 //
 // Which modules run is decided by HOSTINGSTARTUPASSEMBLIES at startup. Nothing here changes
 // between topologies, which is why one image can serve all of them.
+//
+// ValidateModules is generated from this project's references: it fails startup when the variable
+// names something that did not load, or one of these modules whose startup did not run. ASP.NET
+// Core on its own logs a critical message and starts anyway.
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 // Infrastructure the deployment owns rather than the application: connection strings, logging
 // sinks, telemetry exporters. Not features — those belong in modules.

@@ -6,7 +6,10 @@
 //
 // See Properties/launchSettings.json for the same thing as launch profiles.
 
-var builder = WebApplication.CreateBuilder(args);
+// ValidateModules is generated from this project's references: it fails startup when
+// HOSTINGSTARTUPASSEMBLIES names something that did not load, or a module whose startup did not
+// run. Left alone, ASP.NET Core logs a critical message and starts anyway.
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 var app = builder.Build();
 

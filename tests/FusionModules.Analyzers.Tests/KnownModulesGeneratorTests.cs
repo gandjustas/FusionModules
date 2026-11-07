@@ -68,8 +68,8 @@ public class KnownModulesGeneratorTests
         var generated = await RunAsync([]);
 
         await Assert.That(generated).IsNotNull();
-        await Assert.That(generated!).Contains("public const string All = \"\";");
-        await Assert.That(generated!).Contains("new string[0]");
+        await Assert.That(generated).Contains("public const string All = \"\";");
+        await Assert.That(generated).Contains("new string[0]");
     }
 
     [Test]
@@ -121,5 +121,15 @@ public class KnownModulesGeneratorTests
 
         await Assert.That(reasons).IsNotEmpty();
         await Assert.That(reasons.All(reason => reason is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached)).IsTrue();
+    }
+
+    [Test]
+    public async Task WritesTheStartupCheckAgainstTheList()
+    {
+        // RunAsync compiles the result, so this also proves the check compiles where it is written.
+        var generated = await RunAsync([new Module("Orders.Entities")]);
+
+        await Assert.That(generated).Contains("public static TBuilder ValidateModules<TBuilder>(this TBuilder builder)");
+        await Assert.That(generated).Contains("global::FusionModules.KnownModules.Names");
     }
 }

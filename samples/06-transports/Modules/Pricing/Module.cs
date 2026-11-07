@@ -15,11 +15,11 @@ namespace PricingModule;
 /// </remarks>
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services) =>
+    protected override void ConfigureServices(IHostApplicationBuilder builder) =>
         // Not TryAdd. This module and PricingClientModule are two answers to the same question, and
         // a topology picks one — loading both means the last name in HOSTINGSTARTUPASSEMBLIES
         // silently decides, which is a collision worth failing on rather than tolerating.
-        services.AddScoped<IPricing, Pricing>();
+        builder.Services.AddScoped<IPricing, Pricing>();
 }
 
 sealed class Pricing : IPricing

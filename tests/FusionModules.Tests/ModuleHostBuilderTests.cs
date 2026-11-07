@@ -4,7 +4,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace FusionModules.Tests;
 
@@ -32,7 +31,7 @@ public class ModuleHostBuilderTests
     }
 
     [Test]
-    public async Task Services_AreTheSameCollectionAsTheOtherOverload()
+    public async Task ObsoleteOverload_IsHandedTheSameCollection()
     {
         var module = await ActivateAsync();
 
@@ -40,13 +39,13 @@ public class ModuleHostBuilderTests
     }
 
     [Test]
-    public async Task BuilderOverload_RunsBeforeTheServiceCollectionOverload()
+    public async Task ObsoleteOverload_StillRuns_AfterTheBuilderOverload()
     {
-        // Integrations register with TryAdd, so an explicit registration in the classic overload
-        // has to be able to beat an integration's default. That only holds in this order.
+        // A module written for 0.1 overrides only the classic overload; it must keep working, and
+        // an explicit registration there must still beat an integration's TryAdd default.
         var module = await ActivateAsync();
 
-        await Assert.That(module.CallOrder).IsEquivalentTo(new[] { "builder", "services" });
+        await Assert.That(module.CallOrder).IsEquivalentTo(["builder", "services"]);
     }
 
     [Test]
@@ -66,7 +65,7 @@ public class ModuleHostBuilderTests
         var module = await ActivateAsync();
 
         await Assert.That(module.ConfigurationAddFailure).IsNotNull();
-        await Assert.That(module.ConfigurationAddFailure!).Contains("ConfigureAppConfiguration");
+        await Assert.That(module.ConfigurationAddFailure).Contains("ConfigureAppConfiguration");
     }
 
     [Test]
@@ -77,7 +76,7 @@ public class ModuleHostBuilderTests
         var module = await ActivateAsync();
 
         await Assert.That(module.SourcesAddFailure).IsNotNull();
-        await Assert.That(module.SourcesAddFailure!).Contains("ConfigureAppConfiguration");
+        await Assert.That(module.SourcesAddFailure).Contains("ConfigureAppConfiguration");
         await Assert.That(module.SourcesInsertFailure).IsNotNull();
     }
 
@@ -206,7 +205,10 @@ public class ModuleHostBuilderTests
             }
         }
 
+        // The obsolete overload, overridden on purpose: what 0.1 modules do.
+#pragma warning disable CS0672
         protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
+#pragma warning restore CS0672
         {
             CallOrder.Add("services");
             ServicesAreTheSameInstance = ReferenceEquals(_fromBuilder, services);

@@ -4,7 +4,7 @@
 // at runtime with TypedClientBuilder, into a dynamic assembly of its own — and a type there cannot
 // implement an internal interface declared here. Without the attribute below, this compiles, no
 // rule fires, every test that does not start a hub passes, and the process throws
-// TypeLoadException the first time it resolves IHubContext. MOD0009 is what turns that into a
+// TypeLoadException the first time it resolves IHubContext. MOD0010 is what turns that into a
 // build error; this attribute is what answers it.
 //
 // The attribute is worth preferring over making the interface public, because public spreads: a

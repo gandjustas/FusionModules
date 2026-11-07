@@ -41,7 +41,8 @@ order, which is `HOSTINGSTARTUPASSEMBLIES` order. And it is registration order r
 contract; it has moved once already, between hosting models.
 [`WarmCache`](Modules/Catalog/Catalog.cs) shows the contractual version,
 `IHostedLifecycleService.StartingAsync`, which runs before any hosted service by specification.
-Both trip MOD0008, correctly, and both suppressions in this sample say which decision they record.
+Both run once per replica of every topology that loads the module, and the comments next to
+their registrations say that this is intended.
 
 The asserted sequence is the summary:
 

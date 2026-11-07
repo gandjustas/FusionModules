@@ -8,7 +8,7 @@ reach for it.
 ## `FusionModulesProjectKind`
 
 `Test`, `Host` or `Module`. Everything else on this page keys off it, and the analyzers read it
-through `CompilerVisibleProperty` — MOD0003 holds a host to a rule a test project is exempt from.
+through `CompilerVisibleProperty` — MOD0004 holds a host to a rule a test project is exempt from.
 
 Computed when unset, in this order:
 
@@ -38,7 +38,7 @@ Default on. For a `Host`, sets `GenerateMvcApplicationPartsAssemblyAttributes=fa
 Application Part Discovery does not know about `HostingStartup`: left alone, the SDK emits an
 `[ApplicationPart]` for every referenced MVC-flavoured project, so the host picks up a module's
 controllers and pages without running the module's code and regardless of
-`HOSTINGSTARTUPASSEMBLIES`. That is [MOD0004](rules/MOD0004.md), and each module calls
+`HOSTINGSTARTUPASSEMBLIES`. That is [MOD0007](rules/MOD0007.md), and each module calls
 `AddApplicationPart` for itself instead.
 
 Set it to `false` only if you are managing `GenerateMvcApplicationPartsAssemblyAttributes` yourself.
@@ -132,7 +132,8 @@ Trailing separator included — the file name is appended to it directly.
 ## `FusionModulesKnownModules`
 
 Default on. For a `Host` or a `Test` project, generates `FusionModules.KnownModules`: every module
-the project references, as a constant.
+the project references, as a constant — and `ValidateModules()`, the startup check written against
+it.
 
 ```csharp
 internal static class KnownModules
@@ -154,7 +155,29 @@ Dependencies come first, ties broken by name. That is what puts a composing modu
 modules it joins, which is the order EF Core applies entity configurations in — and it is derived
 from the reference graph, so it follows the code rather than a convention about naming.
 
-A module never gets it: a module has no business knowing the topology it will be deployed in.
+`ValidateModules()` is an extension on `IHostApplicationBuilder`, generated into
+`Microsoft.Extensions.Hosting` so that `builder.` finds it without a using:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args).ValidateModules();
+```
+
+A generic host with a web host on it gets the same check through an overload for `IHostBuilder`,
+which runs it when the host is built:
+
+```csharp
+Host.CreateDefaultBuilder(args).ConfigureWebHostDefaults(web => …).ValidateModules();
+```
+
+It compares `HOSTINGSTARTUPASSEMBLIES` with `KnownModules` and fails startup when a name is not
+loaded in the process — a typo, or an assembly not deployed next to the host — or when a name is
+one of the project's modules and its startup did not run. A name that is not one of the project's
+modules, a third-party hosting startup, only has to load. Left to itself ASP.NET Core logs a
+critical message for a name it cannot load and starts anyway. The check is generated only where the
+hosting types it needs are referenced, and [MOD0011](rules/MOD0011.md) warns about a host with
+modules that creates its builder without calling it.
+
+A module never gets either: a module has no business knowing the topology it will be deployed in.
 Without [`FusionModulesProjectKind`](#fusionmodulesprojectkind) — that is, without this package's
 targets — a project that produces a program gets it and a library does not.
 

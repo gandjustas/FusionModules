@@ -8,12 +8,12 @@ namespace NotificationsModule;
 
 sealed class Module : ModuleBase
 {
-    protected override void ConfigureServices(WebHostBuilderContext context, IServiceCollection services) =>
+    protected override void ConfigureServices(IHostApplicationBuilder builder) =>
         // AddSignalR configures HubOptions for the whole process, not for this hub. A second module
         // calling it with different options silently overwrites the first, and which one wins
         // depends on HOSTINGSTARTUPASSEMBLIES order — so anything set here is a claim about the
         // application, not about this module. Set only what genuinely is.
-        services.AddSignalR();
+        builder.Services.AddSignalR();
 
     protected override void Configure(IApplicationBuilder app) =>
         // A hub is not a controller: no application part discovers it, so the module maps it

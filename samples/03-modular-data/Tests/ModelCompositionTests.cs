@@ -31,12 +31,12 @@ public class ModelCompositionTests
 
     [Test]
     public async Task OrdersAlone_BringsOnlyItsOwnTable() =>
-        await Assert.That(TablesIn(ModelFor(Modules.OrdersEntities))).IsEquivalentTo(new[] { "Sales.Orders" });
+        await Assert.That(TablesIn(ModelFor(Modules.OrdersEntities))).IsEquivalentTo(["Sales.Orders"]);
 
     [Test]
     public async Task EachModuleOwnsItsSchema() =>
         await Assert.That(TablesIn(ModelFor(Modules.OrdersEntities, Modules.CustomersEntities)))
-            .IsEquivalentTo(new[] { "Marketing.Customers", "Sales.Orders" });
+            .IsEquivalentTo(["Marketing.Customers", "Sales.Orders"]);
 
     [Test]
     public async Task WithoutTheComposingModule_ThereIsNoRelationship()
@@ -84,6 +84,6 @@ public class ModelCompositionTests
 
         var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
-        await Assert.That(error!.Message).Contains("Customers.Entities");
+        await Assert.That(error.Message).Contains("Customers.Entities");
     }
 }

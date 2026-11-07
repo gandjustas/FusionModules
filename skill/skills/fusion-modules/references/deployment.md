@@ -60,8 +60,8 @@ builder.Services.AddHealthChecks().AddCheck("modules", () =>
 });
 ```
 
-Three lines of the host's own code, not package API. `ModuleBase` already fails startup when a
-*named* module cannot be loaded; this catches the other direction — a deployment whose variable
+Three lines of the host's own code, not package API. `ValidateModules()` already fails startup
+when a *named* module cannot be loaded or did not run; this catches the other direction — a deployment whose variable
 was edited to something that loads fine but is not what this replica is for.
 
 ## The Dockerfile

@@ -19,8 +19,8 @@ For each edge in the call graph from Phase 0: does it still need to be a network
 2. **A `Local` module registers the direct implementation.**
 
    ```csharp
-   protected override void ConfigureServices(WebHostBuilderContext ctx, IServiceCollection services) =>
-       services.AddScoped<IPricing, Pricing>();
+   protected override void ConfigureServices(IHostApplicationBuilder builder) =>
+       builder.Services.AddScoped<IPricing, Pricing>();
    ```
 
 3. **Optionally, a `Remote` module keeps the old transport** behind the same interface — the

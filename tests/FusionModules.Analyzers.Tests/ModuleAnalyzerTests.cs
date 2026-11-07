@@ -80,7 +80,7 @@ public class ModuleAnalyzerTests
     public Task ClientOfANestedHub_IsReported() =>
         // A hub declared inside another type is still a hub, and its client still needs the proxy.
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
-            interface {|MOD0009:IPaymentClient|} { }
+            interface {|MOD0010:IPaymentClient|} { }
 
             internal static class Hubs
             {
@@ -149,14 +149,14 @@ public class ModuleAnalyzerTests
             sealed class ConcreteModule : CompanyModule { }
             """);
 
-    // MOD0005 — every module is registered. The other half of MOD0002.
+    // MOD0003 — every module is registered. The other half of MOD0002.
 
     [Test]
     public Task UnregisteredModule_IsReported() =>
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
             using FusionModules;
 
-            sealed class {|MOD0005:Forgotten|} : ModuleBase { }
+            sealed class {|MOD0003:Forgotten|} : ModuleBase { }
             """);
 
     [Test]
@@ -166,7 +166,7 @@ public class ModuleAnalyzerTests
         AnalyzerTest.VerifyAsync<ModuleAnalyzer>("""
             using FusionModules;
 
-            sealed class {|MOD0005:OrdersModule|} : ModuleBase { }
+            sealed class {|MOD0003:OrdersModule|} : ModuleBase { }
             """);
 
     [Test]
@@ -190,7 +190,7 @@ public class ModuleAnalyzerTests
             sealed class SecondModule : ModuleBase { }
             """);
 
-    // MOD0009 — SignalR's proxy has to be able to implement the hub's client interface.
+    // MOD0010 — SignalR's proxy has to be able to implement the hub's client interface.
 
     [Test]
     public Task HubWithInternalClientInterface_IsReported() =>
@@ -199,7 +199,7 @@ public class ModuleAnalyzerTests
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.SignalR;
 
-            interface {|MOD0009:IPaymentClient|}
+            interface {|MOD0010:IPaymentClient|}
             {
                 System.Threading.Tasks.Task Paid(string reference);
             }
@@ -282,7 +282,7 @@ public class ModuleAnalyzerTests
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.SignalR;
 
-            interface {|MOD0009:IPaymentClient|} { }
+            interface {|MOD0010:IPaymentClient|} { }
 
             sealed class PaymentHub : Hub<IPaymentClient> { }
 
@@ -298,13 +298,13 @@ public class ModuleAnalyzerTests
 
             class Contracts
             {
-                public interface {|MOD0009:IPaymentClient|} { }
+                public interface {|MOD0010:IPaymentClient|} { }
             }
 
             sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
             """);
 
-    // MOD0020 — say what is actually wrong when the runtime package is missing.
+    // MOD0012 — say what is actually wrong when the runtime package is missing.
 
     [Test]
     public Task HostingStartupWithoutTheRuntimePackage_ReportsMissingPackage() =>
@@ -313,7 +313,7 @@ public class ModuleAnalyzerTests
         AnalyzerTest.VerifyWithoutModuleBaseAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
 
-            [assembly: {|MOD0020:HostingStartup(typeof(Orphan))|}]
+            [assembly: {|MOD0012:HostingStartup(typeof(Orphan))|}]
 
             class Orphan { }
             """);
