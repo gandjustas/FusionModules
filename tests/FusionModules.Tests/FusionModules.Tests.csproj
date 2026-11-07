@@ -15,9 +15,25 @@
     <PackageReference Include="TUnit" />
   </ItemGroup>
 
+  <!-- RuntimeDocumentationTests reads docs/runtime.md, a repository file rather than build output. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..\..'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\FusionModules\FusionModules.csproj" />
+  </ItemGroup>
+
+  <!--
+    The type-name cases, in a file of their own so that whatever else reads type names from
+    settings can be checked against the same list.
+  -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TypeSpellingCases.cs" Link="Shared\TypeSpellingCases.cs" />
   </ItemGroup>
 
 </Project>

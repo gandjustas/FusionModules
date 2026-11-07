@@ -45,6 +45,12 @@
     <None Include="build\FusionModules.targets" Pack="true" PackagePath="buildTransitive\$(PackageId).targets" />
   </ItemGroup>
 
+  <!-- What the startup checks and the analyzers have to agree on, and how the log lines are written; compiled into each that needs it. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TopologyConventions.cs" Link="Shared\TopologyConventions.cs" />
+    <Compile Include="..\Shared\PartsLogLine.cs" Link="Shared\PartsLogLine.cs" />
+  </ItemGroup>
+
   <!--
     The analyzer and its code fixes ship inside this package. Static paths rather than a target
     that re-invokes those projects: the ProjectReference above already built them, and pack runs

@@ -27,9 +27,11 @@ internal static class GeneratorTest
         string projectKind = "Host",
         string? enabled = null,
         string hostSource = "class Program { static void Main() { } }",
-        OutputKind outputKind = OutputKind.ConsoleApplication)
+        OutputKind outputKind = OutputKind.ConsoleApplication,
+        Dictionary<string, string>? globalOptions = null,
+        Dictionary<string, string>? treeOptions = null)
     {
-        var (host, options) = await CreateHostAsync(modules, projectKind, enabled, hostSource, outputKind);
+        var (host, options) = await CreateHostAsync(modules, projectKind, enabled, hostSource, outputKind, globalOptions, treeOptions);
 
         var driver = CSharpGeneratorDriver
             .Create([new KnownModulesGenerator().AsSourceGenerator()], optionsProvider: options)
@@ -47,35 +49,18 @@ internal static class GeneratorTest
     }
 
     /// <summary>
-    /// Generates, edits the host's code without touching its references, generates again, and
-    /// returns why the generator's module step produced what it did the second time.
+    /// A host compilation over the given modules, compiled ahead, and the options MSBuild would pass —
+    /// with <paramref name="globalOptions"/> added, and <paramref name="treeOptions"/> as every file's
+    /// <c>.editorconfig</c> section.
     /// </summary>
-    public static async Task<IReadOnlyList<IncrementalStepRunReason>> RunAfterAnEditAsync(params Module[] modules)
-    {
-        var (host, options) = await CreateHostAsync(modules, "Host", null, "class Program { static void Main() { } }", OutputKind.ConsoleApplication);
-
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            [new KnownModulesGenerator().AsSourceGenerator()],
-            optionsProvider: options,
-            driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
-
-        driver = driver.RunGenerators(host);
-        driver = driver.RunGenerators(host.AddSyntaxTrees(CSharpSyntaxTree.ParseText("class Edited { int Value => 42; }")));
-
-        return driver.GetRunResult().Results
-            .Single()
-            .TrackedSteps[KnownModulesGenerator.ModulesStep]
-            .SelectMany(step => step.Outputs)
-            .Select(output => output.Reason)
-            .ToList();
-    }
-
-    private static async Task<(CSharpCompilation Host, AnalyzerConfigOptionsProvider Options)> CreateHostAsync(
+    public static async Task<(CSharpCompilation Host, AnalyzerConfigOptionsProvider Options)> CreateHostAsync(
         IEnumerable<Module> modules,
         string projectKind,
         string? enabled,
         string hostSource,
-        OutputKind outputKind)
+        OutputKind outputKind,
+        Dictionary<string, string>? globalOptions = null,
+        Dictionary<string, string>? treeOptions = null)
     {
         var references = await AnalyzerTest.BaseReferences.Value;
         var framework = await AnalyzerTest.Framework.Value;
@@ -133,7 +118,12 @@ internal static class GeneratorTest
             options["build_property.FusionModulesKnownModules"] = enabled;
         }
 
-        return (host, new Options(options));
+        foreach (var (key, value) in globalOptions ?? [])
+        {
+            options[key] = value;
+        }
+
+        return (host, new Options(options, treeOptions));
     }
 
     /// <summary>The value of the generated <c>All</c> constant.</summary>
@@ -152,11 +142,13 @@ internal static class GeneratorTest
         return text[start..end];
     }
 
-    internal sealed class Options(Dictionary<string, string> globals) : AnalyzerConfigOptionsProvider
+    internal sealed class Options(Dictionary<string, string> globals, Dictionary<string, string>? trees = null) : AnalyzerConfigOptionsProvider
     {
+        private readonly Config _trees = new(trees ?? []);
+
         public override AnalyzerConfigOptions GlobalOptions { get; } = new Config(globals);
 
-        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Config([]);
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _trees;
 
         public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Config([]);
 

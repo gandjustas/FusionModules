@@ -109,6 +109,16 @@ it later means re-testing every module that has already moved.
 The order of the host pipeline applies to every module. Where two services disagreed, one of them
 is going to change behaviour — decide which, deliberately.
 
+From here on the host checks what its modules register, every time it starts: two modules
+registering one service with different implementations fail startup, and two modules mapping one
+route or configuring the same options differently are logged as warnings. Each start also logs one
+line beginning `Topology:` — `modules: …; endpoints: …; hosted services: …; library hosted
+services: …; shared on purpose: …`, each part left out when empty: the modules, the endpoints each
+serves (and the host's own, as `host`), the modules that serve none, and the hosted services that
+run — a worker removed after the modules registered it is not listed. Read it after every module you convert. What each check counts and how to answer it:
+the [runtime reference](https://github.com/gandjustas/FusionModules/blob/HEAD/docs/runtime.md) and
+[troubleshooting](troubleshooting.md).
+
 ## Launch profiles
 
 Add one profile per planned topology, plus `NoModules`. They are the cheapest possible

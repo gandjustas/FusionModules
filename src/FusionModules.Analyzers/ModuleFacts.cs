@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -55,6 +56,13 @@ internal static class ModuleFacts
     public const string ValidateModulesClassName = "FusionModulesHostApplicationBuilderExtensions";
     public const string ValidateModulesClassMetadataName = ValidateModulesNamespace + "." + ValidateModulesClassName;
     public const string ValidateModulesMethodName = "ValidateModules";
+
+    /// <summary>
+    /// The host's list of contracts its modules implement as alternatives, one per topology: MOD0014
+    /// leaves them alone, and <see cref="KnownModulesGenerator"/> hands the list to the runtime under
+    /// <see cref="TopologyConventions.AlternativeServicesKey"/>.
+    /// </summary>
+    public const string AllowedServiceCollisionsOption = "fusion_modules_allowed_service_collisions";
 
     /// <summary>
     /// Resolves <c>FusionModules.ModuleBase</c>. Uses the plural lookup because the type can legitimately
@@ -286,6 +294,40 @@ internal static class ModuleFacts
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The entries of a comma- or semicolon-separated allow-list option, as the whole compilation
+    /// sees it: the MSBuild property (<c>build_property.&lt;key&gt;</c>) and a global config, and the
+    /// <c>.editorconfig</c> section of every file — a section applies to files, so every file's answer
+    /// counts. Every source contributes.
+    /// </summary>
+    /// <remarks>
+    /// The union rather than the first one found: the package declares the list as a
+    /// <c>CompilerVisibleProperty</c>, so the MSBuild source is always present — empty unless the
+    /// project sets it — and taking the first would let that empty value hide the
+    /// <c>.editorconfig</c> entry the user actually wrote.
+    /// </remarks>
+    /// <param name="provider">The analyzer's options.</param>
+    /// <param name="trees">The compilation's files.</param>
+    /// <param name="key">The option's name, as <c>.editorconfig</c> spells it.</param>
+    public static ImmutableHashSet<string> ReadListOption(AnalyzerConfigOptionsProvider provider, IEnumerable<SyntaxTree> trees, string key)
+    {
+        var global = provider.GlobalOptions;
+        var values = new List<string?>
+        {
+            global.TryGetValue($"build_property.{key}", out var property) ? property : null,
+            global.TryGetValue(key, out var value) ? value : null,
+        };
+
+        foreach (var tree in trees)
+        {
+            var options = provider.GetOptions(tree);
+            values.Add(options.TryGetValue($"build_property.{key}", out var treeProperty) ? treeProperty : null);
+            values.Add(options.TryGetValue(key, out var treeValue) ? treeValue : null);
+        }
+
+        return values.SelectMany(TopologyConventions.SplitNames).ToImmutableHashSet(StringComparer.Ordinal);
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol root)

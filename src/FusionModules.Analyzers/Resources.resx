@@ -194,4 +194,13 @@
   <data name="MOD0013_Description" xml:space="preserve">
     <value>The runtime package is missing, so ModuleBase cannot be found and the rules that depend on it are inactive. The build is green because nothing is being checked.</value>
   </data>
+  <data name="MOD0014_Title" xml:space="preserve">
+    <value>Two modules register one service with different implementations</value>
+  </data>
+  <data name="MOD0014_Message" xml:space="preserve">
+    <value>Modules register '{0}' with different implementations ({1}); where they are loaded together, only one registration is resolved and the other module gets an implementation it did not register</value>
+  </data>
+  <data name="MOD0014_Description" xml:space="preserve">
+    <value>Each service had a container of its own before the merge; now the modules share one, and for a service resolved as one instance the last registration wins (or the first, with TryAdd). Register a keyed service, or a service type of each module's own. If the type is consumed as IEnumerable&lt;T&gt;, put an attribute named MultipleImplementationsAttribute on it. If the modules are alternatives that no topology loads together, or the type is not yours, list it in fusion_modules_allowed_service_collisions; that silences this build check only. A type that is not yours and is read as a sequence by modules that do run together also needs FusionModules:AllowedServiceCollisions in the host's configuration, for the startup check. Only registrations written in the modules' own code are seen; the startup check also sees those made inside libraries.</value>
+  </data>
 </root>

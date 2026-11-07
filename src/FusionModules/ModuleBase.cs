@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace FusionModules;
@@ -298,10 +299,18 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         builder.ConfigureServices((context, services) =>
         {
             services.AddSingleton<IStartupFilter>(this);
-            ConfigureServices(new ModuleHostBuilder(context, services));
+
+            // What this module registers is recorded, so that startup can tell two modules
+            // registering one service apart from one module registering it twice.
+            var ledger = ModuleLedger.For(services);
+            services.TryAddSingleton(ledger);
+            ledger.Register(ModuleName, GetType().Assembly, services, () =>
+            {
+                ConfigureServices(new ModuleHostBuilder(context, services));
 #pragma warning disable CS0618 // still called: a module written for 0.1 keeps working
-            ConfigureServices(context, services);
+                ConfigureServices(context, services);
 #pragma warning restore CS0618
+            });
         });
 
         builder.ConfigureAppConfiguration((context, configuration) =>
@@ -318,9 +327,25 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
     Action<IApplicationBuilder> IStartupFilter.Configure(Action<IApplicationBuilder> next) => app =>
     {
-        ValidateReferences(app.ApplicationServices.GetRequiredService<IConfiguration>());
+        var services = app.ApplicationServices;
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var ledger = services.GetService<ModuleLedger>();
+
+        // What is true of the host first — the ledger runs its checks for the first module to ask,
+        // however many times a module ended up registered as a startup filter (MOD0009), and finds
+        // them done for the rest — then what is true of this module.
+        var checkedHere = ledger?.Validate(services, configuration) == true;
+
+        ValidateReferences(configuration);
         next(app);
         Configure(app);
+
+        // The first to ask is the outermost startup filter, and so the last to get here: every module
+        // has mapped its endpoints, and the ledger reads them and writes the startup report.
+        if (checkedHere)
+        {
+            ledger!.Configured(services);
+        }
     };
 
     /// <summary>
@@ -404,6 +429,22 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         typeof(ModuleBase).IsAssignableFrom(attribute.HostingStartupType)
             ? attribute.HostingStartupType
             : null;
+
+    /// <summary>
+    /// How the startup checks name this module: its assembly's name. A module type its assembly does
+    /// not name as its one <c>HostingStartup</c> — one a test activates by hand, say — is told apart
+    /// by its type name too, or every such module in an assembly would read as one.
+    /// </summary>
+    private string ModuleName
+    {
+        get
+        {
+            var type = GetType();
+            var name = type.Assembly.GetName().Name ?? type.Name;
+            var startups = type.Assembly.GetCustomAttributes<HostingStartupAttribute>().ToArray();
+            return startups.Length == 1 && startups[0].HostingStartupType == type ? name : $"{name} ({type.Name})";
+        }
+    }
 
     private static string RegistryKey(string? assemblyName) => $"{ConfigurationSection}:{assemblyName}";
 

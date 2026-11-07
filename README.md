@@ -87,6 +87,7 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0011](docs/rules/MOD0011.md) | MVC never discovers the module's controllers or pages |
 | [MOD0012](docs/rules/MOD0012.md) | The host does not validate its modules |
 | [MOD0013](docs/rules/MOD0013.md) | The FusionModules package is not referenced |
+| [MOD0014](docs/rules/MOD0014.md) | Two modules register one service with different implementations |
 
 A host and a test project also get `KnownModules`, generated from their references: every module,
 by name. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
@@ -97,6 +98,24 @@ against that list at startup.
 
 The package also sets a few MSBuild properties, each of them a fix for something that fails
 quietly. What they do, what is generated and how to override either: [docs/msbuild.md](docs/msbuild.md).
+
+## At startup
+
+Some of what goes wrong in a merge only exists once a topology is running: which modules ended up
+together, and what libraries registered on their behalf. So when the pipeline is built, the host
+checks what its modules did:
+
+- **Two modules registering one service with different implementations fail startup**, naming the
+  service, both modules and both implementations: in one container the last registration wins, and
+  a module is quietly given its neighbour's. A contract several modules implement on purpose says so
+  with an attribute named `MultipleImplementationsAttribute`; a library's type goes in
+  `FusionModules:AllowedServiceCollisions`.
+- **Two modules mapping one route** — which the first request would answer with a 500 — and **options
+  several modules configure differently** are logged as warnings.
+- One `Topology:` line in the log says what the replica loaded: its modules, the endpoints each
+  serves, the hosted services each registered.
+
+What counts, the settings and the report's fields: [docs/runtime.md](docs/runtime.md).
 
 ## Samples
 

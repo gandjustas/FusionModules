@@ -319,7 +319,7 @@ internal static class AnalyzerTest
                 public static string[] Names => new string[0];
             }
         }
-        """ + KnownModulesGenerator.Validation;
+        """ + KnownModulesGenerator.Validation();
 
     /// <summary>
     /// A registered, well-formed module. Present in most snippets so the assembly counts as a

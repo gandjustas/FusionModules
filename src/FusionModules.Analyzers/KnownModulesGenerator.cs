@@ -1,5 +1,7 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 
 namespace FusionModules.Analyzers;
@@ -29,10 +31,6 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
     private const string KnownModulesMetadataName = "FusionModules.KnownModules";
     private const string HintName = "FusionModules.KnownModules.g.cs";
 
-    /// <summary>The step whose output decides whether anything is regenerated; named for tests.</summary>
-    internal const string ModulesStep = "Modules";
-
-
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -43,7 +41,7 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
             return (
                 Kind: ModuleFacts.GetProjectKind(provider.GlobalOptions),
                 Disabled: string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase));
-        });
+        }).WithTrackingName(TrackingNames.KnownModulesSettings);
 
         // The settings go in first, so that a module — most projects in a modular solution — or a
         // project that switched the list off pays for neither the entry point nor the reference
@@ -51,15 +49,16 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
         // generated file contains, and it compares by value, so an edit that leaves the module
         // set alone regenerates nothing.
         var modules = context.CompilationProvider
+            .Combine(context.AnalyzerConfigOptionsProvider)
             .Combine(settings)
-            .Select(static (input, token) => Collect(input.Left, input.Right.Kind, input.Right.Disabled, token))
-            .WithTrackingName(ModulesStep);
+            .Select(static (input, token) => Collect(input.Left.Left, input.Left.Right, input.Right.Kind, input.Right.Disabled, token))
+            .WithTrackingName(TrackingNames.KnownModules);
 
         context.RegisterSourceOutput(modules, static (production, modules) =>
         {
-            if (modules is var (names, canValidate))
+            if (modules is var (names, canValidate, alternatives))
             {
-                production.AddSource(HintName, SourceText.From(Render(names, canValidate), Encoding.UTF8));
+                production.AddSource(HintName, SourceText.From(Render(names, canValidate, alternatives), Encoding.UTF8));
             }
         });
     }
@@ -71,7 +70,17 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
     /// gets the list. Without the package's targets there is no answer, and then producing a
     /// program is what separates a host or a test assembly from a module.
     /// </summary>
-    private static (string Modules, bool CanValidate)? Collect(Compilation compilation, ProjectKind kind, bool disabled, CancellationToken token)
+    /// <remarks>
+    /// The host's alternatives are read here, with its <c>.editorconfig</c>: a section applies to
+    /// files, which only the compilation has, and only a project that gets the list pays for reading
+    /// every file's answer.
+    /// </remarks>
+    private static (string Modules, bool CanValidate, string Alternatives)? Collect(
+        Compilation compilation,
+        AnalyzerConfigOptionsProvider options,
+        ProjectKind kind,
+        bool disabled,
+        CancellationToken token)
     {
         if (disabled ||
             (kind != ProjectKind.Test && !ModuleFacts.IsHost(kind, compilation, token)))
@@ -93,7 +102,7 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
 
         if (hostingStartup is null || moduleBase is null)
         {
-            return (string.Empty, false);
+            return (string.Empty, false, string.Empty);
         }
 
         var modules = ModuleFacts.GetReferencedModules(compilation, hostingStartup, moduleBase).ToList();
@@ -102,19 +111,28 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
             compilation.GetTypeByMetadataName(ModuleFacts.HostBuilderMetadataName) is not null &&
             compilation.GetTypeByMetadataName(ModuleFacts.WebHostDefaultsMetadataName) is not null;
 
+        // Only ValidateModules hands the alternatives on, so without it they are not read. Joined in
+        // an order that is the same on every run: the value compares by value.
+        var alternatives = canValidate
+            ? string.Join(";", ModuleFacts.ReadListOption(options, compilation.SyntaxTrees, ModuleFacts.AllowedServiceCollisionsOption).OrderBy(name => name, StringComparer.Ordinal))
+            : string.Empty;
+
         // By name: a set, not an order. The order configurations are applied in comes from
         // GetLoadedModules at runtime, from the full assemblies; the references the compiler sees
         // here are reference assemblies, without the ones only a method body makes.
-        return (string.Join(";", modules.Select(module => module.Identity.Name).OrderBy(name => name, StringComparer.Ordinal)), canValidate);
+        return (
+            string.Join(";", modules.Select(module => module.Identity.Name).OrderBy(name => name, StringComparer.Ordinal)),
+            canValidate,
+            alternatives);
     }
 
-    private static string Render(string modules, bool canValidate)
+    private static string Render(string modules, bool canValidate, string alternatives)
     {
         // new string[] rather than a collection expression: the file is compiled by the consumer,
         // whose LangVersion is theirs to choose, and generated code has no business raising it.
         var literals = modules.Length == 0
             ? "new string[0]"
-            : "new string[] { " + string.Join(", ", modules.Split(';').Select(name => "\"" + name + "\"")) + " }";
+            : "new string[] { " + string.Join(", ", modules.Split(';').Select(Literal)) + " }";
 
         return $$"""
             // <auto-generated/>
@@ -136,7 +154,7 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
                     /// <summary>
                     /// Every module, spelled as <c>HOSTINGSTARTUPASSEMBLIES</c> takes it.
                     /// </summary>
-                    public const string All = "{{modules}}";
+                    public const string All = {{Literal(modules)}};
 
                     /// <summary>
                     /// Every module, one name per element, for <c>ModuleBase.CreateModuleRegistry</c>.
@@ -144,13 +162,19 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
                     public static string[] Names => {{literals}};
                 }
             }
-            {{(canValidate ? Validation : string.Empty)}}
+            {{(canValidate ? Validation(alternatives) : string.Empty)}}
             """;
     }
 
+    /// <summary>A C# string literal of <paramref name="value"/>.</summary>
+    private static string Literal(string value) => SymbolDisplay.FormatLiteral(value, quote: true);
+
     /// <summary>
     /// The startup check, written against <c>KnownModules</c>. In <c>Microsoft.Extensions.Hosting</c>,
-    /// beside the builder's own extensions, so that <c>builder.</c> finds it without a using.
+    /// beside the builder's own extensions, so that <c>builder.</c> finds it without a using. With the
+    /// host's <c>fusion_modules_allowed_service_collisions</c>, when it has one, <c>ValidateModules</c>
+    /// also writes it under <see cref="TopologyConventions.AlternativeServicesKey"/> for the runtime's
+    /// collision message; without, the file carries no trace of it.
     /// </summary>
     /// <remarks>
     /// ASP.NET Core runs the hosting startups while it creates the builder, and for a name it cannot
@@ -160,7 +184,20 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
     /// Fully qualified throughout and no newer syntax than the file around it: the consumer's
     /// compiler and usings decide what this means.
     /// </remarks>
-    internal const string Validation = $$"""
+    internal static string Validation(string alternatives = "")
+    {
+        var (field, builderLine, contextLine) = alternatives.Length == 0
+            ? (string.Empty, string.Empty, string.Empty)
+            : ("\n\n" +
+               "        // The contracts the host's build lists as implemented by alternative modules, one per\n" +
+               "        // topology (fusion_modules_allowed_service_collisions). The modules read them only to\n" +
+               "        // word the message when two of those load together after all: that still fails startup.\n" +
+               "        private const string AlternativeServicesKey = " + Literal(TopologyConventions.AlternativeServicesKey) + ";\n" +
+               "        private const string AlternativeServices = " + Literal(alternatives) + ";",
+               "\n            builder.Configuration[AlternativeServicesKey] = AlternativeServices;",
+               "\n                context.Configuration[AlternativeServicesKey] = AlternativeServices;");
+
+        return $$"""
 
         namespace {{ModuleFacts.ValidateModulesNamespace}}
         {
@@ -178,10 +215,22 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
                 /// A name that is not one of this project's modules — a third-party hosting startup —
                 /// only has to load.
                 /// </remarks>
-                public static TBuilder {{ModuleFacts.ValidateModulesMethodName}}<TBuilder>(this TBuilder builder)
+                /// <param name="builder">The builder.</param>
+                /// <param name="runtimeTopologyChecks">
+                /// <c>false</c> turns off the checks the modules run when the pipeline is built: two
+                /// modules registering one service, options configured differently, routes that collide,
+                /// and the endpoint counts in the startup report. The check of
+                /// <c>HOSTINGSTARTUPASSEMBLIES</c> itself always runs.
+                /// </param>
+                public static TBuilder {{ModuleFacts.ValidateModulesMethodName}}<TBuilder>(this TBuilder builder, bool runtimeTopologyChecks = true)
                     where TBuilder : global::Microsoft.Extensions.Hosting.IHostApplicationBuilder
                 {
-                    Validate(builder.Configuration);
+                    Validate(builder.Configuration);{{builderLine}}
+                    if (!runtimeTopologyChecks)
+                    {
+                        builder.Configuration[RuntimeTopologyChecksKey] = "false";
+                    }
+
                     return builder;
                 }
 
@@ -190,10 +239,21 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
                 /// (<c>ConfigureWebHostDefaults</c>, <c>ConfigureWebHost</c>): it runs when the host is
                 /// built, after the hosting startups, wherever in the chain it is called.
                 /// </summary>
-                public static global::Microsoft.Extensions.Hosting.IHostBuilder {{ModuleFacts.ValidateModulesMethodName}}(this global::Microsoft.Extensions.Hosting.IHostBuilder builder)
+                public static global::Microsoft.Extensions.Hosting.IHostBuilder {{ModuleFacts.ValidateModulesMethodName}}(this global::Microsoft.Extensions.Hosting.IHostBuilder builder, bool runtimeTopologyChecks = true)
                 {
-                    return builder.ConfigureServices((context, services) => Validate(context.Configuration));
+                    return builder.ConfigureServices((context, services) =>
+                    {
+                        Validate(context.Configuration);{{contextLine}}
+                        if (!runtimeTopologyChecks)
+                        {
+                            context.Configuration[RuntimeTopologyChecksKey] = "false";
+                        }
+                    });
                 }
+
+                // Read by the modules when the pipeline is built; the same key works from
+                // appsettings.json or the environment.
+                private const string RuntimeTopologyChecksKey = {{Literal(TopologyConventions.RuntimeTopologyChecksKey)}};{{field}}
 
                 private static void Validate(global::Microsoft.Extensions.Configuration.IConfiguration configuration)
                 {
@@ -243,4 +303,5 @@ public sealed class KnownModulesGenerator : IIncrementalGenerator
         }
 
         """;
+    }
 }

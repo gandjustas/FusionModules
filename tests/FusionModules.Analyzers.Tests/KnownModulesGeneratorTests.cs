@@ -103,25 +103,54 @@ public class KnownModulesGeneratorTests
     }
 
     [Test]
-    public async Task AnEditThatLeavesTheReferencesAloneRegeneratesNothing()
-    {
-        // In the IDE the generator runs on every keystroke. The module list depends on the
-        // references only, so a keystroke must end at this step with the same value as before,
-        // and the file must not be written again.
-        var reasons = await RunAfterAnEditAsync(new Module("Orders.Entities"), new Module("Customers.Entities"));
-
-        await Assert.That(reasons).IsNotEmpty();
-        await Assert.That(reasons.All(reason => reason is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached)).IsTrue();
-    }
-
-    [Test]
     public async Task WritesTheStartupCheckAgainstTheList()
     {
         // RunAsync compiles the result, so this also proves the check compiles where it is written.
         var generated = await RunAsync([new Module("Orders.Entities")]);
 
-        await Assert.That(generated).Contains("public static TBuilder ValidateModules<TBuilder>(this TBuilder builder)");
+        await Assert.That(generated).Contains("public static TBuilder ValidateModules<TBuilder>(this TBuilder builder, bool runtimeTopologyChecks = true)");
+        await Assert.That(generated).Contains("\"FusionModules:RuntimeTopologyChecks\"");
         await Assert.That(generated).Contains("global::FusionModules.KnownModules.Names");
+    }
+
+    [Test]
+    public async Task TheHostsAlternatives_AreWrittenIntoConfigurationByTheStartupCheck()
+    {
+        // The host's MOD0014 list: modules that implement these are alternatives, one per topology.
+        // ValidateModules hands it on so that the runtime's collision message can say so. RunAsync
+        // compiles the result, so this also proves both overloads compile with it.
+        var generated = await RunAsync(
+            [new Module("Orders.Entities")],
+            globalOptions: new() { ["build_property.fusion_modules_allowed_service_collisions"] = "Shop.IPaymentGateway, IHandler<A, B>" });
+
+        await Assert.That(generated).Contains("private const string AlternativeServicesKey = \"FusionModules:AlternativeServices\";");
+        await Assert.That(generated).Contains("private const string AlternativeServices = \"IHandler<A,B>;Shop.IPaymentGateway\";");
+        await Assert.That(generated).Contains("builder.Configuration[AlternativeServicesKey] = AlternativeServices;");
+        await Assert.That(generated).Contains("context.Configuration[AlternativeServicesKey] = AlternativeServices;");
+    }
+
+    [Test]
+    public async Task TheHostsAlternatives_AreReadFromEditorConfigToo()
+    {
+        // Where MOD0014's page tells a host to write them: an .editorconfig section, which applies to
+        // the host's files rather than to the project.
+        var generated = await RunAsync(
+            [new Module("Orders.Entities")],
+            treeOptions: new() { ["fusion_modules_allowed_service_collisions"] = "IPaymentGateway" });
+
+        await Assert.That(generated).Contains("private const string AlternativeServices = \"IPaymentGateway\";");
+    }
+
+    [Test]
+    public async Task WithoutAlternatives_TheStartupCheckWritesNoKeyForThem()
+    {
+        // The package declares the property as compiler-visible, so it is always there, empty.
+        var generated = await RunAsync(
+            [new Module("Orders.Entities")],
+            globalOptions: new() { ["build_property.fusion_modules_allowed_service_collisions"] = "" });
+
+        await Assert.That(generated).Contains("public static TBuilder ValidateModules<TBuilder>");
+        await Assert.That(generated).DoesNotContain("AlternativeServices");
     }
 
     [Test]

@@ -191,6 +191,17 @@ Set it to `false` to turn the generator off:
 </PropertyGroup>
 ```
 
+## `fusion_modules_allowed_service_collisions`
+
+No default. Service types [MOD0014](rules/MOD0014.md) leaves alone in the host's build: modules that
+are alternatives, never loaded together, or a type you do not own. The same list can be written in
+`.editorconfig` under the same name; both are read. Passed to the analyzers through
+`CompilerVisibleProperty`.
+
+A module also gets a generated file, `FusionModules.ModuleRecords.g.cs`, when its code registers a
+service: internal assembly attributes that record what it registers, which is how the host's build
+knows. They add nothing to the module's public surface.
+
 ## Properties the samples use
 
 Not part of the package. They belong to this repository's own build and are documented here because

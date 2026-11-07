@@ -35,4 +35,9 @@
     <ProjectReference Include="..\..\src\FusionModules.CodeFixes\FusionModules.CodeFixes.csproj" />
   </ItemGroup>
 
+  <!-- The type-name cases both test projects check, so the runtime and the analyzers accept the same spellings. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TypeSpellingCases.cs" Link="Shared\TypeSpellingCases.cs" />
+  </ItemGroup>
+
 </Project>

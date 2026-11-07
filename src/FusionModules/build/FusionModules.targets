@@ -12,6 +12,8 @@
   <ItemGroup>
     <CompilerVisibleProperty Include="FusionModulesProjectKind" />
     <CompilerVisibleProperty Include="FusionModulesKnownModules" />
+    <!-- MOD0014's allow-list, so it can be set from a project file as well as from .editorconfig. -->
+    <CompilerVisibleProperty Include="fusion_modules_allowed_service_collisions" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(FusionModulesProjectKind)' == ''">

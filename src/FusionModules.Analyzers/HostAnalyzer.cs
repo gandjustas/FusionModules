@@ -10,7 +10,8 @@ namespace FusionModules.Analyzers;
 /// reference modules, so that the build orders them and copies them to its output, but it must not
 /// use their types (MOD0004) and must not pull them in through Application Part Discovery (MOD0007).
 /// A library that is not a module must not use them either (MOD0005): wherever it goes, the module
-/// goes with it. Modules may use each other; tests may use anything.
+/// goes with it. Modules may use each other; tests may use anything. And two of the host's modules
+/// should not register one service with different implementations (MOD0014).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class HostAnalyzer : DiagnosticAnalyzer
@@ -21,6 +22,7 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         Diagnostics.HostMustNotUseModuleTypes,
         Diagnostics.ApplicationPartMustNotNameModule,
         Diagnostics.LibraryMustNotUseModuleTypes,
+        Diagnostics.ModulesRegisterOneServiceDifferently,
     ];
 
     /// <inheritdoc />
@@ -50,14 +52,25 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (ModuleFacts.IsHost(kind, compilation, context.CancellationToken))
+        var isHost = ModuleFacts.IsHost(kind, compilation, context.CancellationToken);
+        if (!isHost && ModuleFacts.IsModuleAssembly(compilation.Assembly, hostingStartupAttribute, moduleBase))
         {
-            CheckUsedReferences(context, hostingStartupAttribute, moduleBase, isHost: true);
-            CheckApplicationParts(context, hostingStartupAttribute, moduleBase);
+            return;
         }
-        else if (!ModuleFacts.IsModuleAssembly(compilation.Assembly, hostingStartupAttribute, moduleBase))
+
+        // Every check here is about the modules the project references: one that references none
+        // has nothing to find and does not pay for looking.
+        var modules = ModuleFacts.GetReferencedModules(compilation, hostingStartupAttribute, moduleBase).ToList();
+        if (modules.Count == 0)
         {
-            CheckUsedReferences(context, hostingStartupAttribute, moduleBase, isHost: false);
+            return;
+        }
+
+        CheckUsedReferences(context, hostingStartupAttribute, moduleBase, isHost);
+        if (isHost)
+        {
+            CheckApplicationParts(context, modules);
+            CheckRegistrations(context, modules);
         }
     }
 
@@ -70,14 +83,8 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         // GetUsedAssemblyReferences, not References: a project reference that exists only to order
         // the build and copy the module to the output directory is exactly what we want people to
         // have. The used references are the assembly references the compiler writes into the output.
+        // Used references are a subset of references, and asking for them binds every method body.
         var compilation = context.Compilation;
-
-        // Used references are a subset of references, and asking for them binds every method body:
-        // a project that references no module has nothing to find and does not pay for looking.
-        if (!ModuleFacts.GetReferencedModules(compilation, hostingStartupAttribute, moduleBase).Any())
-        {
-            return;
-        }
 
         var cheap = compilation.GetUsedAssemblyReferences(context.CancellationToken);
         if (FindModules(compilation, cheap, hostingStartupAttribute, moduleBase).Length == 0)
@@ -203,10 +210,7 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
                                !diagnostic.IsWarningAsError &&
                                diagnostic.Id.StartsWith("CS", StringComparison.Ordinal));
 
-    private static void CheckApplicationParts(
-        CompilationAnalysisContext context,
-        INamedTypeSymbol hostingStartupAttribute,
-        INamedTypeSymbol moduleBase)
+    private static void CheckApplicationParts(CompilationAnalysisContext context, List<IAssemblySymbol> modules)
     {
         var compilation = context.Compilation;
         var applicationPartAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ApplicationPartAttributeMetadataName);
@@ -227,19 +231,72 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        // The name first: it is the cheap test, and most references fail it.
-        foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols)
+        foreach (var module in modules.Where(module => declaredParts.Contains(module.Name)))
         {
-            if (!declaredParts.Contains(assembly.Name) ||
-                !ModuleFacts.IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase))
+            context.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.ApplicationPartMustNotNameModule,
+                Location.None,
+                module.Name));
+        }
+    }
+
+    /// <summary>
+    /// Two modules registering one service with different implementations, read from what each
+    /// module recorded about itself (<see cref="ModuleRecords"/>).
+    /// </summary>
+    /// <remarks>
+    /// The same question the runtime asks at startup, asked of every module the host references
+    /// rather than of a topology: the build cannot know which modules a deployment loads together,
+    /// so modules that are alternatives — one per topology — are recorded as such in
+    /// <c>fusion_modules_allowed_service_collisions</c>. A warning rather than an error for that
+    /// reason, and because what a module's code says is a candidate: a registration may sit on a
+    /// path that never runs.
+    /// </remarks>
+    private static void CheckRegistrations(CompilationAnalysisContext context, List<IAssemblySymbol> modules)
+    {
+        var registrations = modules.SelectMany(ModuleRecords.Registrations).ToList();
+
+        if (registrations.Count == 0)
+        {
+            return;
+        }
+
+        ImmutableHashSet<string>? allowed = null;
+
+        foreach (var service in registrations.GroupBy(entry => entry.Registration.ServiceIdentity).OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            // The same implementation registered by two modules is redundant rather than wrong:
+            // whichever wins, every module gets what it asked for.
+            var byModule = service
+                .GroupBy(entry => entry.Module)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => (Module: group.Key, Implementations: group.Select(entry => entry.Registration.ImplementationIdentity).Distinct().OrderBy(i => i, StringComparer.Ordinal).ToList()))
+                .ToList();
+
+            if (byModule.Count < 2 || byModule.All(module => module.Implementations.SequenceEqual(byModule[0].Implementations)))
             {
                 continue;
             }
 
+            // The option as any of the host's files sees it: an .editorconfig section applies to files.
+            allowed ??= ModuleFacts.ReadListOption(context.Options.AnalyzerConfigOptionsProvider, context.Compilation.SyntaxTrees, ModuleFacts.AllowedServiceCollisionsOption);
+            if (service.First().Registration.Spellings.Split(ModuleRecordsGenerator.SpellingSeparator).Any(allowed.Contains))
+            {
+                continue;
+            }
+
+            // Implementations by their readable names, unless two different ones would read the same.
+            var display = service
+                .GroupBy(entry => entry.Registration.ImplementationIdentity)
+                .ToDictionary(group => group.Key, group => group.First().Registration.Implementation);
+            var ambiguous = display.Values.Distinct().Count() < display.Count;
+
             context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.ApplicationPartMustNotNameModule,
+                Diagnostics.ModulesRegisterOneServiceDifferently,
                 Location.None,
-                assembly.Name));
+                service.First().Registration.Service,
+                string.Join("; ", byModule.Select(module =>
+                    $"{module.Module}: {string.Join(", ", module.Implementations.Select(identity => ambiguous ? identity : display[identity]))}"))));
         }
     }
 }

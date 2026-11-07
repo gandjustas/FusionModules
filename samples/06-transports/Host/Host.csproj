@@ -1,5 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    PricingModule and PricingClientModule both register IPricing, on purpose: they are the two
+    transports of one edge, and no topology loads both (see the launch profiles). The build cannot
+    know that, so MOD0014 is told here; the startup check still stops a topology that loads both.
+  -->
+  <PropertyGroup>
+    <fusion_modules_allowed_service_collisions>Pricing.Contracts.IPricing</fusion_modules_allowed_service_collisions>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Modules\Checkout\CheckoutModule.csproj" />
     <ProjectReference Include="..\Modules\Pricing\PricingModule.csproj" />

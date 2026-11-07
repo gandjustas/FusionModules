@@ -25,6 +25,7 @@ internal static class Diagnostics
     public const string ControllersNotDiscoveredId = "MOD0011";
     public const string HostDoesNotValidateModulesId = "MOD0012";
     public const string PackageNotReferencedId = "MOD0013";
+    public const string ModulesRegisterOneServiceDifferentlyId = "MOD0014";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
         Create(ModuleMustNotExposePublicTypesId, DiagnosticSeverity.Error);
@@ -64,6 +65,9 @@ internal static class Diagnostics
 
     public static readonly DiagnosticDescriptor PackageNotReferenced =
         Create(PackageNotReferencedId, DiagnosticSeverity.Warning);
+
+    public static readonly DiagnosticDescriptor ModulesRegisterOneServiceDifferently =
+        Create(ModulesRegisterOneServiceDifferentlyId, DiagnosticSeverity.Warning, UsageCategory, WellKnownDiagnosticTags.CompilationEnd);
 
     private static DiagnosticDescriptor Create(string id, DiagnosticSeverity severity, string? category = null, params string[] customTags) =>
         new(

@@ -34,6 +34,11 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!-- What the startup checks and the analyzers have to agree on; compiled into both. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TopologyConventions.cs" Link="Shared\TopologyConventions.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="FusionModules.Analyzers.Tests" />
     <InternalsVisibleTo Include="FusionModules.CodeFixes" />

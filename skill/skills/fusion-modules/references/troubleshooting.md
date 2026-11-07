@@ -5,6 +5,10 @@ and something is simply missing. Work from the symptom.
 
 ## An endpoint returns 404 in a topology that should have it
 
+Read the `Topology:` line in the startup log first: its `endpoints` part counts what each loaded
+module serves. A module that is not in the list was not loaded; one listed with `0` was loaded and
+mapped nothing.
+
 In order of likelihood:
 
 1. **The module's assembly is not in `HOSTINGSTARTUPASSEMBLIES`.** Check the actual environment
@@ -13,7 +17,8 @@ In order of likelihood:
    assembly, finds no attribute, and moves on without a word. MOD0003 catches this at build time —
    if it did not fire, the build was not run with the analyzers.
 3. **The module's `Configure` maps into a group or area whose prefix you have forgotten.**
-4. **Two modules mapped the same template** and load order decided it.
+4. **Two modules mapped the same template** and load order decided it — or both match, and the
+   request gets a 500 instead (below).
 
 Routing is not on this list. A host with no routing does not serve 404s — startup throws, naming
 `UseRouting` in the message. See below.
@@ -23,6 +28,44 @@ Confirm what actually loaded rather than reasoning about it:
 ```csharp
 ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name)
 ```
+
+## Startup fails: "Two modules register the same service with different implementations"
+
+Before the merge every service had a container. After it there is one, and for a service resolved
+as a single instance the last registration wins — one module quietly gets the other's
+implementation. Startup refuses instead, naming the service, both modules and both implementations.
+The fix is **not** `TryAdd`: that turns last-wins into first-wins, and one module still gets the
+wrong implementation. Instead:
+
+- register **keyed**, one key per module; or
+- register a **type of each module's own**: a concrete type, or a module-internal interface;
+- if the type is meant to be consumed as `IEnumerable<T>` (seeders, handlers, listeners), put an
+  attribute named `MultipleImplementationsAttribute` on it — declared in the contracts library
+  itself, internal, matched by name — or list a type you do not own under
+  `FusionModules:AllowedServiceCollisions`.
+
+There is no setting that turns the check off. What is and is not a collision is in the
+[runtime reference](https://github.com/gandjustas/FusionModules/blob/HEAD/docs/runtime.md).
+
+MOD0014 asks the same question in the host's build, for every pair of modules the host references,
+from the registrations written in the modules' own code. Modules that are alternatives — never
+loaded together — go in `fusion_modules_allowed_service_collisions` (`.editorconfig` or an MSBuild
+property); that list silences the build warning only.
+
+## A warning at startup: "Routes mapped by more than one module"
+
+Two modules map one route — same template up to parameter names, overlapping HTTP methods — and the
+first request to it answers 500 with `AmbiguousMatchException`. The warning names each route and the
+modules. Give each module a `MapGroup` prefix or an MVC area. It is a warning rather than a failure
+because a policy or an endpoint filter can tell such endpoints apart, which the check does not model.
+
+A warning "Endpoints could not be read at startup" next to it means a handler could not be built,
+usually for a service the topology lacks; the first request to it would fail the same way.
+
+Its neighbour, "Options configured differently by more than one module", names an options type
+(`JsonOptions`, `HubOptions`, …) that several modules configure: there is one per process, so each
+module's settings reach the others. Move what must differ to a per-hub, per-endpoint or named
+instance.
 
 ## `TypeLoadException` the first time a client connects to a hub
 
@@ -127,8 +170,9 @@ The usual suspects, in order:
 1. **Middleware order.** Each service had its own; now there is one. Phase 0's diff table says
    which ones differed.
 2. **A configuration key defined by two modules** with different values. Last write wins.
-3. **A non-`TryAdd` DI registration in two modules.** The winner depends on the order of the
-   environment variable, which means it can differ between topologies.
+3. **One service registered with `TryAdd` in two modules.** Startup fails when two modules both
+   add a service, but a `TryAdd` that added nothing leaves no trace: the module activated first
+   wins, and the other is given its implementation.
 4. **A hosted service now running in more replicas than before**, or more than once per topology.
 5. **A retry or circuit breaker around what is now a local call**, changing failure behaviour.
 
@@ -149,5 +193,6 @@ The usual suspects, in order:
 | MOD0011 | MVC never finds the module's controllers, pages or views: no `AddApplicationPart` for its assembly, or internal controllers without `AllowInternalControllers()`. The fix writes the call. |
 | MOD0012 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
 | MOD0013 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0014 | Warning, in the host: two modules it references register one service with different implementations, so where they load together one gets the other's. Register keyed, or a type of each module's own; `[MultipleImplementations]` on a contract read as `IEnumerable<T>`; list alternatives no topology loads together in `fusion_modules_allowed_service_collisions`. The startup check catches the same thing at runtime, including registrations made inside libraries. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

@@ -253,6 +253,79 @@ using Microsoft.AspNetCore.Hosting;
 sealed class Module { }
 CS
 
+# MOD0014: two modules register one contract with different implementations, and the host
+# references both. Half of the rule runs in each module's build (the generator records what it
+# registers) and half in the host's, so it is only proved across packaged, separately built projects.
+mkdir -p "$work/consumer/Checks" "$work/consumer/OrdersChecks" "$work/consumer/BillingChecks" "$work/consumer/CollidingHost"
+cat > "$work/consumer/Checks/Checks.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+XML
+cat > "$work/consumer/Checks/IChecker.cs" <<'CS'
+namespace Checks;
+
+public interface IChecker
+{
+    bool Check(string value);
+}
+CS
+for name in Orders Billing; do
+    cat > "$work/consumer/${name}Checks/${name}Checks.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+    <ProjectReference Include="../Checks/Checks.csproj" />
+  </ItemGroup>
+</Project>
+XML
+    cat > "$work/consumer/${name}Checks/Module.cs" <<CS
+using Checks;
+using FusionModules;
+
+[assembly: HostingStartup(typeof(${name}Module))]
+
+sealed class ${name}Module : ModuleBase
+{
+    protected override void ConfigureServices(IHostApplicationBuilder builder) =>
+        builder.Services.AddSingleton<IChecker, ${name}Checker>();
+}
+
+sealed class ${name}Checker : IChecker
+{
+    public bool Check(string value) => value.Length > 0;
+}
+CS
+done
+cat > "$work/consumer/CollidingHost/CollidingHost.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+    <ProjectReference Include="../OrdersChecks/OrdersChecks.csproj" />
+    <ProjectReference Include="../BillingChecks/BillingChecks.csproj" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/CollidingHost/Program.cs" <<'CS'
+var app = WebApplication.CreateBuilder(args).ValidateModules().Build();
+await app.RunAsync();
+CS
+
 # A host as a host really is: referencing its module, which is also what gives the generated
 # module list something to name.
 cat > "$work/consumer/Host/Host.csproj" <<XML
@@ -314,6 +387,14 @@ expect "$work/badlibrary.log" error MOD0005
 
 dotnet build "$work/consumer/NoPackage" --nologo -v q > "$work/nopackage.log" 2>&1 || true
 expect "$work/nopackage.log" warning MOD0013
+
+dotnet build "$work/consumer/CollidingHost" --nologo -v q > "$work/collidinghost.log" 2>&1 || true
+expect "$work/collidinghost.log" warning MOD0014
+if grep -q "MOD0014.*'Checks.IChecker'.*BillingChecks: BillingChecker; OrdersChecks: OrdersChecker" "$work/collidinghost.log"; then
+    pass "MOD0014 names the service and both modules' implementations"
+else
+    fail "MOD0014's message does not name Checks.IChecker and both implementations:"; grep "MOD0014" "$work/collidinghost.log" || true
+fi
 
 log "Help links reach the documentation"
 if grep -q "docs/rules/MOD0001.md" "$work/bad.log"; then pass "help link present"; else fail "no help link"; fi
