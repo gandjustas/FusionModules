@@ -157,6 +157,9 @@ interface IPaymentClient                               // MOD0010
 }
 
 sealed class PaymentHub : Hub<IPaymentClient> { }
+
+// Public (MOD0001), and the module never adds its assembly as an application part (MOD0011).
+public sealed class OrdersController : Microsoft.AspNetCore.Mvc.ControllerBase { }
 CS
 
 # MOD0004 and MOD0007 belong to the host, so they need a host that gets them wrong.
@@ -223,10 +226,11 @@ cat > "$work/consumer/NoModules/NoModules.csproj" <<XML
 XML
 cat > "$work/consumer/NoModules/Program.cs" <<'CS'
 var app = WebApplication.CreateBuilder(args).Build();
+_ = WebApplication.CreateSlimBuilder(args);   // no module to load: no MOD0006
 await app.RunAsync();
 CS
 
-# MOD0012 says the runtime package is missing, so the project has to have the analyzer without it.
+# MOD0013 says the runtime package is missing, so the project has to have the analyzer without it.
 # ExcludeAssets=compile leaves the analyzer and the MSBuild assets and removes ModuleBase.
 cat > "$work/consumer/NoPackage/NoPackage.csproj" <<XML
 <Project Sdk="Microsoft.NET.Sdk">
@@ -244,7 +248,7 @@ XML
 cat > "$work/consumer/NoPackage/Module.cs" <<'CS'
 using Microsoft.AspNetCore.Hosting;
 
-[assembly: HostingStartup(typeof(Module))]   // MOD0012
+[assembly: HostingStartup(typeof(Module))]   // MOD0013
 
 sealed class Module { }
 CS
@@ -295,12 +299,12 @@ expect() {
 
 log "Rules fire from the packaged analyzer"
 dotnet build "$work/consumer/BadModule" --nologo -v q > "$work/bad.log" 2>&1 || true
-for rule in MOD0001 MOD0002 MOD0003 MOD0008 MOD0009 MOD0010; do
+for rule in MOD0001 MOD0002 MOD0003 MOD0008 MOD0009 MOD0010 MOD0011; do
     expect "$work/bad.log" error "$rule"
 done
 
 dotnet build "$work/consumer/BadHost" --nologo -v q > "$work/badhost.log" 2>&1 || true
-expect "$work/badhost.log" warning MOD0011
+expect "$work/badhost.log" warning MOD0012
 for rule in MOD0004 MOD0007 MOD0006; do
     expect "$work/badhost.log" error "$rule"
 done
@@ -309,7 +313,7 @@ dotnet build "$work/consumer/BadLibrary" --nologo -v q > "$work/badlibrary.log" 
 expect "$work/badlibrary.log" error MOD0005
 
 dotnet build "$work/consumer/NoPackage" --nologo -v q > "$work/nopackage.log" 2>&1 || true
-expect "$work/nopackage.log" warning MOD0012
+expect "$work/nopackage.log" warning MOD0013
 
 log "Help links reach the documentation"
 if grep -q "docs/rules/MOD0001.md" "$work/bad.log"; then pass "help link present"; else fail "no help link"; fi

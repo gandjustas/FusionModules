@@ -38,11 +38,6 @@ namespace FusionModules.CodeFixes;
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UseModuleBaseCodeFixProvider)), Shared]
 public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
 {
-    private const string HostingStartupMetadataName = "Microsoft.AspNetCore.Hosting.IHostingStartup";
-    private const string StartupFilterMetadataName = "Microsoft.AspNetCore.Hosting.IStartupFilter";
-    private const string WebHostBuilderMetadataName = "Microsoft.AspNetCore.Hosting.IWebHostBuilder";
-    private const string ApplicationBuilderMetadataName = "Microsoft.AspNetCore.Builder.IApplicationBuilder";
-    private const string BuilderName = "builder";
 
     /// <inheritdoc />
     public override ImmutableArray<string> FixableDiagnosticIds => [Diagnostics.HostingStartupTypeMustBeModuleId];
@@ -104,7 +99,7 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
         {
             [plan.HostingConfigure] = plan.Services.Length == 0
                 ? null
-                : Member(plan.HostingConfigure, $"protected override void ConfigureServices(IHostApplicationBuilder {BuilderName})", plan.Services, memberIndent, lineBreak),
+                : Member(plan.HostingConfigure, $"protected override void ConfigureServices(IHostApplicationBuilder {plan.Builder})", plan.Services, memberIndent, lineBreak),
         };
         if (plan.Services.Length > 0)
         {
@@ -129,7 +124,7 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
                 : members[original] ?? current.WithAdditionalAnnotations(Remove));
         updated = updated.RemoveNodes(updated.GetAnnotatedNodes(Remove), SyntaxRemoveOptions.KeepNoTrivia)!;
 
-        var newUnit = ModuleEditing.EnsureUsings(unit.ReplaceNode(declaration, updated), model.Compilation, namespaces);
+        var newUnit = ModuleEditing.EnsureUsings(unit.ReplaceNode(declaration, updated), model, declaration.SpanStart, namespaces);
         return document.WithSyntaxRoot(newUnit).Project.Solution;
     }
 
@@ -175,9 +170,9 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
     private static FixPlan? Plan(ClassDeclarationSyntax declaration, SemanticModel model, CancellationToken cancellationToken)
     {
         var compilation = model.Compilation;
-        var hostingStartup = compilation.GetTypeByMetadataName(HostingStartupMetadataName);
-        var startupFilter = compilation.GetTypeByMetadataName(StartupFilterMetadataName);
-        var webHostBuilder = compilation.GetTypeByMetadataName(WebHostBuilderMetadataName);
+        var hostingStartup = compilation.GetTypeByMetadataName(FusionModules.Analyzers.ModuleFacts.HostingStartupMetadataName);
+        var startupFilter = compilation.GetTypeByMetadataName(FusionModules.Analyzers.ModuleFacts.StartupFilterMetadataName);
+        var webHostBuilder = compilation.GetTypeByMetadataName(FusionModules.Analyzers.ModuleFacts.WebHostBuilderMetadataName);
         if (hostingStartup is null || webHostBuilder is null || ModuleFacts.GetModuleBaseType(compilation) is null ||
             declaration.BaseList is not { } baseList ||
             model.GetDeclaredSymbol(declaration, cancellationToken) is not { } type ||
@@ -199,38 +194,57 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
             return null;
         }
 
-        var methods = declaration.Members.OfType<MethodDeclarationSyntax>().Where(method => method.Identifier.Text == "Configure").ToArray();
-        var hostingConfigure = methods.SingleOrDefault(method => HasSingleParameterOf(method, webHostBuilder, model, cancellationToken));
-        if (hostingConfigure is null || Services(hostingConfigure, type, model, cancellationToken) is not { } services)
-        {
-            return null;
-        }
-
+        // The methods that implement the interfaces, found as the runtime finds them rather than by name.
+        var hostingConfigure = Implementation(declaration, type, hostingStartup, cancellationToken);
         var implementsFilter = startupFilter is not null && type.Interfaces.Contains(startupFilter, SymbolEqualityComparer.Default);
-        if (!implementsFilter)
-        {
-            return new FixPlan(dropped, hostingConfigure, services, null, null, null);
-        }
-
-        var filterConfigure = methods.SingleOrDefault(method => method != hostingConfigure && method.ParameterList.Parameters.Count == 1);
-        if (filterConfigure is null || Pipeline(filterConfigure, model, cancellationToken) is not { } pipeline)
+        var filterConfigure = implementsFilter ? Implementation(declaration, type, startupFilter!, cancellationToken) : null;
+        if (hostingConfigure is null || (implementsFilter && filterConfigure is null))
         {
             return null;
         }
 
-        return new FixPlan(dropped, hostingConfigure, services, filterConfigure, pipeline.App, pipeline.Body);
+        // The overrides the fix writes must not meet a member of the same name — a private
+        // Configure(IApplicationBuilder) helper, say, which the filter may well be calling.
+        if (declaration.Members.OfType<MethodDeclarationSyntax>().Any(method =>
+                method != hostingConfigure && method != filterConfigure &&
+                method.Identifier.Text is "Configure" or "ConfigureServices"))
+        {
+            return null;
+        }
+
+        if (Services(hostingConfigure, type, model, cancellationToken) is not { } services)
+        {
+            return null;
+        }
+
+        if (filterConfigure is null)
+        {
+            return new FixPlan(dropped, hostingConfigure, services.Builder, services.Body, null, null, null);
+        }
+
+        if (Pipeline(filterConfigure, model, cancellationToken) is not { } pipeline)
+        {
+            return null;
+        }
+
+        return new FixPlan(dropped, hostingConfigure, services.Builder, services.Body, filterConfigure, pipeline.App, pipeline.Body);
     }
 
-    private static bool HasSingleParameterOf(MethodDeclarationSyntax method, INamedTypeSymbol type, SemanticModel model, CancellationToken cancellationToken) =>
-        method.ParameterList.Parameters.Count == 1 &&
-        model.GetDeclaredSymbol(method, cancellationToken) is { } symbol &&
-        SymbolEqualityComparer.Default.Equals(symbol.Parameters[0].Type, type);
+    /// <summary>The declaration of the method that implements <paramref name="interfaceType"/>'s <c>Configure</c>, if it is in this class.</summary>
+    private static MethodDeclarationSyntax? Implementation(
+        ClassDeclarationSyntax declaration, INamedTypeSymbol type, INamedTypeSymbol interfaceType, CancellationToken cancellationToken) =>
+        interfaceType.GetMembers("Configure").FirstOrDefault() is { } member &&
+        type.FindImplementationForInterfaceMember(member) is { DeclaringSyntaxReferences: { Length: 1 } references } &&
+        references[0].GetSyntax(cancellationToken) is MethodDeclarationSyntax method &&
+        method.Parent == declaration
+            ? method
+            : null;
 
     /// <summary>
     /// The services the module registers, rewritten for the builder: <c>Configure(IWebHostBuilder)</c>
     /// may only call <c>builder.ConfigureServices(lambda)</c>.
     /// </summary>
-    private static string? Services(MethodDeclarationSyntax configure, INamedTypeSymbol module, SemanticModel model, CancellationToken cancellationToken)
+    private static (string Builder, string Body)? Services(MethodDeclarationSyntax configure, INamedTypeSymbol module, SemanticModel model, CancellationToken cancellationToken)
     {
         var parameter = model.GetDeclaredSymbol(configure, cancellationToken)!.Parameters[0];
 
@@ -253,7 +267,7 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
             return null;
         }
 
-        var parts = new List<string>();
+        var lambdas = new List<(LambdaExpressionSyntax Lambda, IParameterSymbol? Context, IParameterSymbol Services)>();
         foreach (var call in calls)
         {
             if (call is not InvocationExpressionSyntax
@@ -280,19 +294,40 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
 
             var context = lambdaParameters.Length == 2 ? model.GetDeclaredSymbol(lambdaParameters[0], cancellationToken) : null;
             var services = model.GetDeclaredSymbol(lambdaParameters[lambdaParameters.Length - 1], cancellationToken);
-            if (services is null ||
-                BuilderRewriting.Rewrite(lambda.Body, context, services, BuilderName, model, module, cancellationToken) is not { } rewritten)
+            if (services is null)
+            {
+                return null;
+            }
+
+            lambdas.Add((lambda, context, services));
+        }
+
+        // One method in place of several lambdas: a return in any but the last would now skip the
+        // others, and locals of the same name in two of them would collide.
+        if (BuilderRewriting.PickName(lambdas.Select(entry => entry.Lambda.Body)) is not { } builder ||
+            lambdas.Take(lambdas.Count - 1).Any(entry => BuilderRewriting.Returns(entry.Lambda.Body)))
+        {
+            return null;
+        }
+
+        var names = lambdas.Select(entry => BuilderRewriting.DeclaredNames(entry.Lambda.Body)).ToArray();
+        var collide = names.SelectMany(set => set).GroupBy(name => name).Any(group => group.Count() > 1);
+
+        var parts = new List<string>();
+        foreach (var (lambda, context, services) in lambdas)
+        {
+            if (BuilderRewriting.Rewrite(lambda.Body, context, services, builder, model, module, cancellationToken) is not { } rewritten)
             {
                 return null;
             }
 
             if (rewritten.Length > 0)
             {
-                parts.Add(rewritten);
+                parts.Add(collide ? BuilderRewriting.AsBlock(rewritten) : rewritten);
             }
         }
 
-        return string.Join("\n", parts);
+        return (builder, string.Join("\n", parts));
     }
 
     /// <summary>
@@ -302,7 +337,7 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
     private static (string App, string Body)? Pipeline(MethodDeclarationSyntax configure, SemanticModel model, CancellationToken cancellationToken)
     {
         if (model.GetDeclaredSymbol(configure, cancellationToken) is not { } symbol ||
-            model.Compilation.GetTypeByMetadataName(ApplicationBuilderMetadataName) is not { } applicationBuilder)
+            model.Compilation.GetTypeByMetadataName(FusionModules.Analyzers.ModuleFacts.ApplicationBuilderMetadataName) is not { } applicationBuilder)
         {
             return null;
         }
@@ -358,6 +393,7 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
     private sealed class FixPlan(
         ImmutableArray<BaseTypeSyntax> dropped,
         MethodDeclarationSyntax hostingConfigure,
+        string builder,
         string services,
         MethodDeclarationSyntax? filterConfigure,
         string? app,
@@ -366,6 +402,8 @@ public sealed class UseModuleBaseCodeFixProvider : CodeFixProvider
         public ImmutableArray<BaseTypeSyntax> Dropped { get; } = dropped;
 
         public MethodDeclarationSyntax HostingConfigure { get; } = hostingConfigure;
+
+        public string Builder { get; } = builder;
 
         public string Services { get; } = services;
 

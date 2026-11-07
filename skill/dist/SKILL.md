@@ -267,7 +267,8 @@ Each module writes itself into configuration as it activates:
 FusionModules:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 ```
 
-`ModuleBase.GetLoadedModules(IConfiguration)` reads it back, in activation order. This is how
+`ModuleBase.GetLoadedModules(IConfiguration)` reads it back: the host's own assembly first, then
+each module after the modules it references, and by name otherwise. This is how
 anything composed from modules — an EF Core model, a health check, a diagnostic endpoint — finds
 out what is live, without the host having to know that modules exist.
 
@@ -463,9 +464,10 @@ Load that module and the foreign key exists; leave it out and the two tables are
 Because it uses both modules' types, it references both, so `ModuleBase` will not let a topology
 load it without them.
 
-**The composing module goes last in `HOSTINGSTARTUPASSEMBLIES`.** EF Core applies configurations
-in activation order, and this one extends configurations declared elsewhere. Write that down in
-the compose file, not just in a commit message.
+**The composing module's configuration is applied after the ones it extends** — not because of
+where `HOSTINGSTARTUPASSEMBLIES` lists it: `GetLoadedModules` returns each module after the modules
+its assembly references, and a composing module uses their types. One set of modules has one
+order in every topology and at design time, so it also has one EF Core model.
 
 ### Migrations
 
@@ -605,7 +607,6 @@ services:
     image: app
     build: *build
     environment:
-      # The composing module goes last: its configuration extends the two above.
       HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;BillingModule
       Database__Migrate: "false"
 ```
@@ -975,14 +976,15 @@ modules disagreeing about these cannot both win.
 Build. MOD0001 will report every public type. Apply the "make internal" fix — Fix All handles a
 converted service in one pass.
 
-Exempt by default, because the framework finds them by reflection: controllers, page models, view
-components, tag helpers, SignalR hubs and the client interface of a `Hub<TClient>`, and entity
-types configured by an `IEntityTypeConfiguration<T>` in the same assembly.
+Exempt by default, because the framework finds them by reflection: page models, view components,
+tag helpers, SignalR hubs and the client interface of a `Hub<TClient>`, and entity types configured
+by an `IEntityTypeConfiguration<T>` in the same assembly.
 
-Controllers need a second sentence, because the exemption is true and not enough. A public class
-cannot have a public constructor taking an internal service, nor a public action returning an
-internal DTO — so a public controller drags its services and its models public with it, and then
-whatever those name. Keep the controller internal instead and let discovery see it:
+Controllers are not exempt. A public class cannot have a public constructor taking an internal
+service, nor a public action returning an internal DTO — so a public controller drags its services
+and its models public with it, and then whatever those name. MOD0001 reports it and its fix makes
+it internal; let discovery see it, or MOD0011 reports every route answering 404 (its fix writes
+this):
 
 ```csharp
 services.AddControllers()
@@ -1277,7 +1279,7 @@ The assembly loaded and is one of the host's modules, but ASP.NET Core never ran
 ### Nothing at all happens and no module loads
 
 The host does not call `ValidateModules()`, so nothing compares the variable with its modules —
-MOD0011 says so at build time, and its code fix adds the call. Add it right after the builder is
+MOD0012 says so at build time, and its code fix adds the call. Add it right after the builder is
 created; until then, look at the log for ASP.NET Core's own
 critical message about the first name it could not load.
 
@@ -1307,8 +1309,9 @@ The usual suspects, in order:
 | MOD0008 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
 | MOD0009 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. The fix removes the registration. |
 | MOD0010 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
-| MOD0011 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
-| MOD0012 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0011 | MVC never finds the module's controllers, pages or views: no `AddApplicationPart` for its assembly, or internal controllers without `AllowInternalControllers()`. The fix writes the call. |
+| MOD0012 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
+| MOD0013 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.
 

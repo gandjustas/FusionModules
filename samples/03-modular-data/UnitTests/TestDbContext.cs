@@ -15,8 +15,9 @@ namespace Billing.UnitTests;
 /// which assemblies it wants and calls <c>ApplyConfigurationsFromAssembly</c> for each — the same
 /// mechanism the host uses, driven by a project reference rather than by a registry.
 /// <para>
-/// Composition order is the test's responsibility too: the configuration in BillingModule adds a
-/// relationship to entities configured elsewhere, so its assembly goes last.
+/// Composition order is the test's responsibility here, since no registry is involved: the
+/// configuration in BillingModule adds a relationship to entities configured elsewhere, so its
+/// assembly goes last.
 /// </para>
 /// <para>
 /// SQLite rather than the production provider, because a business rule is not a schema. What the

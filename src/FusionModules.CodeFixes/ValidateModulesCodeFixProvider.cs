@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.Editing;
 namespace FusionModules.CodeFixes;
 
 /// <summary>
-/// Validates the builder where the modules are loaded (MOD0011): <c>CreateBuilder(args)</c> becomes
+/// Validates the builder where the modules are loaded (MOD0012): <c>CreateBuilder(args)</c> becomes
 /// <c>CreateBuilder(args).ValidateModules()</c>, and <c>ConfigureWebHostDefaults(…)</c> on a generic
 /// host becomes <c>ConfigureWebHostDefaults(…).ValidateModules()</c>.
 /// </summary>

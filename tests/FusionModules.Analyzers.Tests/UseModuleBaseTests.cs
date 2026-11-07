@@ -242,6 +242,141 @@ public class UseModuleBaseTests
             }
             """);
 
+    [Test]
+    public Task AConfigureHelperOfTheSameName_IsLeftAlone() =>
+        // The filter calls a private Configure(IApplicationBuilder); an override of that name
+        // would collide with it, or call itself.
+        VerifyAsync(
+            """
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Hosting;
+
+            [assembly: HostingStartup(typeof({|MOD0002:Orders|}))]
+
+            sealed class Orders : IHostingStartup, IStartupFilter
+            {
+                public void Configure(IWebHostBuilder builder) { }
+
+                public System.Action<IApplicationBuilder> Configure(System.Action<IApplicationBuilder> next) => app =>
+                {
+                    next(app);
+                    Configure(app);
+                };
+
+                private static void Configure(IApplicationBuilder app) { }
+            }
+            """,
+            fixedSource: null);
+
+    [Test]
+    public Task TwoLambdasWithTheSameLocal_EachKeepItsOwnBlock() =>
+        VerifyAsync(
+            """
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+
+            [assembly: HostingStartup(typeof({|MOD0002:Orders|}))]
+
+            sealed class Orders : IHostingStartup
+            {
+                public void Configure(IWebHostBuilder builder)
+                {
+                    builder.ConfigureServices(services =>
+                    {
+                        var name = "orders";
+                    });
+                    builder.ConfigureServices(services =>
+                    {
+                        var name = "billing";
+                    });
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+            using FusionModules;
+            using Microsoft.Extensions.Hosting;
+
+            [assembly: HostingStartup(typeof(Orders))]
+
+            sealed class Orders : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    {
+                        var name = "orders";
+                    }
+                    {
+                        var name = "billing";
+                    }
+                }
+            }
+            """);
+
+    [Test]
+    public Task AReturnInAnyButTheLastLambda_IsLeftAlone() =>
+        VerifyAsync(
+            """
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+
+            [assembly: HostingStartup(typeof({|MOD0002:Orders|}))]
+
+            sealed class Service { }
+
+            sealed class Orders : IHostingStartup
+            {
+                public void Configure(IWebHostBuilder builder)
+                {
+                    builder.ConfigureServices(services =>
+                    {
+                        return;
+                    });
+                    builder.ConfigureServices(services => services.AddSingleton<Service>());
+                }
+            }
+            """,
+            fixedSource: null);
+
+    [Test]
+    public Task ARegistrationAsTheBodyOfAnIf_LeavesAnEmptyBlock() =>
+        VerifyAsync<ModuleUsageAnalyzer, RemoveStartupFilterRegistrationCodeFixProvider>(
+            """
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.Hosting;
+            using FusionModules;
+
+            [assembly: HostingStartup(typeof(Eager))]
+
+            sealed class Eager : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    if (builder.Configuration["Eager"] is not null)
+                        {|MOD0009:builder.Services.AddSingleton<IStartupFilter>(this)|};
+                }
+            }
+            """,
+            """
+            using Microsoft.AspNetCore.Hosting;
+            using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.Hosting;
+            using FusionModules;
+
+            [assembly: HostingStartup(typeof(Eager))]
+
+            sealed class Eager : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    if (builder.Configuration["Eager"] is not null)
+                        { }
+                }
+            }
+            """);
+
     private static Task VerifyAsync(string source, string? fixedSource) =>
         VerifyAsync<ModuleAnalyzer, UseModuleBaseCodeFixProvider>(source, fixedSource);
 

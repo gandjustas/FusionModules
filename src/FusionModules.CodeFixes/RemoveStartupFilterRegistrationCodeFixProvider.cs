@@ -60,7 +60,11 @@ public sealed class RemoveStartupFilterRegistrationCodeFixProvider : CodeFixProv
 
     private static System.Func<SyntaxNode, SyntaxNode>? Edit(InvocationExpressionSyntax invocation) => invocation.Parent switch
     {
-        ExpressionStatementSyntax statement => root => root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia)!,
+        // A statement in a block goes; the body of an if or a loop cannot, and becomes {}.
+        ExpressionStatementSyntax { Parent: BlockSyntax or SwitchSectionSyntax } statement =>
+            root => root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia)!,
+        ExpressionStatementSyntax statement =>
+            root => root.ReplaceNode(statement, Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseStatement("{ }").WithTriviaFrom(statement)),
         _ when invocation.Expression is MemberAccessExpressionSyntax call =>
             root => root.ReplaceNode(invocation, call.Expression.WithTriviaFrom(invocation)),
         _ => null,

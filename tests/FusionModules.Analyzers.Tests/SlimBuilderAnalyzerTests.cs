@@ -8,7 +8,23 @@ public class SlimBuilderAnalyzerTests
     private const string ProjectKind = "build_property.FusionModulesProjectKind";
 
     private static Task VerifyAsync(string kind, string source) =>
-        AnalyzerTest.VerifyWithOptionAsync<SlimBuilderAnalyzer>(ProjectKind, kind, source);
+        AnalyzerTest.VerifyHostReferencingModuleAsync<SlimBuilderAnalyzer>(kind, source);
+
+    [Test]
+    public Task SlimBuilderInAHostWithoutModules_IsLeftAlone() =>
+        // A service that builds slim and loads no module is not wrong, and the package being there
+        // does not make it so.
+        AnalyzerTest.VerifyWithOptionAsync<SlimBuilderAnalyzer>(ProjectKind, "Host", """
+            using Microsoft.AspNetCore.Builder;
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateSlimBuilder(args);
+                }
+            }
+            """);
 
     [Test]
     public Task SlimBuilderInAHost_IsReported() =>

@@ -90,7 +90,7 @@ public sealed class UseBuilderOverloadCodeFixProvider : CodeFixProvider
         }
 
         var lineBreak = ModuleEditing.LineBreakOf(root);
-        var existing = ModuleEditing.FindOverride(declaration, model, "ConfigureServices", ModuleEditing.HostApplicationBuilderMetadataName, cancellationToken);
+        var existing = ModuleEditing.FindOverride(declaration, model, "ConfigureServices", FusionModules.Analyzers.ModuleFacts.HostApplicationBuilderMetadataName, cancellationToken);
 
         ClassDeclarationSyntax updated;
         if (existing is not null)
@@ -99,7 +99,7 @@ public sealed class UseBuilderOverloadCodeFixProvider : CodeFixProvider
                 [obsolete, existing],
                 (original, _) => original.WithAdditionalAnnotations(original == obsolete ? Marker : Target));
             var target = marked.GetAnnotatedNodes(Target).OfType<MethodDeclarationSyntax>().Single();
-            var appended = ModuleEditing.AppendToOverride(marked, target, string.Empty, rewrite.Parameter, _ => [rewrite.Body], lineBreak);
+            var appended = ModuleEditing.AppendToOverride(marked, target, rewrite.Body, lineBreak);
             updated = appended.RemoveNode(appended.GetAnnotatedNodes(Marker).Single(), SyntaxRemoveOptions.KeepNoTrivia)!;
         }
         else
@@ -115,7 +115,7 @@ public sealed class UseBuilderOverloadCodeFixProvider : CodeFixProvider
             updated = declaration.ReplaceNode(obsolete, SyntaxFactory.ParseMemberDeclaration(text)!);
         }
 
-        var newUnit = ModuleEditing.EnsureUsings(unit.ReplaceNode(declaration, updated), model.Compilation, [HostingNamespace]);
+        var newUnit = ModuleEditing.EnsureUsings(unit.ReplaceNode(declaration, updated), model, declaration.SpanStart, [HostingNamespace]);
         return document.WithSyntaxRoot(newUnit);
     }
 
@@ -134,14 +134,40 @@ public sealed class UseBuilderOverloadCodeFixProvider : CodeFixProvider
 
         var context = symbol.Parameters[0];
         var services = symbol.Parameters[1];
-        var existing = ModuleEditing.FindOverride(declaration, model, "ConfigureServices", ModuleEditing.HostApplicationBuilderMetadataName, cancellationToken);
-        var builder = existing?.ParameterList.Parameters[0].Identifier.Text ?? "builder";
-
         SyntaxNode? body = (SyntaxNode?)method.Body ?? method.ExpressionBody?.Expression;
-        return body is not null &&
-            BuilderRewriting.Rewrite(body, context, services, builder, model, module: null, cancellationToken) is { } text
-            ? new Rewritten(builder, text)
-            : null;
+        if (body is null)
+        {
+            return null;
+        }
+
+        var existing = ModuleEditing.FindOverride(declaration, model, "ConfigureServices", FusionModules.Analyzers.ModuleFacts.HostApplicationBuilderMetadataName, cancellationToken);
+        var existingBody = (SyntaxNode?)existing?.Body ?? existing?.ExpressionBody?.Expression;
+
+        // With an override there already, its parameter's name is the builder's, and nothing in the
+        // moved body may mean something else by it. Without one, any free name will do.
+        var builder = existing is not null
+            ? existing.ParameterList.Parameters[0].Identifier.Text
+            : BuilderRewriting.PickName([body]);
+        if (builder is null ||
+            (existing is not null && body.DescendantTokens().Any(token => token.IsKind(SyntaxKind.IdentifierToken) && token.Text == builder)) ||
+            BuilderRewriting.Rewrite(body, context, services, builder, model, module: null, cancellationToken) is not { } text)
+        {
+            return null;
+        }
+
+        if (existingBody is not null)
+        {
+            // Appended after the override's statements: a return there would skip what used to run
+            // regardless, and a local of the same name would not compile — not even in a block of
+            // its own, since C# keeps a name for the whole of the enclosing scope.
+            if (BuilderRewriting.Returns(existingBody) ||
+                BuilderRewriting.DeclaredNames(existingBody).Overlaps(BuilderRewriting.DeclaredNames(body)))
+            {
+                return null;
+            }
+        }
+
+        return new Rewritten(builder, text);
     }
 
     private sealed class Rewritten(string parameter, string body)

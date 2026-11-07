@@ -22,8 +22,9 @@ internal static class Diagnostics
     public const string ModuleMustNotReplacePipelineId = "MOD0008";
     public const string RedundantStartupFilterId = "MOD0009";
     public const string HubClientTypeMustBeReachableId = "MOD0010";
-    public const string HostDoesNotValidateModulesId = "MOD0011";
-    public const string PackageNotReferencedId = "MOD0012";
+    public const string ControllersNotDiscoveredId = "MOD0011";
+    public const string HostDoesNotValidateModulesId = "MOD0012";
+    public const string PackageNotReferencedId = "MOD0013";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
         Create(ModuleMustNotExposePublicTypesId, DiagnosticSeverity.Error);
@@ -50,10 +51,13 @@ internal static class Diagnostics
         Create(ModuleMustNotReplacePipelineId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor RedundantStartupFilter =
-        Create(RedundantStartupFilterId, DiagnosticSeverity.Error, UsageCategory);
+        Create(RedundantStartupFilterId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor HubClientTypeMustBeReachable =
         Create(HubClientTypeMustBeReachableId, DiagnosticSeverity.Error);
+
+    public static readonly DiagnosticDescriptor ControllersNotDiscovered =
+        Create(ControllersNotDiscoveredId, DiagnosticSeverity.Error);
 
     public static readonly DiagnosticDescriptor HostDoesNotValidateModules =
         Create(HostDoesNotValidateModulesId, DiagnosticSeverity.Warning, UsageCategory);

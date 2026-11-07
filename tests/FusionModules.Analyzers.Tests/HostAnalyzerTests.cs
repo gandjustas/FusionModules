@@ -117,6 +117,77 @@ public class HostAnalyzerTests
             }
             """);
 
+    [Test]
+    public Task HostUsingAModuleUnderWarningsAsErrors_IsStillReported() =>
+        // An unused local is CS0168, an error under TreatWarningsAsErrors. It does not stop the
+        // compiler from working out the used references, and must not silence the rule.
+        AnalyzerTest.VerifyHostWithWarningsAsErrorsAsync<HostAnalyzer>("""
+            class Host
+            {
+                static void Main()
+                {
+                    int unused;
+                    _ = new OrderLeak();
+                }
+            }
+            """,
+            Expect(Diagnostics.HostMustNotUseModuleTypesId, "OrdersModule"));
+
+    [Test]
+    public Task HostNamingAModuleTypeInADocComment_IsFine() =>
+        // The testing library parses documentation comments, as the IDE does. A cref does not put
+        // the module in a deployment.
+        AnalyzerTest.VerifyHostAsync<HostAnalyzer>("""
+            /// <summary>Works with <see cref="OrderLeak"/>, in another process.</summary>
+            class Host
+            {
+                static void Main() { }
+            }
+            """);
+
+    [Test]
+    public Task HostUsingAModuleThatComposesAnother_NamesOnlyTheFirst() =>
+        // The compiler counts the composed module as used too; it is behind the one in front, and
+        // goes when that one does.
+        AnalyzerTest.VerifyHostWithLibraryAsync<HostAnalyzer>("""
+            using Microsoft.AspNetCore.Hosting;
+            using FusionModules;
+
+            [assembly: HostingStartup(typeof(Reporting))]
+
+            sealed class Reporting : ModuleBase { }
+
+            public static class Report
+            {
+                public static object Of() => new OrderLeak();
+            }
+            """,
+            """
+            class Host
+            {
+                static void Main()
+                {
+                    _ = Report.Of();
+                }
+            }
+            """,
+            Expect(Diagnostics.HostMustNotUseModuleTypesId, "SharedLibrary"));
+
+    [Test]
+    public Task AProgramSetToModule_IsNotHeldToTheHostsRules() =>
+        // A console tool that is not a host, as docs/msbuild.md says to mark it. It is held to the
+        // library rule instead, which it keeps here.
+        AnalyzerTest.VerifyHostReferencingModuleAsync<HostAnalyzer>("Module", """
+            using Microsoft.AspNetCore.Mvc.ApplicationParts;
+
+            [assembly: ApplicationPart("OrdersModule")]
+
+            class Tool
+            {
+                static void Main() { }
+            }
+            """);
+
     // MOD0005 — a library that is not a module keeps away from modules too.
 
     [Test]

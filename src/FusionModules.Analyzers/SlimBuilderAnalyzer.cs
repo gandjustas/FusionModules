@@ -28,7 +28,6 @@ public sealed class SlimBuilderAnalyzer : DiagnosticAnalyzer
     internal static readonly ImmutableHashSet<string> SlimBuilderMethodNames = ["CreateSlimBuilder", "CreateEmptyBuilder"];
 
     /// <summary>The builder that runs them, and the one the code fix switches to.</summary>
-    internal const string DefaultBuilderMethodName = "CreateBuilder";
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Diagnostics.BuilderDoesNotLoadModules];
@@ -48,12 +47,13 @@ public sealed class SlimBuilderAnalyzer : DiagnosticAnalyzer
 
         if (webApplication is null ||
             ModuleFacts.GetModuleBaseType(compilation) is null ||
-            ModuleFacts.GetProjectKind(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions) switch
-            {
-                ProjectKind.Host => false,
-                ProjectKind.Unknown => compilation.GetEntryPoint(context.CancellationToken) is null,
-                _ => true,
-            })
+            !ModuleFacts.IsHost(compilation, context.Options.AnalyzerConfigOptionsProvider.GlobalOptions, context.CancellationToken) ||
+            // A host with no module to load is not missing any: a service that only takes the
+            // package along — or never had a module yet — builds clean, as it does under MOD0012.
+            !ModuleFacts.GetReferencedModules(
+                compilation,
+                compilation.GetTypeByMetadataName(ModuleFacts.HostingStartupAttributeMetadataName),
+                ModuleFacts.GetModuleBaseType(compilation)).Any())
         {
             return;
         }
@@ -73,20 +73,9 @@ public sealed class SlimBuilderAnalyzer : DiagnosticAnalyzer
 
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     Diagnostics.BuilderDoesNotLoadModules,
-                    NameLocation(invocation),
+                    Operations.NameLocation(invocation),
                     method.Name));
             },
             OperationKind.Invocation);
     }
-
-    /// <summary>The method's name: <c>WebApplication.CreateSlimBuilder</c>, or a bare one under <c>using static</c>.</summary>
-    private static Location NameLocation(IInvocationOperation invocation) =>
-        invocation.Syntax is InvocationExpressionSyntax syntax
-            ? syntax.Expression switch
-            {
-                MemberAccessExpressionSyntax access => access.Name.GetLocation(),
-                SimpleNameSyntax name => name.GetLocation(),
-                _ => syntax.GetLocation(),
-            }
-            : invocation.Syntax.GetLocation();
 }

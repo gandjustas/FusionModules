@@ -11,8 +11,9 @@ namespace BillingModule;
 /// </summary>
 /// <remarks>
 /// This is the whole trick of the modular data model. Orders.Entities declares the table; this
-/// module declares its relationship to another module's table. EF Core applies configurations in
-/// activation order, so the composing module must come last in HOSTINGSTARTUPASSEMBLIES.
+/// module declares its relationship to another module's table, so its configuration has to be
+/// applied after theirs. It is: this assembly references theirs, and GetLoadedModules returns each
+/// module after the modules it references, wherever HOSTINGSTARTUPASSEMBLIES lists it.
 /// <para>
 /// The alternative — a navigation property on Order pointing at Customer — would make Orders
 /// depend on Customers in every topology, which is the coupling the split exists to avoid.

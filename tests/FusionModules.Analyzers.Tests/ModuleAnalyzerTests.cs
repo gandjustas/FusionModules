@@ -37,9 +37,11 @@ public class ModuleAnalyzerTests
             """);
 
     [Test]
-    public Task ControllerInModule_IsFine() =>
+    public Task PublicControllerInModule_IsReported() =>
+        // AllowInternalControllers lets MVC find an internal one, and a public controller drags its
+        // constructor's services and its actions' models public with it.
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
-            public class OrdersController : Microsoft.AspNetCore.Mvc.ControllerBase { }
+            public class {|MOD0001:OrdersController|} : Microsoft.AspNetCore.Mvc.ControllerBase { }
             """);
 
     [Test]
@@ -304,7 +306,7 @@ public class ModuleAnalyzerTests
             sealed class PaymentHub : Hub<Contracts.IPaymentClient> { }
             """);
 
-    // MOD0012 — say what is actually wrong when the runtime package is missing.
+    // MOD0013 — say what is actually wrong when the runtime package is missing.
 
     [Test]
     public Task HostingStartupWithoutTheRuntimePackage_ReportsMissingPackage() =>
@@ -313,7 +315,7 @@ public class ModuleAnalyzerTests
         AnalyzerTest.VerifyWithoutModuleBaseAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.Hosting;
 
-            [assembly: {|MOD0012:HostingStartup(typeof(Orphan))|}]
+            [assembly: {|MOD0013:HostingStartup(typeof(Orphan))|}]
 
             class Orphan { }
             """);

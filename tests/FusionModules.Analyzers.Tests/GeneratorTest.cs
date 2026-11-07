@@ -152,7 +152,7 @@ internal static class GeneratorTest
         return text[start..end];
     }
 
-    private sealed class Options(Dictionary<string, string> globals) : AnalyzerConfigOptionsProvider
+    internal sealed class Options(Dictionary<string, string> globals) : AnalyzerConfigOptionsProvider
     {
         public override AnalyzerConfigOptions GlobalOptions { get; } = new Config(globals);
 

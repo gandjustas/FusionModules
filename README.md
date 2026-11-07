@@ -82,13 +82,14 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0006](docs/rules/MOD0006.md) | The host's builder does not load modules |
 | [MOD0007](docs/rules/MOD0007.md) | The host must not declare an ApplicationPart for a module |
 | [MOD0008](docs/rules/MOD0008.md) | A module must not replace the application pipeline |
-| [MOD0009](docs/rules/MOD0009.md) | Redundant IStartupFilter registration |
+| [MOD0009](docs/rules/MOD0009.md) | A module must not register itself as a startup filter |
 | [MOD0010](docs/rules/MOD0010.md) | A hub's client interface must be reachable from SignalR's generated proxy |
-| [MOD0011](docs/rules/MOD0011.md) | The host does not validate its modules |
-| [MOD0012](docs/rules/MOD0012.md) | The FusionModules package is not referenced |
+| [MOD0011](docs/rules/MOD0011.md) | MVC never discovers the module's controllers or pages |
+| [MOD0012](docs/rules/MOD0012.md) | The host does not validate its modules |
+| [MOD0013](docs/rules/MOD0013.md) | The FusionModules package is not referenced |
 
-A host and a test project also get `KnownModules`, generated from their references: every module
-by name, in activation order. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
+A host and a test project also get `KnownModules`, generated from their references: every module,
+by name. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
 the model from `HOSTINGSTARTUPASSEMBLIES` as it stood in your shell, so a factory names the modules
 itself, and a list written by hand is a copy of the project file that nothing keeps honest.
 With it comes `ValidateModules()`, an extension on the builder that checks `HOSTINGSTARTUPASSEMBLIES`
@@ -142,27 +143,57 @@ samples as code to copy, with the reasoning next to them:
 Modules also load by name at runtime, so `PublishTrimmed` and `PublishAot` are off the table for
 the host. That is the cost of the approach and it is worth knowing before you adopt it.
 
+## Upgrading from 0.1
+
+0.2 numbers the rules by severity — errors first, then warnings — and that moves most of them.
+**Every `#pragma warning disable`, `<NoWarn>` and `.editorconfig` severity that names a rule has to
+be renumbered**, or it silently applies to a different rule:
+
+| 0.1 | 0.2 | Rule |
+|---|---|---|
+| MOD0001 | MOD0001 | A module must not expose public types — controllers included now |
+| MOD0002 | MOD0002 | The type named by HostingStartup must be a module — now with a code fix |
+| MOD0005 | MOD0003 | A module must be named by an assembly-level HostingStartup attribute |
+| MOD0003 | MOD0004 | The host must not use types from a module |
+| — | MOD0005 | A library that is not a module must not use types from a module |
+| — | MOD0006 | The host's builder does not load modules (`CreateSlimBuilder`, `CreateEmptyBuilder`) |
+| MOD0004 | MOD0007 | The host must not declare an ApplicationPart for a module |
+| MOD0006 | MOD0008 | A module must not replace the application pipeline |
+| MOD0007 | MOD0009 | A module must not register itself as a startup filter — was "Redundant IStartupFilter registration"; now an error, only for the module itself, with a code fix |
+| MOD0009 | MOD0010 | A hub's client interface must be reachable from SignalR's generated proxy |
+| — | MOD0011 | MVC never discovers the module's controllers or pages — with a code fix |
+| — | MOD0012 | The host does not validate its modules |
+| MOD0020 | MOD0013 | The FusionModules package is not referenced |
+| MOD0008 | — | A hosted service in a module: removed. Delete its suppressions — under 0.2, MOD0008 is an error |
+
+Besides the numbers:
+
+- A module overrides `ConfigureServices(IHostApplicationBuilder)`. The
+  `ConfigureServices(WebHostBuilderContext, IServiceCollection)` overload still runs, after it, but is
+  obsolete; the code fix for CS0672 moves its body across.
+- A module's controllers are internal, like the rest of it: MOD0001 reports a public one and its
+  fix makes it internal, and MOD0011 reports a module that then never calls
+  `AllowInternalControllers()` — its fix writes the call.
+- `GetLoadedModules` returns the host's own assembly first, as before, then each module after the
+  modules it references, and by name otherwise, whatever order `HOSTINGSTARTUPASSEMBLIES` lists them
+  in; a composing module no longer has to be listed last.
+- The host checks `HOSTINGSTARTUPASSEMBLIES` itself: call the generated `builder.ValidateModules()`
+  where the builder is created. MOD0012 says where it is missing, and its code fix adds it.
+
 ## Status
 
 Early development, pre-1.0. The public surface is two classes and nine members, locked by
 `PublicAPI.Shipped.txt` so that adding to it is a reviewable change.
 
-Not on nuget.org yet, but the id is free and nothing else is in the way. Pushing a `v*` tag makes
+On [nuget.org](https://www.nuget.org/packages/FusionModules). Pushing a `v*` tag makes
 `release.yml` build, test, pack, consume the package from a scratch project outside the repository,
 attach it to the GitHub release and push it to nuget.org with
 [Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing): the job
 exchanges a GitHub OIDC token for an API key that lives an hour, so there is no `NUGET_API_KEY`
-secret here to leak, rotate or hand to a fork.
+secret here to leak, rotate or hand to a fork. The rules and the public API of each release are
+recorded in `AnalyzerReleases.Shipped.md` and `PublicAPI.Shipped.txt`.
 
-Three things have to exist before that first push, and none of them are in the working tree:
-
-- a trusted publishing policy on nuget.org — repository owner `gandjustas`, repository
-  `FusionModules`, workflow file `release.yml`, environment `nuget.org`, and a scope that allows
-  publishing a new package id rather than only new versions of an existing one;
-- a repository variable `NUGET_USER` holding the nuget.org profile name, not an email address;
-- the `nuget.org` environment, if the push should wait for a reviewer before it runs.
-
-Install from a local feed in the meantime:
+To try a change before it is released, install from a local feed:
 
 ```bash
 dotnet pack src/FusionModules/FusionModules.csproj -c Release -o local-feed
@@ -189,7 +220,7 @@ bash eng/pack-validate.sh
 It needs a POSIX shell — git-bash on Windows, where it is also exercised in CI.
 
 [`gandjustas/dotnext-2026`](https://github.com/gandjustas/dotnext-2026) does exactly that on its
-`modulith-packages` branch, which is where this package gets used by something it did not grow up
+`fusionmodules` branch, which is where this package gets used by something it did not grow up
 inside.
 
 ## Origin

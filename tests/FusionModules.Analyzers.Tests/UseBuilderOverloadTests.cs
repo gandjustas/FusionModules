@@ -152,6 +152,130 @@ public class UseBuilderOverloadTests
             """,
             fixedSource: null);
 
+    [Test]
+    public Task TheBaseCall_TheOverrideTemplateWrites_Goes() =>
+        // ModuleBase's overload is empty; the context it passes whole is no reason to give up.
+        VerifyAsync(
+            Header + """
+            sealed class Module : ModuleBase
+            {
+                protected override void {|CS0672:ConfigureServices|}(WebHostBuilderContext context, IServiceCollection services)
+                {
+                    {|CS0618:base.ConfigureServices(context, services)|};
+                    services.AddSingleton<Module>();
+                }
+            }
+            """,
+            HeaderWithHosting + """
+            sealed class Module : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    builder.Services.AddSingleton<Module>();
+                }
+            }
+            """);
+
+    [Test]
+    public Task ALambdaParameterCalledBuilder_GetsTheBuilderAnotherName() =>
+        VerifyAsync(
+            Header + """
+            sealed class Module : ModuleBase
+            {
+                protected override void {|CS0672:ConfigureServices|}(WebHostBuilderContext context, IServiceCollection services)
+                {
+                    System.Func<IServiceCollection, IServiceCollection> configure = builder => builder;
+                    configure(services);
+                }
+            }
+            """,
+            HeaderWithHosting + """
+            sealed class Module : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder hostBuilder)
+                {
+                    System.Func<IServiceCollection, IServiceCollection> configure = builder => builder;
+                    configure(hostBuilder.Services);
+                }
+            }
+            """);
+
+    [Test]
+    public Task LocalsOfTheSameName_AreLeftAlone() =>
+        // C# keeps a local's name for the whole enclosing scope, so not even a block of its own
+        // would let the moved one compile; the merge is a decision about names, and it is yours.
+        VerifyAsync(
+            HeaderWithHosting + """
+            sealed class Module : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    var name = builder.Configuration["Orders"];
+                }
+
+                protected override void {|CS0672:ConfigureServices|}(WebHostBuilderContext context, IServiceCollection services)
+                {
+                    var name = context.Configuration["Billing"];
+                }
+            }
+            """,
+            fixedSource: null);
+
+    [Test]
+    public Task AnOverrideThatCanReturnEarly_IsLeftAlone() =>
+        // Appended after a return, the old body would no longer run every time, as it used to.
+        VerifyAsync(
+            HeaderWithHosting + """
+            sealed class Module : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    if (builder.Configuration["Orders"] is null)
+                    {
+                        return;
+                    }
+                }
+
+                protected override void {|CS0672:ConfigureServices|}(WebHostBuilderContext context, IServiceCollection services)
+                {
+                    services.AddSingleton<Module>();
+                }
+            }
+            """,
+            fixedSource: null);
+
+    [Test]
+    public Task AnExtensionOnTheWebEnvironment_KeepsItsCast() =>
+        VerifyAsync(
+            Header + """
+            static class Environments
+            {
+                public static bool IsLocal(this IWebHostEnvironment environment) => false;
+            }
+
+            sealed class Module : ModuleBase
+            {
+                protected override void {|CS0672:ConfigureServices|}(WebHostBuilderContext context, IServiceCollection services)
+                {
+                    var local = context.HostingEnvironment.IsLocal();
+                }
+            }
+            """,
+            HeaderWithHosting + """
+            static class Environments
+            {
+                public static bool IsLocal(this IWebHostEnvironment environment) => false;
+            }
+
+            sealed class Module : ModuleBase
+            {
+                protected override void ConfigureServices(IHostApplicationBuilder builder)
+                {
+                    var local = ((Microsoft.AspNetCore.Hosting.IWebHostEnvironment)builder.Environment).IsLocal();
+                }
+            }
+            """);
+
     private static Task VerifyAsync(string source, string? fixedSource)
     {
         var test = new CSharpCodeFixTest<EmptyDiagnosticAnalyzer, UseBuilderOverloadCodeFixProvider, DefaultVerifier>

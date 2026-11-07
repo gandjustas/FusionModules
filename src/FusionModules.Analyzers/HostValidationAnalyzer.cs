@@ -8,7 +8,7 @@ namespace FusionModules.Analyzers;
 
 /// <summary>
 /// The host builds a web host that loads modules and never checks <c>HOSTINGSTARTUPASSEMBLIES</c>
-/// against them (MOD0011).
+/// against them (MOD0012).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,7 +35,6 @@ namespace FusionModules.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
 {
-    private const string CreateBuilderMethodName = "CreateBuilder";
     private const string GenericHostBuilderExtensionsMetadataName = "Microsoft.Extensions.Hosting.GenericHostBuilderExtensions";
     private const string GenericHostWebHostBuilderExtensionsMetadataName = "Microsoft.Extensions.Hosting.GenericHostWebHostBuilderExtensions";
 
@@ -56,7 +55,7 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
         var extensions = compilation.Assembly.GetTypeByMetadataName(ModuleFacts.ValidateModulesClassMetadataName);
 
         if (extensions is null ||
-            ModuleFacts.GetProjectKind(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions) == ProjectKind.Test ||
+            !ModuleFacts.IsHost(compilation, context.Options.AnalyzerConfigOptionsProvider.GlobalOptions, context.CancellationToken) ||
             !ModuleFacts.GetReferencedModules(
                 compilation,
                 compilation.GetTypeByMetadataName(ModuleFacts.HostingStartupAttributeMetadataName),
@@ -69,7 +68,7 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
 
         context.RegisterOperationBlockStartAction(block =>
         {
-            var builders = new BuildersInBlock();
+            var builders = new BuildersInBlock(hosts);
 
             block.RegisterOperationAction(
                 operationContext => builders.Record((IInvocationOperation)operationContext.Operation, hosts),
@@ -102,6 +101,7 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
     {
         private readonly INamedTypeSymbol? _webApplication = compilation.GetTypeByMetadataName(ModuleFacts.WebApplicationMetadataName);
         private readonly INamedTypeSymbol? _hostBuilder = compilation.GetTypeByMetadataName(ModuleFacts.HostBuilderMetadataName);
+        private readonly INamedTypeSymbol? _applicationBuilder = compilation.GetTypeByMetadataName(ModuleFacts.HostApplicationBuilderMetadataName);
         private readonly INamedTypeSymbol? _webHostDefaults = compilation.GetTypeByMetadataName(GenericHostBuilderExtensionsMetadataName);
         private readonly INamedTypeSymbol? _webHost = compilation.GetTypeByMetadataName(GenericHostWebHostBuilderExtensionsMetadataName);
 
@@ -112,7 +112,7 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
         /// <summary><c>WebApplication.CreateBuilder</c>: the builder it returns has run the modules.</summary>
         public bool IsWebApplicationBuilder(IMethodSymbol method) =>
             method.IsStatic &&
-            method.Name == CreateBuilderMethodName &&
+            method.Name == ModuleFacts.CreateBuilderMethodName &&
             SymbolEqualityComparer.Default.Equals(method.ContainingType, _webApplication);
 
         /// <summary><c>ConfigureWebHostDefaults</c> or <c>ConfigureWebHost</c> on a generic host.</summary>
@@ -121,6 +121,22 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
             (SymbolEqualityComparer.Default.Equals(method.ContainingType, _webHostDefaults) ||
              SymbolEqualityComparer.Default.Equals(method.ContainingType, _webHost)) &&
             IsHostBuilder(method.Parameters.FirstOrDefault()?.Type);
+
+        /// <summary>Whether a call returning <paramref name="returned"/> on <paramref name="receiver"/> hands back a builder of the same kind.</summary>
+        public bool SameBuilder(ITypeSymbol? returned, IOperation receiver)
+        {
+            var original = Operations.Unwrap(receiver);
+
+            return returned is not null &&
+                ((IsHostBuilder(returned) && IsHostBuilder(receiver.Type)) ||
+                 (IsApplicationBuilder(returned) && IsApplicationBuilder(original.Type)) ||
+                 SymbolEqualityComparer.Default.Equals(returned, original.Type));
+        }
+
+        private bool IsApplicationBuilder(ITypeSymbol? type) =>
+            type is not null &&
+            _applicationBuilder is not null &&
+            (SymbolEqualityComparer.Default.Equals(type, _applicationBuilder) || ModuleFacts.Implements(type, _applicationBuilder));
 
         public bool IsHostBuilder(ITypeSymbol? type) =>
             type is not null &&
@@ -132,14 +148,13 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
     /// What one method does with its builders. Callbacks for one block may run on different
     /// threads, hence the lock; everything is resolved once the block is complete.
     /// </summary>
-    private sealed class BuildersInBlock
+    private sealed class BuildersInBlock(HostShapes hosts)
     {
         private readonly object _gate = new();
         private readonly List<(IInvocationOperation Invocation, IOperation Builder, Location Location)> _loading = [];
         private readonly List<IOperation> _validated = [];
         private readonly List<IOperation> _returned = [];
         private readonly Dictionary<ILocalSymbol, List<IOperation>> _assignments = new(SymbolEqualityComparer.Default);
-        private HostShapes? _hosts;
 
         public void Record(IInvocationOperation invocation, HostShapes hosts)
         {
@@ -147,11 +162,10 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
 
             lock (_gate)
             {
-                _hosts = hosts;
 
                 if (hosts.IsValidation(method))
                 {
-                    if (Receiver(invocation) is { } receiver)
+                    if (Operations.Receiver(invocation) is { } receiver)
                     {
                         _validated.Add(receiver);
                     }
@@ -160,14 +174,10 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
                 {
                     _loading.Add((invocation, invocation, invocation.Syntax.GetLocation()));
                 }
-                else if (hosts.IsWebHostOnGenericHost(method) && Receiver(invocation) is { } hostBuilder)
+                else if (hosts.IsWebHostOnGenericHost(method) && Operations.Receiver(invocation) is { } hostBuilder)
                 {
                     // On the method's name: the call usually spans a whole lambda.
-                    var location = invocation.Syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access }
-                        ? access.Name.GetLocation()
-                        : invocation.Syntax.GetLocation();
-
-                    _loading.Add((invocation, hostBuilder, location));
+                    _loading.Add((invocation, hostBuilder, Operations.NameLocation(invocation)));
                 }
             }
         }
@@ -228,11 +238,6 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        /// <summary>The builder an extension or instance call is made on.</summary>
-        private static IOperation? Receiver(IInvocationOperation invocation) =>
-            invocation.Instance ??
-            (invocation.TargetMethod.IsExtensionMethod ? invocation.Arguments.FirstOrDefault()?.Value : null);
-
         /// <summary>
         /// What a builder-valued operation stands for: walked back along a fluent chain — each link
         /// returns the builder it was called on — and through a local assigned exactly once, to the
@@ -242,10 +247,7 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
         {
             for (var depth = 0; depth < 64; depth++)
             {
-                while (operation is IConversionOperation conversion)
-                {
-                    operation = conversion.Operand;
-                }
+                operation = Operations.Unwrap(operation);
 
                 if (operation is ILocalReferenceOperation reference)
                 {
@@ -258,11 +260,11 @@ public sealed class HostValidationAnalyzer : DiagnosticAnalyzer
                     continue;
                 }
 
+                // A link of a fluent chain: builder.AddServiceDefaults(), builder.ConfigureX() — a call
+                // on a builder that returns a builder of the same kind, taken to return the same one.
                 if (operation is IInvocationOperation invocation &&
-                    Receiver(invocation) is { } receiver &&
-                    _hosts is not null &&
-                    _hosts.IsHostBuilder(invocation.Type) &&
-                    _hosts.IsHostBuilder(receiver.Type))
+                    Operations.Receiver(invocation) is { } receiver &&
+                                        hosts.SameBuilder(invocation.Type, receiver))
                 {
                     operation = receiver;
                     continue;

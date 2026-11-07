@@ -50,7 +50,6 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Database=modular;Username=demo;Password=demo;Maximum Pool Size=45
       # BillingModule joins orders to customers, so it needs both entity modules loaded — and
       # ModuleBase fails startup rather than serving a broken endpoint if one is missing.
-      # The composing module goes last: its configuration has to be applied after theirs.
       HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;BillingModule
       Database__Migrate: "false"
     depends_on:

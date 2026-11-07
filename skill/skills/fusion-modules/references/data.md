@@ -102,9 +102,10 @@ Load that module and the foreign key exists; leave it out and the two tables are
 Because it uses both modules' types, it references both, so `ModuleBase` will not let a topology
 load it without them.
 
-**The composing module goes last in `HOSTINGSTARTUPASSEMBLIES`.** EF Core applies configurations
-in activation order, and this one extends configurations declared elsewhere. Write that down in
-the compose file, not just in a commit message.
+**The composing module's configuration is applied after the ones it extends** — not because of
+where `HOSTINGSTARTUPASSEMBLIES` lists it: `GetLoadedModules` returns each module after the modules
+its assembly references, and a composing module uses their types. One set of modules has one
+order in every topology and at design time, so it also has one EF Core model.
 
 ## Migrations
 

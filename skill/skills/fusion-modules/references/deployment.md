@@ -22,7 +22,6 @@ services:
     image: app
     build: *build
     environment:
-      # The composing module goes last: its configuration extends the two above.
       HOSTINGSTARTUPASSEMBLIES: Orders.Entities;Customers.Entities;BillingModule
       Database__Migrate: "false"
 ```

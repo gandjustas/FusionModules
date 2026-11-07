@@ -12,8 +12,6 @@ namespace FusionModules.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
 {
-    private const string WebHostBuilderMetadataName = "Microsoft.AspNetCore.Hosting.IWebHostBuilder";
-    private const string StartupFilterMetadataName = "Microsoft.AspNetCore.Hosting.IStartupFilter";
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
@@ -41,8 +39,8 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var webHostBuilder = compilation.GetTypeByMetadataName(WebHostBuilderMetadataName);
-        var startupFilter = compilation.GetTypeByMetadataName(StartupFilterMetadataName);
+        var webHostBuilder = compilation.GetTypeByMetadataName(ModuleFacts.WebHostBuilderMetadataName);
+        var startupFilter = compilation.GetTypeByMetadataName(ModuleFacts.StartupFilterMetadataName);
 
         context.RegisterOperationAction(
             operationContext =>
@@ -84,17 +82,10 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
         INamedTypeSymbol? startupFilter,
         INamedTypeSymbol moduleBase)
     {
-        if (startupFilter is null ||
-            !invocation.TargetMethod.Name.StartsWith("Add", StringComparison.Ordinal) ||
-            !invocation.TargetMethod.TypeArguments.Any(argument => SymbolEqualityComparer.Default.Equals(argument, startupFilter)))
-        {
-            return;
-        }
-
         var containingType = context.ContainingSymbol.ContainingType;
         if (containingType is null ||
             !ModuleFacts.InheritsFrom(containingType, moduleBase) ||
-            !RegistersItself(invocation, containingType))
+            !Operations.RegistersAsStartupFilter(invocation, startupFilter, containingType))
         {
             return;
         }
@@ -105,32 +96,9 @@ public sealed class ModuleUsageAnalyzer : DiagnosticAnalyzer
             containingType.Name));
     }
 
-    // AddSingleton<IStartupFilter>(this), AddSingleton<IStartupFilter>(new Module()) or
-    // AddSingleton<IStartupFilter, Module>(): each puts the module in the list a second time.
-    private static bool RegistersItself(IInvocationOperation invocation, INamedTypeSymbol module) =>
-        invocation.TargetMethod.TypeArguments.Any(argument => SymbolEqualityComparer.Default.Equals(argument, module)) ||
-        invocation.Arguments.Any(argument => Unwrap(argument.Value) switch
-        {
-            IInstanceReferenceOperation => true,
-            IObjectCreationOperation creation => SymbolEqualityComparer.Default.Equals(creation.Type, module),
-            _ => false,
-        });
-
-    private static IOperation Unwrap(IOperation operation)
-    {
-        while (operation is IConversionOperation conversion)
-        {
-            operation = conversion.Operand;
-        }
-
-        return operation;
-    }
-
     private static bool ReceiverIs(IInvocationOperation invocation, INamedTypeSymbol type)
     {
-        // An extension method's receiver is its first argument once reduced.
-        var receiver = invocation.Instance?.Type
-            ?? (invocation.TargetMethod.IsExtensionMethod ? invocation.Arguments.FirstOrDefault()?.Value.Type : null);
+        var receiver = Operations.Receiver(invocation)?.Type;
 
         return receiver is not null &&
             (SymbolEqualityComparer.Default.Equals(receiver, type) || ModuleFacts.Implements(receiver, type));

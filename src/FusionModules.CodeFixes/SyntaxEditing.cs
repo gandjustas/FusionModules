@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
-using Microsoft.CodeAnalysis.Text;
 
 namespace FusionModules.CodeFixes;
 
@@ -30,7 +29,7 @@ internal static class SyntaxEditing
             // Taken from the document rather than left to the formatter, whose default is the
             // machine's: a line feed injected into a carriage-return line feed file, or the other
             // way round, leaves a mixed-ending line nobody asked for.
-            .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(unit)));
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine(ModuleEditing.LineBreakOf(unit)));
 
         return document.WithSyntaxRoot(unit.AddAttributeLists(list));
     }
@@ -48,25 +47,6 @@ internal static class SyntaxEditing
         CompilationUnitSyntax unit,
         SemanticModel model,
         int position,
-        string namespaceName)
-    {
-        var imported = model.GetImportScopes(position)
-            .SelectMany(scope => scope.Imports)
-            .Any(import => import.NamespaceOrType is INamespaceSymbol ns && ns.ToDisplayString() == namespaceName);
-
-        return imported
-            ? unit
-            : unit.AddUsings(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName))
-                .NormalizeWhitespace()
-                .WithTrailingTrivia(SyntaxFactory.EndOfLine(LineBreakOf(unit))));
-    }
-
-    private static string LineBreakOf(SyntaxNode root)
-    {
-        var text = root.GetText();
-
-        return text.Lines.Count > 1
-            ? text.ToString(TextSpan.FromBounds(text.Lines[0].End, text.Lines[0].EndIncludingLineBreak))
-            : Environment.NewLine;
-    }
+        string namespaceName) =>
+        ModuleEditing.EnsureUsings(unit, model, position, [namespaceName]);
 }

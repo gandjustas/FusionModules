@@ -8,7 +8,9 @@ reach for it.
 ## `FusionModulesProjectKind`
 
 `Test`, `Host` or `Module`. Everything else on this page keys off it, and the analyzers read it
-through `CompilerVisibleProperty` — MOD0004 holds a host to a rule a test project is exempt from.
+through `CompilerVisibleProperty`: only a `Host` is held to the host's rules (MOD0004, MOD0006,
+MOD0007, MOD0012) and gets `ValidateModules()`, a `Test` is exempt from them, and a `Module` that is
+not a module is a plain library (MOD0005). Without the package's targets a program counts as a host.
 
 Computed when unset, in this order:
 
@@ -174,7 +176,7 @@ loaded in the process — a typo, or an assembly not deployed next to the host �
 one of the project's modules and its startup did not run. A name that is not one of the project's
 modules, a third-party hosting startup, only has to load. Left to itself ASP.NET Core logs a
 critical message for a name it cannot load and starts anyway. The check is generated only where the
-hosting types it needs are referenced, and [MOD0011](rules/MOD0011.md) warns about a host with
+hosting types it needs are referenced, and [MOD0012](rules/MOD0012.md) warns about a host with
 modules that creates its builder without calling it.
 
 A module never gets either: a module has no business knowing the topology it will be deployed in.

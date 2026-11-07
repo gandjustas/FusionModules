@@ -35,6 +35,17 @@ internal static class ModuleFacts
     public const string HostBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostBuilder";
     public const string WebHostDefaultsMetadataName = "Microsoft.AspNetCore.Hosting.WebHostDefaults";
     public const string WebApplicationMetadataName = "Microsoft.AspNetCore.Builder.WebApplication";
+    public const string ApplicationBuilderMetadataName = "Microsoft.AspNetCore.Builder.IApplicationBuilder";
+    public const string HostingStartupMetadataName = "Microsoft.AspNetCore.Hosting.IHostingStartup";
+    public const string StartupFilterMetadataName = "Microsoft.AspNetCore.Hosting.IStartupFilter";
+    public const string WebHostBuilderMetadataName = "Microsoft.AspNetCore.Hosting.IWebHostBuilder";
+    public const string WebHostEnvironmentMetadataName = "Microsoft.AspNetCore.Hosting.IWebHostEnvironment";
+    public const string MvcBuilderMetadataName = "Microsoft.Extensions.DependencyInjection.IMvcBuilder";
+    public const string NonControllerAttributeMetadataName = "Microsoft.AspNetCore.Mvc.NonControllerAttribute";
+    public const string RazorCompiledItemAttributeMetadataName = "Microsoft.AspNetCore.Razor.Hosting.RazorCompiledItemAttribute";
+
+    /// <summary>The one <c>WebApplication</c> factory that runs hosting startups.</summary>
+    public const string CreateBuilderMethodName = "CreateBuilder";
 
     /// <summary>
     /// The class <c>KnownModulesGenerator</c> writes <see cref="ValidateModulesMethodName"/> into,
@@ -125,6 +136,22 @@ internal static class ModuleFacts
         INamedTypeSymbol? moduleBase) =>
         compilation.SourceModule.ReferencedAssemblySymbols
             .Where(assembly => IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase));
+
+    /// <summary>Whether the project is a host; see <see cref="IsHost(ProjectKind, Compilation, CancellationToken)"/>.</summary>
+    public static bool IsHost(Compilation compilation, AnalyzerConfigOptions globalOptions, CancellationToken cancellationToken) =>
+        IsHost(GetProjectKind(globalOptions), compilation, cancellationToken);
+
+    /// <summary>
+    /// Whether the project is a host: what MSBuild classified as one, or — without the package's
+    /// targets, so without a classification — a program. A test project has an entry point too and
+    /// is never a host; neither is a project set to <c>Module</c>, entry point or not.
+    /// </summary>
+    public static bool IsHost(ProjectKind kind, Compilation compilation, CancellationToken cancellationToken) => kind switch
+    {
+        ProjectKind.Host => true,
+        ProjectKind.Unknown => compilation.GetEntryPoint(cancellationToken) is not null,
+        _ => false,
+    };
 
     /// <summary>
     /// The project's kind as MSBuild classified it (<c>FusionModulesProjectKind</c>), or
