@@ -18,10 +18,11 @@ public class OverdueOrdersTests
     private static readonly DateTime Now = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
 
     private static TestDbContext CreateContext() => TestDbContext.Create(
+        // First on purpose: its configuration adds a relationship to the two below, and it is
+        // applied after them anyway, because it references them.
+        typeof(OverdueOrders).Assembly,
         typeof(Order).Assembly,
-        typeof(Customer).Assembly,
-        // Last: its configuration adds a relationship to the two above.
-        typeof(OverdueOrders).Assembly);
+        typeof(Customer).Assembly);
 
     private static void Seed(TestDbContext db, params Order[] orders)
     {

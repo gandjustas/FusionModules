@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <PackageId>FusionModules.EntityFrameworkCore</PackageId>
+    <AssemblyName>FusionModules.EntityFrameworkCore</AssemblyName>
+    <RootNamespace>FusionModules.EntityFrameworkCore</RootNamespace>
+    <PackageTags>$(PackageTags);entityframeworkcore;efcore</PackageTags>
+    <Description>An EF Core model composed from the FusionModules modules a host loads: UseModules on the context's options, ApplyModuleConfigurations in OnModelCreating. Every module's entity configurations, each module after the modules it references, and one cached model per set of modules.</Description>
+  </PropertyGroup>
+
+  <!--
+    A package of its own so that FusionModules does not depend on EF Core: most modules have no
+    database, and the analyzers need none of it either. The project reference becomes a package
+    dependency on FusionModules of the same version.
+
+    EF Core at the lowest version this package supports, not at the version Directory.Packages.props
+    pins: the version referenced here becomes the floor of the package's dependency. Pinned, a
+    consumer on EF 10.0.7 was raised to EF Core 10.0.14 while its provider and Relational stayed at
+    10.0.7 — two EF versions in one process. The floor is what a consumer may run with, not what
+    anything here runs: the tests and the samples reference EF themselves, at the pinned version.
+    eng/pack-validate.sh checks the floors in the nuspec.
+
+    10.0.0 on net10.0. 8.0.10 rather than 8.0.0 on net8.0: EF Core 8.0.0 to 8.0.8 depend on
+    Microsoft.Extensions.Caching.Memory 8.0.0, which has an advisory (GHSA-qj66-m88j-hmgj), and NuGet
+    audit fails the build on it; 8.0.10 is the first that depends on the fixed 8.0.1, and there is no
+    8.0.9. An application still on EF 8.0.8 or older runs that vulnerable package anyway.
+  -->
+  <PropertyGroup>
+    <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' == 'net8.0'">8.0.10</EntityFrameworkCoreFloor>
+    <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' != 'net8.0'">10.0.0</EntityFrameworkCoreFloor>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FusionModules\FusionModules.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" VersionOverride="$(EntityFrameworkCoreFloor)" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FusionModules.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+  <!-- The "Model of …" line is written as the host's Topology line is, by the same code. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\PartsLogLine.cs" Link="Shared\PartsLogLine.cs" />
+  </ItemGroup>
+
+</Project>

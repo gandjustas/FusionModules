@@ -1,24 +1,20 @@
 using System.Reflection;
+using FusionModules.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Billing.UnitTests;
 
 /// <summary>
-/// A context built from exactly the assemblies the test names — no host, no module activation,
-/// no environment variable.
+/// A context built from exactly the modules the test names — no host, no environment variable.
 /// </summary>
 /// <remarks>
 /// This is the counterpart to the integration tests. There, modules are strings handed to a
-/// factory and the application assembles its own model. Here the test composes the model: it says
-/// which assemblies it wants and calls <c>ApplyConfigurationsFromAssembly</c> for each — the same
-/// mechanism the host uses, driven by a project reference rather than by a registry.
-/// <para>
-/// Composition order is the test's responsibility here, since no registry is involved: the
-/// configuration in BillingModule adds a relationship to entities configured elsewhere, so its
-/// assembly goes last.
-/// </para>
+/// factory and the application assembles its own model. Here the test names the module assemblies
+/// it references, and <c>UseModules</c> composes the same model the host would: each module after
+/// the modules it references, so BillingModule's relationship lands after the entities it joins
+/// whatever order the test lists them in, and one cached model per set of modules, so tests that
+/// compose different sets do not share one.
 /// <para>
 /// SQLite rather than the production provider, because a business rule is not a schema. What the
 /// schema looks like per topology is asserted in the integration tests, against the real model;
@@ -27,23 +23,15 @@ namespace Billing.UnitTests;
 /// </remarks>
 internal sealed class TestDbContext : DbContext
 {
-    internal string AssemblySet { get; }
-
     private readonly SqliteConnection _connection;
-    private readonly Assembly[] _configurationAssemblies;
 
-    private TestDbContext(
-        DbContextOptions<TestDbContext> options,
-        SqliteConnection connection,
-        Assembly[] configurationAssemblies)
+    private TestDbContext(DbContextOptions<TestDbContext> options, SqliteConnection connection)
         : base(options)
     {
         _connection = connection;
-        _configurationAssemblies = configurationAssemblies;
-        AssemblySet = string.Join(';', configurationAssemblies.Select(assembly => assembly.GetName().Name));
     }
 
-    public static TestDbContext Create(params Assembly[] configurationAssemblies)
+    public static TestDbContext Create(params Assembly[] modules)
     {
         // Held open for the context's lifetime: an in-memory SQLite database exists only as long
         // as a connection to it does. EF does not own a connection it was handed, so neither does
@@ -53,13 +41,10 @@ internal sealed class TestDbContext : DbContext
 
         var options = new DbContextOptionsBuilder<TestDbContext>()
             .UseSqlite(connection)
-            // The same trap the host has to avoid, for the same reason. EF caches a built model
-            // keyed by context type, so a second test composing a different set of assemblies
-            // would silently get the first test's model.
-            .ReplaceService<IModelCacheKeyFactory, AssemblySetModelCacheKeyFactory>()
+            .UseModules([.. modules.Select(module => module.GetName().Name!)])
             .Options;
 
-        var context = new TestDbContext(options, connection, configurationAssemblies);
+        var context = new TestDbContext(options, connection);
         context.Database.EnsureCreated();
         return context;
     }
@@ -67,11 +52,7 @@ internal sealed class TestDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        foreach (var assembly in _configurationAssemblies)
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(assembly);
-        }
+        modelBuilder.ApplyModuleConfigurations(this);
     }
 
     public override void Dispose()
@@ -79,14 +60,4 @@ internal sealed class TestDbContext : DbContext
         base.Dispose();
         _connection.Dispose();
     }
-}
-
-/// <summary>
-/// Keys the model cache by the set of assemblies the model was composed from.
-/// </summary>
-internal sealed class AssemblySetModelCacheKeyFactory : IModelCacheKeyFactory
-{
-    public object Create(DbContext context, bool designTime) => context is TestDbContext test
-        ? (typeof(TestDbContext), test.AssemblySet, designTime)
-        : (object)(context.GetType(), designTime);
 }

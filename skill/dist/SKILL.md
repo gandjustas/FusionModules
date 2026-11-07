@@ -289,7 +289,8 @@ hazard rather than the relief: unset, only the entry assembly activates and you 
 migration with no error at all**; set to one topology, you get that topology's tables, also with
 no error. `ModuleBase.CreateModuleRegistry(params string[])` builds the entries for a design-time
 factory that names the modules in code, so the schema stops depending on whose shell produced
-it.
+it — `UseModules(KnownModules.Names)` from `FusionModules.EntityFrameworkCore` does it for a
+`DbContext`.
 
 ### Dependencies between modules
 
@@ -368,25 +369,21 @@ disposable local container. This is not a formality — say it to the user befor
 
 ### The recipe
 
-There is no FusionModules EF Core package. The integration is about fifteen lines in the
-application's own `DbContext`, and wrapping that in a base class to inherit and a method to
-remember would be the framework the approach claims not to need.
+The `FusionModules.EntityFrameworkCore` package: a context whose model is composed from the
+modules the host loaded, in a few lines of the application's own `DbContext`. The template is
+`assets/templates/ModularDbContext.cs`.
+
+```bash
+dotnet add package FusionModules.EntityFrameworkCore
+```
 
 ```csharp
-internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)
-    : DbContext(options)
+internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
-    public string ModuleFingerprint { get; } =
-        string.Join(';', ModuleBase.GetLoadedModules(configuration).Select(a => a.GetName().Name));
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(assembly);
-        }
+        modelBuilder.ApplyModuleConfigurations(this);
     }
 }
 ```
@@ -395,7 +392,7 @@ internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Postgres"))
     .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
-    .ReplaceService<IModelCacheKeyFactory, ModuleAwareModelCacheKeyFactory>());
+    .UseModules(builder.Configuration));
 
 builder.Services.AddTransient<DbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 ```
@@ -406,28 +403,31 @@ Four things there are load-bearing and none of them are obvious.
 type. A module needs somewhere to put its tables, not knowledge of the application it is deployed
 into. Inside a module: `db.Set<Order>()`.
 
-**`GetLoadedModules`, not `AppDomain`.** `AppDomain.CurrentDomain.GetAssemblies()` filtered by
-the attribute composes the right model while one host owns the process, and the wrong one as soon
-as a second host shares it — in an integration-test assembly every topology's modules are loaded,
-so every topology composes the union. Nothing throws; the tables are simply wrong.
+**`UseModules(builder.Configuration)`, not `AppDomain`.** The modules come from the registry the
+modules write as they activate (`ModuleBase.GetLoadedModules`). `AppDomain.CurrentDomain.GetAssemblies()`
+filtered by the attribute composes the right model while one host owns the process, and the wrong
+one as soon as a second host shares it — in an integration-test assembly every topology's modules
+are loaded, so every topology composes the union. Nothing throws; the tables are simply wrong.
 
 **`PendingModelChangesWarning` downgraded to a log.** A topology loading a subset of the modules
 legitimately has a smaller model than the migrations snapshot, and `MigrateAsync` treats that as
 an error. Downgraded, not suppressed: on the full model it still means something.
 
-**`ModuleAwareModelCacheKeyFactory`.** EF Core caches a built model in an internal service
-provider shared by every context with the same options, keyed by context type. Two hosts with
-different module sets in one process — every integration test assembly — otherwise share the
-first one's model. Nothing throws; you get the wrong tables.
+**The model cache key.** EF Core caches a built model in an internal service provider shared by
+every context with the same options, keyed by context type. Two hosts with different module sets
+in one process — every integration test assembly — would share the first one's model. `UseModules`
+replaces EF Core's `IModelCacheKeyFactory` with one whose key includes the module set. A context
+that replaces `IModelCacheKeyFactory` itself — a schema per tenant, say — replaces this one too,
+and its own key has to include the module set as well.
 
-```csharp
-internal sealed class ModuleAwareModelCacheKeyFactory : IModelCacheKeyFactory
-{
-    public object Create(DbContext context, bool designTime) => context is ApplicationDbContext app
-        ? (typeof(ApplicationDbContext), app.ModuleFingerprint, designTime)
-        : (object)(context.GetType(), designTime);
-}
-```
+Once per set of modules the package logs, in the category `FusionModules.EntityFrameworkCore`, which
+modules the model was composed from and in what order, which had no configurations, and which
+entities several modules configure. When a topology is missing a table, read that line first.
+
+Without the package — an application that will not take the dependency — the same is a fingerprint
+of `GetLoadedModules` on the context, an `IModelCacheKeyFactory` that includes it,
+`ReplaceService<IModelCacheKeyFactory, …>()` on the options, and `ApplyConfigurationsFromAssembly`
+for each module in `GetLoadedModules` order.
 
 ### Where entities go
 
@@ -465,9 +465,10 @@ Because it uses both modules' types, it references both, so `ModuleBase` will no
 load it without them.
 
 **The composing module's configuration is applied after the ones it extends** — not because of
-where `HOSTINGSTARTUPASSEMBLIES` lists it: `GetLoadedModules` returns each module after the modules
-its assembly references, and a composing module uses their types. One set of modules has one
-order in every topology and at design time, so it also has one EF Core model.
+where `HOSTINGSTARTUPASSEMBLIES` lists it: `ApplyModuleConfigurations` applies the modules in
+`GetLoadedModules` order, which is the host's own module first (when the host is one), then each
+module after the modules its assembly references, and a composing module uses their types. One set
+of modules has one order in every topology and at design time, so it also has one EF Core model.
 
 ### Migrations
 
@@ -490,21 +491,23 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.Names))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(configuration.GetConnectionString("Postgres"))
-            .ReplaceService<IModelCacheKeyFactory, ModuleAwareModelCacheKeyFactory>()
+            .UseModules(KnownModules.Names)
             .Options;
 
-        return new ApplicationDbContext(options, configuration);
+        return new ApplicationDbContext(options);
     }
 }
 ```
 
-Check the generated migration before going further: if `Up` is empty, the registry was not
-populated.
+`KnownModules.Names` is the modules the host *references*. A host that is itself a module — its
+own `[assembly: HostingStartup]` and entity configurations — is not among them: add its name to the
+array, or its tables are missing from the migration.
+
+Check the generated migration before going further: if `Up` is empty, no module was named.
 
 Exactly one replica should run migrations. The others take the database as they find it —
 `Database__Migrate: "false"` in the compose file, or whatever switch the host uses.
@@ -1287,13 +1290,15 @@ all, it is the previous section.
 `HOSTINGSTARTUPASSEMBLIES` as set in the shell that ran the command: unset gives an empty model,
 one topology's value gives that topology's tables. There is no error either way — `Up` is just
 empty, or short. Generate migrations through a design-time factory that names every module with
-`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](#phase-3-data).
+`UseModules(KnownModules.Names)` and ignores the environment. See [data.md](#phase-3-data).
 
 ### A topology has tables it should not, or is missing tables it should have
 
 EF Core's model cache, keyed by context type, shared across hosts in one process. The second
-topology in a test run gets the first one's model. Nothing throws. Fix with an
-`IModelCacheKeyFactory` that includes the module set — [data.md](#phase-3-data).
+topology in a test run gets the first one's model. Nothing throws. `UseModules` from
+`FusionModules.EntityFrameworkCore` puts a key that includes the module set in place; a context that
+replaces `IModelCacheKeyFactory` itself after it loses that key and has to include the module set in
+its own — [data.md](#phase-3-data).
 
 If it happens at runtime rather than in tests, look at what the model is composed from. An
 `AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly
@@ -1515,16 +1520,16 @@ names — never on entity types. No database: building an EF model needs a provi
 connection.
 
 **Business logic tests** do not boot a host at all. They reference the module assemblies directly
-like any other library, compose whatever model they need by calling
-`ApplyConfigurationsFromAssembly` for each assembly they name, and reach internals through
+like any other library, compose whatever model they need with `UseModules(names)` and
+`ApplyModuleConfigurations` over the assemblies they name, and reach internals through
 `InternalsVisibleTo` — because MOD0001 means everything worth testing in a module is internal.
 
 Mixing them produces tests that need a host to check a five-line rule, and tests that need module
 types to check a topology. Keep the line sharp.
 
 Both kinds hit EF Core's model cache if they compose more than one model from the same context
-type. Same fix as the host: an `IModelCacheKeyFactory` that includes what the model was composed
-from.
+type. `UseModules` takes care of it, in tests as in the host: its model cache key includes the
+module set.
 
 ### 6. Model snapshots
 

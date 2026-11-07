@@ -3,9 +3,11 @@
     <Project Path="src/FusionModules/FusionModules.csproj" />
     <Project Path="src/FusionModules.Analyzers/FusionModules.Analyzers.csproj" />
     <Project Path="src/FusionModules.CodeFixes/FusionModules.CodeFixes.csproj" />
+    <Project Path="src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FusionModules.Analyzers.Tests/FusionModules.Analyzers.Tests.csproj" />
+    <Project Path="tests/FusionModules.EntityFrameworkCore.Tests/FusionModules.EntityFrameworkCore.Tests.csproj" />
     <Project Path="tests/FusionModules.Tests/FusionModules.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

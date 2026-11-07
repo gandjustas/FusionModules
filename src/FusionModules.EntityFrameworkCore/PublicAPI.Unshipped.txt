@@ -1,0 +1,10 @@
+#nullable enable
+FusionModules.EntityFrameworkCore.ModuleDbContextExtensions
+FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions
+FusionModules.EntityFrameworkCore.ModuleModelBuilderExtensions
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.UseModules(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.UseModules(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, params string![]! moduleAssemblyNames) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.UseModules<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.UseModules<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, params string![]! moduleAssemblyNames) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static FusionModules.EntityFrameworkCore.ModuleModelBuilderExtensions.ApplyModuleConfigurations(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.DbContext! context) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static FusionModules.EntityFrameworkCore.ModuleDbContextExtensions.GetModuleSetKey(this Microsoft.EntityFrameworkCore.DbContext! context) -> string?

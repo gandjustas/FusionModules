@@ -143,16 +143,16 @@ names — never on entity types. No database: building an EF model needs a provi
 connection.
 
 **Business logic tests** do not boot a host at all. They reference the module assemblies directly
-like any other library, compose whatever model they need by calling
-`ApplyConfigurationsFromAssembly` for each assembly they name, and reach internals through
+like any other library, compose whatever model they need with `UseModules(names)` and
+`ApplyModuleConfigurations` over the assemblies they name, and reach internals through
 `InternalsVisibleTo` — because MOD0001 means everything worth testing in a module is internal.
 
 Mixing them produces tests that need a host to check a five-line rule, and tests that need module
 types to check a topology. Keep the line sharp.
 
 Both kinds hit EF Core's model cache if they compose more than one model from the same context
-type. Same fix as the host: an `IModelCacheKeyFactory` that includes what the model was composed
-from.
+type. `UseModules` takes care of it, in tests as in the host: its model cache key includes the
+module set.
 
 ## 6. Model snapshots
 

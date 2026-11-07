@@ -1,52 +1,34 @@
-// The whole EF Core integration. There is no FusionModules EF package because this is what it would
-// contain, and a base class to inherit plus a method to remember is worse than fifteen lines you
-// can read.
+// The application's one context, composed from the modules the host loaded. Needs the
+// FusionModules.EntityFrameworkCore package.
+//
+// Register it with the modules named in its options — UseModules also gives EF Core a model cache
+// key that includes the module set, so hosts with different modules in one process (any
+// integration-test assembly) do not share the first one's model:
+//
+//   builder.Services.AddDbContext<ApplicationDbContext>(options => options
+//       .UseNpgsql(builder.Configuration.GetConnectionString("Postgres"))
+//       .ConfigureWarnings(w => w.Log(RelationalEventId.PendingModelChangesWarning))
+//       .UseModules(builder.Configuration));
+//   builder.Services.AddTransient<DbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
+//
+// UseModules replaces EF Core's IModelCacheKeyFactory. A context that replaces it too puts
+// context.GetModuleSetKey() into its own key.
 
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using FusionModules;
+using FusionModules.EntityFrameworkCore;
 
 namespace Host;
 
-internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)
-    : DbContext(options)
+internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
-    /// <summary>Identifies the module set this context was built for. Part of the model cache key.</summary>
-    public string ModuleFingerprint { get; } =
-        string.Join(';', ModuleBase.GetLoadedModules(configuration).Select(assembly => assembly.GetName().Name));
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Order matters: a composing module's configuration has to be applied after the
-        // configurations of the entities it joins. GetLoadedModules returns each module after the
-        // modules its assembly references, so it is, whatever order HOSTINGSTARTUPASSEMBLIES uses.
-        //
-        // Not AppDomain.CurrentDomain.GetAssemblies(): filtered by the attribute it is correct
-        // while one host owns the process, and wrong as soon as a second one shares it — in an
-        // integration-test assembly every topology's modules are loaded, so every topology
-        // composes the union. Nothing throws; the tables are wrong.
-        foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(assembly);
-        }
+        // Every IEntityTypeConfiguration of the modules UseModules named, in GetLoadedModules
+        // order: the host's own module first when the host is one, then each module after the
+        // modules it references — a composing module's relationships are applied after the entity
+        // modules it joins, wherever HOSTINGSTARTUPASSEMBLIES lists it.
+        modelBuilder.ApplyModuleConfigurations(this);
     }
-}
-
-/// <summary>
-/// Makes EF Core's model cache aware that one context type has different models in different
-/// topologies.
-/// </summary>
-/// <remarks>
-/// EF caches a built model in an internal service provider shared by every context with the same
-/// options, keyed by context type. Two hosts with different module sets in one process — every
-/// integration test assembly — otherwise share the first one's model. Nothing throws; the tables
-/// are simply wrong.
-/// </remarks>
-internal sealed class ModuleAwareModelCacheKeyFactory : IModelCacheKeyFactory
-{
-    public object Create(DbContext context, bool designTime) => context is ApplicationDbContext application
-        ? (typeof(ApplicationDbContext), application.ModuleFingerprint, designTime)
-        : (object)(context.GetType(), designTime);
 }

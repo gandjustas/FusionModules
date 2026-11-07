@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using FusionModules;
+using FusionModules.EntityFrameworkCore;
 
 namespace ModularData.Host;
 
@@ -9,51 +8,26 @@ namespace ModularData.Host;
 /// it is.
 /// </summary>
 /// <remarks>
-/// This is the entire EF Core integration, and it is why there is no FusionModules.EntityFrameworkCore
-/// package: fifteen lines in your own context beats a base class you have to inherit and a
-/// registration method you have to remember.
+/// <para>
+/// The modules come from the context's options — <c>UseModules</c> in <c>Program.cs</c>, from the
+/// registry the modules write as they activate — and <c>ApplyModuleConfigurations</c> applies
+/// their entity configurations in <c>ModuleBase.GetLoadedModules</c> order: the host's own module
+/// first, when the host is one (this one is not), then each module after the modules it
+/// references. BillingModule's relationship between orders and customers is applied after the two
+/// entity modules it joins, wherever HOSTINGSTARTUPASSEMBLIES lists it.
+/// </para>
+/// <para>
+/// Not <c>AppDomain.CurrentDomain.GetAssemblies()</c>: filtered by the attribute it does the same
+/// job while one host owns the process, and stops the moment a second one shares it. In an
+/// integration-test assembly every topology's modules are loaded, so every topology would compose
+/// the union. Nothing throws; the tables are wrong.
+/// </para>
 /// </remarks>
-internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)
-    : DbContext(options)
+internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
-    /// <summary>
-    /// Identifies the module set this context was built for. Used as part of the model cache key.
-    /// </summary>
-    public string ModuleFingerprint { get; } =
-        string.Join(';', ModuleBase.GetLoadedModules(configuration).Select(assembly => assembly.GetName().Name));
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        // Order matters: a composing module's configuration has to be applied after the
-        // configurations of the entities it joins. GetLoadedModules returns each module after the
-        // modules its assembly references, and by name otherwise, so it is, in every topology.
-        //
-        // AppDomain.CurrentDomain.GetAssemblies() filtered by the attribute does do the same job
-        // while one host owns the process — and stops the moment a second one shares it. In an
-        // integration-test assembly every topology's modules are loaded, so every topology
-        // composes the union. Nothing throws; the tables are wrong.
-        foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(assembly);
-        }
+        modelBuilder.ApplyModuleConfigurations(this);
     }
-}
-
-/// <summary>
-/// Makes EF Core's model cache aware that the same context type has different models in
-/// different topologies.
-/// </summary>
-/// <remarks>
-/// EF caches a built model in an internal service provider shared by every context with the same
-/// options, and the default cache key is the context type. Two hosts with different module sets
-/// in one process — which is every integration-test assembly — would therefore share the first
-/// one's model. The failure is silent: no exception, just the wrong tables.
-/// </remarks>
-internal sealed class ModuleAwareModelCacheKeyFactory : IModelCacheKeyFactory
-{
-    public object Create(DbContext context, bool designTime) => context is ApplicationDbContext app
-        ? (typeof(ApplicationDbContext), app.ModuleFingerprint, designTime)
-        : (object)(context.GetType(), designTime);
 }

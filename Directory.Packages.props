@@ -13,7 +13,10 @@
     <PackageVersion Include="MinVer" Version="6.0.0" />
   </ItemGroup>
 
-  <!-- Samples only. -->
+  <!--
+    The samples, and FusionModules.EntityFrameworkCore: its package depends on Microsoft.EntityFrameworkCore
+    at least at the version below for each target framework, so these are its floor as well.
+  -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <!--
       Sample 03 multi-targets, and EF 10 does not run on net8 — so the invariant below becomes one

@@ -196,7 +196,10 @@ Set it to `false` to turn the generator off:
 No default. Service types [MOD0014](rules/MOD0014.md) leaves alone in the host's build: modules that
 are alternatives, never loaded together, or a type you do not own. The same list can be written in
 `.editorconfig` under the same name; both are read. Passed to the analyzers through
-`CompilerVisibleProperty`.
+`CompilerVisibleProperty`. The generated `ValidateModules()` also writes the list into configuration
+as `FusionModules:AlternativeServices`, which only changes the wording of the startup check's
+message when two of those modules load together after all — see
+[runtime.md](runtime.md#alternatives-the-hosts-build-already-knows).
 
 A module also gets a generated file, `FusionModules.ModuleRecords.g.cs`, when its code registers a
 service: internal assembly attributes that record what it registers, which is how the host's build
@@ -209,5 +212,5 @@ the sample projects reference them:
 
 | Property | Meaning |
 |---|---|
-| `FusionModulesUseProjectReferences` | `true` (default) consumes FusionModules by project reference; `false` by package reference from `local-feed`. CI runs both. |
+| `FusionModulesUseProjectReferences` | `true` (default) consumes FusionModules — and, in sample 03, FusionModules.EntityFrameworkCore — by project reference; `false` by package reference from `local-feed`. CI runs both. |
 | `FusionModulesVersion` | The package version to use when the above is `false`. |

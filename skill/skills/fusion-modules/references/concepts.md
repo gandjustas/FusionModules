@@ -79,7 +79,8 @@ hazard rather than the relief: unset, only the entry assembly activates and you 
 migration with no error at all**; set to one topology, you get that topology's tables, also with
 no error. `ModuleBase.CreateModuleRegistry(params string[])` builds the entries for a design-time
 factory that names the modules in code, so the schema stops depending on whose shell produced
-it.
+it — `UseModules(KnownModules.Names)` from `FusionModules.EntityFrameworkCore` does it for a
+`DbContext`.
 
 ## Dependencies between modules
 

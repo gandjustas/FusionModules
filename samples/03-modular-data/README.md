@@ -52,18 +52,24 @@ table, which needs no internals at all; `UnitTests/` reaches the module's logic 
 
 ## The recipe
 
-The whole EF Core integration is in [`ApplicationDbContext.cs`](Host/ApplicationDbContext.cs) and
-three lines of [`Program.cs`](Host/Program.cs). There is no FusionModules EF package, because there
-is nothing here worth packaging:
+The EF Core integration is the `FusionModules.EntityFrameworkCore` package
+([docs/ef-core.md](../../docs/ef-core.md)): a line in [`ApplicationDbContext.cs`](Host/ApplicationDbContext.cs)
+and one in [`Program.cs`](Host/Program.cs).
 
 ```csharp
 protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
     base.OnModelCreating(modelBuilder);
-    foreach (var assembly in ModuleBase.GetLoadedModules(configuration))
-        modelBuilder.ApplyConfigurationsFromAssembly(assembly);
+    modelBuilder.ApplyModuleConfigurations(this);
 }
 ```
+
+`ApplyModuleConfigurations` applies the entity configurations of the modules the context's options
+name — `UseModules(builder.Configuration)`, the modules this host activated — in
+`ModuleBase.GetLoadedModules` order: the host's own module first when the host is one (this one is
+not), then each module after the modules it references. BillingModule joins the two entity modules
+and references them, so its relationship is applied after their tables wherever
+`HOSTINGSTARTUPASSEMBLIES` lists it.
 
 Three things around it are less obvious and all three are load-bearing.
 
@@ -76,11 +82,13 @@ the modules legitimately has a smaller model than the migrations snapshot, and `
 treats that as an error by default. Downgraded to a log entry, not suppressed: on the full model
 it still means something.
 
-**`ReplaceService<IModelCacheKeyFactory, ModuleAwareModelCacheKeyFactory>()`.** EF Core caches a
-built model in an internal service provider shared by every context with the same options, keyed
-by context type. Two hosts with different module sets in one process — which is every integration
-test assembly — would otherwise share the first one's model. Nothing throws; you just get the
-wrong tables. `ModelCompositionTests.TopologiesInOneProcessDoNotShareAModel` fails without it.
+**`UseModules(builder.Configuration)`.** Besides naming the modules, it replaces EF Core's
+`IModelCacheKeyFactory` with one whose key includes them. EF Core caches a built model in an
+internal service provider shared by every context with the same options, keyed by context type.
+Two hosts with different module sets in one process — which is every integration test assembly —
+would otherwise share the first one's model. Nothing throws; you just get the wrong tables.
+`ModelCompositionTests.TopologiesInOneProcessDoNotShareAModel` fails without it. A context that
+replaces `IModelCacheKeyFactory` itself has to include the module set in its own key.
 
 ## Migrations
 
@@ -98,9 +106,10 @@ topology would give you a database whose shape depends on which replica reached 
 `HOSTINGSTARTUPASSEMBLIES` as it stands in your shell — an **empty migration and no error at all**
 when it is unset, one topology's tables when it is not.
 [`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) names every module with
-`ModuleBase.CreateModuleRegistry`, so the migration is the same on every machine. The names come
+`UseModules(KnownModules.Names)`, so the migration is the same on every machine. The names come
 from `KnownModules`, which the package generates from this project's references; the order the
-configurations are applied in comes from `GetLoadedModules`, as at runtime.
+configurations are applied in comes from `GetLoadedModules`, as at runtime. `KnownModules` lists
+the modules the host references, not the host: a host that is itself a module adds its own name.
 
 ## Running it
 

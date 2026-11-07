@@ -5,9 +5,13 @@ and something is simply missing. Work from the symptom.
 
 ## An endpoint returns 404 in a topology that should have it
 
-Read the `Topology:` line in the startup log first: its `endpoints` part counts what each loaded
-module serves. A module that is not in the list was not loaded; one listed with `0` was loaded and
-mapped nothing.
+Read the `Topology:` line in the startup log first: its `endpoints:` part counts what each loaded
+module serves, and the host's own as `host` (even when the host is a module itself), and names the
+modules that serve nothing —
+`(none from Local, Orders.Entities)`. A module missing from `modules:` was not loaded. One under
+`none from` was loaded and mapped nothing: expected of a transport or a module of entities,
+suspicious only for a module meant to serve requests. Endpoints whose handler is the framework's or a
+library's (a health check, `MapOpenApi`) are not counted for anyone.
 
 In order of likelihood:
 
@@ -37,7 +41,11 @@ implementation. Startup refuses instead, naming the service, both modules and bo
 The fix is **not** `TryAdd`: that turns last-wins into first-wins, and one module still gets the
 wrong implementation. Instead:
 
-- register **keyed**, one key per module; or
+- if the two modules are **alternatives** — two transports, two implementations of one capability
+  that each deployment chooses between — no topology should load them together: remove one from
+  `HOSTINGSTARTUPASSEMBLIES`. This comes first in the message, and it is the fix whenever it applies;
+  keying the registration would only hide the mistake;
+- otherwise register **keyed**, one key per module; or
 - register a **type of each module's own**: a concrete type, or a module-internal interface;
 - if the type is meant to be consumed as `IEnumerable<T>` (seeders, handlers, listeners), put an
   attribute named `MultipleImplementationsAttribute` on it — declared in the contracts library
@@ -50,7 +58,9 @@ There is no setting that turns the check off. What is and is not a collision is 
 MOD0014 asks the same question in the host's build, for every pair of modules the host references,
 from the registrations written in the modules' own code. Modules that are alternatives — never
 loaded together — go in `fusion_modules_allowed_service_collisions` (`.editorconfig` or an MSBuild
-property); that list silences the build warning only.
+property); that list silences the build warning only. `ValidateModules()` hands it to the startup
+check as `FusionModules:AlternativeServices`, so when two of those modules load together after all,
+startup still fails and the message says plainly to load only one of them.
 
 ## A warning at startup: "Routes mapped by more than one module"
 
@@ -116,13 +126,15 @@ all, it is the previous section.
 `HOSTINGSTARTUPASSEMBLIES` as set in the shell that ran the command: unset gives an empty model,
 one topology's value gives that topology's tables. There is no error either way — `Up` is just
 empty, or short. Generate migrations through a design-time factory that names every module with
-`ModuleBase.CreateModuleRegistry(...)` and ignores the environment. See [data.md](data.md).
+`UseModules(KnownModules.Names)` and ignores the environment. See [data.md](data.md).
 
 ## A topology has tables it should not, or is missing tables it should have
 
 EF Core's model cache, keyed by context type, shared across hosts in one process. The second
-topology in a test run gets the first one's model. Nothing throws. Fix with an
-`IModelCacheKeyFactory` that includes the module set — [data.md](data.md).
+topology in a test run gets the first one's model. Nothing throws. `UseModules` from
+`FusionModules.EntityFrameworkCore` puts a key that includes the module set in place; a context that
+replaces `IModelCacheKeyFactory` itself after it loses that key and has to include
+`context.GetModuleSetKey()` in its own — [data.md](data.md).
 
 If it happens at runtime rather than in tests, look at what the model is composed from. An
 `AppDomain.CurrentDomain.GetAssemblies()` scan reports the application's own modules correctly

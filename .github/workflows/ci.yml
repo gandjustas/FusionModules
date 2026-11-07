@@ -180,7 +180,8 @@ jobs:
         # shell.
         shell: pwsh
         run: |
-          $package = Get-ChildItem local-feed/FusionModules.*.nupkg | Select-Object -First 1
+          # FusionModules.<digit>: FusionModules.* also matches FusionModules.EntityFrameworkCore.
+          $package = Get-ChildItem local-feed/FusionModules.*.nupkg | Where-Object Name -match '^FusionModules\.\d' | Select-Object -First 1
           $version = $package.BaseName -replace '^FusionModules\.', ''
           $config = Join-Path ([IO.Path]::GetTempPath()) 'samples-sources.config'
           Set-Content $config '<configuration />'

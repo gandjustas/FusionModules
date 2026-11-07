@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using FusionModules;
+using FusionModules.EntityFrameworkCore;
 
 namespace ModularData.Host;
 
@@ -16,9 +16,10 @@ namespace ModularData.Host;
 /// <c>dotnet ef</c> does build the host, so <c>HostingStartup</c> runs and the model would follow
 /// <c>HOSTINGSTARTUPASSEMBLIES</c> as it stands in the shell that ran the command — an empty
 /// migration and no error at all when it is unset, one topology's tables when it is not.
-/// <see cref="ModuleBase.CreateModuleRegistry"/> names every module instead, and the names come
-/// from <c>KnownModules</c>, which FusionModules generates from this project's references — a list
-/// written out by hand is a copy of the project file that nothing keeps honest.
+/// <c>UseModules</c> names every module instead, and the names come from <c>KnownModules</c>,
+/// which FusionModules generates from this project's references — a list written out by hand is a
+/// copy of the project file that nothing keeps honest. This host is not a module itself; one that
+/// is would add its own name, since a project does not reference itself.
 /// </para>
 /// </remarks>
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
@@ -28,14 +29,13 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
         var configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
             .AddEnvironmentVariables()
-            .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(KnownModules.Names))
             .Build();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(configuration.GetConnectionString("Postgres"))
-            .ReplaceService<IModelCacheKeyFactory, ModuleAwareModelCacheKeyFactory>()
+            .UseModules(KnownModules.Names)
             .Options;
 
-        return new ApplicationDbContext(options, configuration);
+        return new ApplicationDbContext(options);
     }
 }

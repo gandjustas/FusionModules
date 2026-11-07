@@ -45,6 +45,15 @@ dotnet add package FusionModules
 
 That is the whole dependency. The analyzers come with it. `net8.0` and `net10.0`.
 
+A host whose one EF Core context is composed from its modules' entity configurations can also take
+`FusionModules.EntityFrameworkCore` — `UseModules` on the context's options,
+`ApplyModuleConfigurations` in `OnModelCreating`, and one cached model per set of modules
+([docs/ef-core.md](docs/ef-core.md)):
+
+```
+dotnet add package FusionModules.EntityFrameworkCore
+```
+
 ## Why a package at all
 
 Because the approach has sharp edges, and every one of them fails quietly:
@@ -152,12 +161,16 @@ failure modes of this approach by symptom, because every one of them is silent.
 
 ## What is deliberately not here
 
-An EF Core package, a testing package, project templates, a messaging abstraction. Each of them
-would be a handful of lines wrapped in something you have to depend on, version and learn — and
-the claim this project is making is that the approach does not need a framework. They live in the
-samples as code to copy, with the reasoning next to them:
-[the data model recipe](samples/03-modular-data#the-recipe),
-[the testing recipe](samples/03-modular-data#tests).
+A testing package, project templates, a messaging abstraction. Each of them would be a handful of
+lines wrapped in something you have to depend on, version and learn — and the claim this project is
+making is that the approach does not need a framework. They live in the samples as code to copy,
+with the reasoning next to them: [the testing recipe](samples/03-modular-data#tests).
+
+EF Core was on this list. It came off because the hand-written version — a fingerprint of the
+modules on the context, a model cache key factory that includes it, the same again in the design-time
+factory — was copied into every application with a shared context, and the cache key fails silently
+when it is missed. `FusionModules.EntityFrameworkCore` is that code, in a package of its own so
+that `FusionModules` does not depend on EF Core: [the data model recipe](samples/03-modular-data#the-recipe).
 
 Modules also load by name at runtime, so `PublishTrimmed` and `PublishAot` are off the table for
 the host. That is the cost of the approach and it is worth knowing before you adopt it.
@@ -202,7 +215,9 @@ Besides the numbers:
 ## Status
 
 Early development, pre-1.0. The public surface is two classes and nine members, locked by
-`PublicAPI.Shipped.txt` so that adding to it is a reviewable change.
+`PublicAPI.Shipped.txt` so that adding to it is a reviewable change. `FusionModules.EntityFrameworkCore`
+adds two static classes and five extension methods, locked the same way, and is released with
+`FusionModules` at the same version.
 
 On [nuget.org](https://www.nuget.org/packages/FusionModules). Pushing a `v*` tag makes
 `release.yml` build, test, pack, consume the package from a scratch project outside the repository,
@@ -216,6 +231,7 @@ To try a change before it is released, install from a local feed:
 
 ```bash
 dotnet pack src/FusionModules/FusionModules.csproj -c Release -o local-feed
+dotnet pack src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj -c Release -o local-feed
 ```
 
 ## Building this repository

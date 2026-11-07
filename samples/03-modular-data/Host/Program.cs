@@ -1,15 +1,18 @@
+using FusionModules.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using ModularData.Host;
 
 var builder = WebApplication.CreateBuilder(args).ValidateModules();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
+    // UseModules: the model is composed from the modules this host activated, and EF Core caches
+    // one model per set of modules — hosts with different modules in one process, as in the
+    // integration tests, would otherwise share the first one's.
     options
         .UseNpgsql(builder.Configuration.GetConnectionString("Postgres"))
-        .ReplaceService<IModelCacheKeyFactory, ModuleAwareModelCacheKeyFactory>();
+        .UseModules(builder.Configuration);
 
     // A topology that loads a subset of the modules legitimately has a smaller model than the
     // migrations snapshot, and MigrateAsync treats that as an error by default. Downgraded to a

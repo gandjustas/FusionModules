@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds the package and consumes it the way a stranger would.
+# Builds the packages and consumes them the way a stranger would.
 #
 # In-repo builds prove nothing about packaging: analyzers and MSBuild assets are wired up by
 # ProjectReference there, and the layout under analyzers/dotnet/cs and buildTransitive is only
@@ -27,8 +27,12 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures=$((failures + 1)); }
 
 log "Packing"
 rm -rf "$feed"
-dotnet pack "$root/src/FusionModules/FusionModules.csproj" -c Release -o "$feed" --nologo -v q
-version="$(basename "$(ls "$feed"/FusionModules.*.nupkg | grep -v symbols | head -1)" .nupkg)"
+# Both packages, one version: MinVer reads it from the same tag.
+for project in FusionModules FusionModules.EntityFrameworkCore; do
+    dotnet pack "$root/src/$project/$project.csproj" -c Release -o "$feed" --nologo -v q
+done
+# FusionModules.<digit>: FusionModules.* alone also matches FusionModules.EntityFrameworkCore.
+version="$(basename "$(ls "$feed"/FusionModules.[0-9]*.nupkg | grep -v symbols | head -1)" .nupkg)"
 version="${version#FusionModules.}"
 echo "  FusionModules $version"
 
@@ -46,6 +50,26 @@ for expected in \
 do
     if grep -qx "$expected" <<<"$contents"; then pass "$expected"; else fail "missing $expected"; fi
 done
+
+ef_nupkg="$(native "$feed/FusionModules.EntityFrameworkCore.$version.nupkg")"
+if [ -f "$feed/FusionModules.EntityFrameworkCore.$version.nupkg" ]; then
+    ef_contents="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$ef_nupkg').Entries.FullName" | tr -d '\r')"
+    for expected in \
+        "lib/net8.0/FusionModules.EntityFrameworkCore.dll" \
+        "lib/net10.0/FusionModules.EntityFrameworkCore.dll"
+    do
+        if grep -qx "$expected" <<<"$ef_contents"; then pass "EntityFrameworkCore: $expected"; else fail "EntityFrameworkCore: missing $expected"; fi
+    done
+    # Its FusionModules is the one packed with it: a project reference becomes a dependency on the same version.
+    ef_nuspec="$(pwsh -NoProfile -Command "\$z = [IO.Compression.ZipFile]::OpenRead('$ef_nupkg'); \$e = \$z.GetEntry('FusionModules.EntityFrameworkCore.nuspec'); (New-Object IO.StreamReader(\$e.Open())).ReadToEnd()" | tr -d '\r')"
+    if grep -q "id=\"FusionModules\" version=\"$version\"" <<<"$ef_nuspec"; then
+        pass "EntityFrameworkCore depends on FusionModules $version"
+    else
+        fail "EntityFrameworkCore does not depend on FusionModules $version"; grep -i "dependency" <<<"$ef_nuspec" || true
+    fi
+else
+    fail "no FusionModules.EntityFrameworkCore.$version.nupkg: the two packages were packed at different versions"
+fi
 
 # A stranger does not have our global packages folder, and that is not a detail here: NuGet serves
 # a PackageReference out of it whenever that id and version are already extracted there, and never
@@ -356,6 +380,51 @@ app.MapGet("/modules", () => KnownModules.All);
 await app.RunAsync();
 CS
 
+# What a host's data library looks like with FusionModules.EntityFrameworkCore: a context composed
+# from the loaded modules, registered with UseModules, and the same for dotnet ef by name. It has
+# to restore both packages from the feed, at the version just packed, and compile against both.
+mkdir -p "$work/consumer/EfData"
+cat > "$work/consumer/EfData/EfData.csproj" <<XML
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="FusionModules" Version="$version" />
+    <PackageReference Include="FusionModules.EntityFrameworkCore" Version="$version" />
+  </ItemGroup>
+</Project>
+XML
+cat > "$work/consumer/EfData/ShopData.cs" <<'CS'
+using FusionModules.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace EfData;
+
+public sealed class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.ApplyModuleConfigurations(this);
+}
+
+public static class ShopDataExtensions
+{
+    public static IServiceCollection AddShopData(this IServiceCollection services, IConfiguration configuration) =>
+        services
+            .AddDbContext<ShopContext>(options => options.UseModules(configuration))
+            .AddTransient<DbContext>(provider => provider.GetRequiredService<ShopContext>());
+
+    /// <summary>For dotnet ef and tests: the modules by name.</summary>
+    public static DbContextOptions<ShopContext> DesignTime(params string[] modules) =>
+        new DbContextOptionsBuilder<ShopContext>().UseModules(modules).Options;
+}
+CS
+
 log "A well-formed module builds clean"
 if dotnet build "$work/consumer/GoodModule" --nologo -v q > "$work/good.log" 2>&1; then
     pass "builds"
@@ -394,6 +463,14 @@ if grep -q "MOD0014.*'Checks.IChecker'.*BillingChecks: BillingChecker; OrdersChe
     pass "MOD0014 names the service and both modules' implementations"
 else
     fail "MOD0014's message does not name Checks.IChecker and both implementations:"; grep "MOD0014" "$work/collidinghost.log" || true
+fi
+
+log "A context composed from the modules, through FusionModules.EntityFrameworkCore"
+if dotnet build "$work/consumer/EfData" --nologo -v q > "$work/efdata.log" 2>&1; then
+    pass "builds against both packages"
+    if grep -q "MOD0" "$work/efdata.log"; then fail "unexpected diagnostics:"; grep "MOD0" "$work/efdata.log"; else pass "no diagnostics"; fi
+else
+    fail "did not build"; cat "$work/efdata.log"
 fi
 
 log "Help links reach the documentation"

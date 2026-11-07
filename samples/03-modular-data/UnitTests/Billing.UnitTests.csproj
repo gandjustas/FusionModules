@@ -36,4 +36,12 @@
     <ProjectReference Include="..\Modules\Customers\Customers.Entities.csproj" />
   </ItemGroup>
 
+  <!-- The EF Core integration, consumed the same two ways as FusionModules (samples/Directory.Build.props). -->
+  <ItemGroup Condition="'$(FusionModulesUseProjectReferences)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../../../src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FusionModulesUseProjectReferences)' != 'true'">
+    <PackageReference Include="FusionModules.EntityFrameworkCore" VersionOverride="$(FusionModulesVersion)" />
+  </ItemGroup>
+
 </Project>

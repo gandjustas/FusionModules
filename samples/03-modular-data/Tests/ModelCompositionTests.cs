@@ -64,7 +64,7 @@ public class ModelCompositionTests
     [Test]
     public async Task TopologiesInOneProcessDoNotShareAModel()
     {
-        // The reason ModuleAwareModelCacheKeyFactory exists. EF Core caches a built model in an
+        // The reason UseModules replaces the model cache key. EF Core caches a built model in an
         // internal service provider shared by every context with the same options, keyed by
         // context type — so without it the second topology here silently gets the first one's
         // model, complete with tables it was never meant to have.
