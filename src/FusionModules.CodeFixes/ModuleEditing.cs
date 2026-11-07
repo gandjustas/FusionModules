@@ -13,7 +13,72 @@ namespace FusionModules.CodeFixes;
 /// </summary>
 internal static class ModuleEditing
 {
-    public const string HostApplicationBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostApplicationBuilder";
+
+    /// <summary>A module class: where it is declared, and what it is.</summary>
+    public sealed class ModuleClass(Document document, ClassDeclarationSyntax declaration, INamedTypeSymbol symbol)
+    {
+        public Document Document { get; } = document;
+
+        public ClassDeclarationSyntax Declaration { get; } = declaration;
+
+        public INamedTypeSymbol Symbol { get; } = symbol;
+    }
+
+    /// <summary>The project's module class: the first <c>ModuleBase</c> type an assembly-level <c>HostingStartup</c> names.</summary>
+    public static async System.Threading.Tasks.Task<ModuleClass?> FindAsync(Project project, CancellationToken cancellationToken)
+    {
+        var compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+        if (compilation is null)
+        {
+            return null;
+        }
+
+        var moduleBase = FusionModules.Analyzers.ModuleFacts.GetModuleBaseType(compilation);
+        var hostingStartup = compilation.GetTypeByMetadataName(FusionModules.Analyzers.ModuleFacts.HostingStartupAttributeMetadataName);
+        if (moduleBase is null || hostingStartup is null)
+        {
+            return null;
+        }
+
+        foreach (var type in FusionModules.Analyzers.ModuleFacts.GetHostingStartupTypes(compilation.Assembly, hostingStartup).OfType<INamedTypeSymbol>())
+        {
+            if (!FusionModules.Analyzers.ModuleFacts.InheritsFrom(type, moduleBase))
+            {
+                continue;
+            }
+
+            foreach (var reference in type.DeclaringSyntaxReferences)
+            {
+                if (await reference.GetSyntaxAsync(cancellationToken).ConfigureAwait(false) is ClassDeclarationSyntax declaration &&
+                    project.GetDocument(reference.SyntaxTree) is { } document)
+                {
+                    return new ModuleClass(document, declaration, type);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Adds an override the class does not have yet, at the end of its members, written as text in
+    /// the document's line break and the class's indentation.
+    /// </summary>
+    /// <param name="declaration">The class.</param>
+    /// <param name="signature">The override's signature, without a body.</param>
+    /// <param name="statements">Its statements, without indentation on their first line.</param>
+    /// <param name="lineBreak">The document's line break.</param>
+    public static ClassDeclarationSyntax AddOverride(ClassDeclarationSyntax declaration, string signature, string statements, string lineBreak)
+    {
+        var memberIndent = MemberIndent(declaration);
+        var text = (declaration.Members.Count > 0 ? lineBreak : string.Empty) +
+            memberIndent + signature + lineBreak +
+            memberIndent + "{" + lineBreak +
+            Indent(statements, memberIndent + "    ", lineBreak) + lineBreak +
+            memberIndent + "}" + lineBreak;
+
+        return declaration.AddMembers(SyntaxFactory.ParseMemberDeclaration(text)!);
+    }
 
     /// <summary>The class's override of <paramref name="name"/> taking one parameter of the given type, if any.</summary>
     public static MethodDeclarationSyntax? FindOverride(
@@ -32,8 +97,7 @@ internal static class ModuleEditing
     }
 
     /// <summary>
-    /// Adds statements at the end of an override, writing the override when there is none and
-    /// turning an expression body into a block when there is.
+    /// Adds statements at the end of an override, turning an expression body into a block.
     /// </summary>
     /// <remarks>
     /// Written as text, in the document's own line break and indentation, rather than through the
@@ -41,18 +105,14 @@ internal static class ModuleEditing
     /// would end up with mixed endings in exactly the lines the fix added.
     /// </remarks>
     /// <param name="declaration">The class.</param>
-    /// <param name="existing">The override, if the class has one.</param>
-    /// <param name="signature">The override's signature, for when it is written new — without a body.</param>
-    /// <param name="defaultParameterName">Its parameter's name when it is written new.</param>
-    /// <param name="statements">The statements, given the parameter's name: each without indentation
-    /// on its first line, later lines indented relative to it.</param>
+    /// <param name="existing">The override.</param>
+    /// <param name="statements">The statements, without indentation on their first line, later
+    /// lines indented relative to it.</param>
     /// <param name="lineBreak">The document's line break.</param>
     public static ClassDeclarationSyntax AppendToOverride(
         ClassDeclarationSyntax declaration,
-        MethodDeclarationSyntax? existing,
-        string signature,
-        string defaultParameterName,
-        System.Func<string, IEnumerable<string>> statements,
+        MethodDeclarationSyntax existing,
+        string statements,
         string lineBreak)
     {
         var memberIndent = MemberIndent(declaration);
@@ -61,18 +121,6 @@ internal static class ModuleEditing
         string Lines(IEnumerable<string> code) =>
             string.Concat(code.Select(statement => Indent(statement, statementIndent, lineBreak) + lineBreak));
 
-        if (existing is null)
-        {
-            var text = (declaration.Members.Count > 0 ? lineBreak : string.Empty) +
-                memberIndent + signature + lineBreak +
-                memberIndent + "{" + lineBreak +
-                Lines(statements(defaultParameterName)) +
-                memberIndent + "}" + lineBreak;
-
-            return declaration.AddMembers(SyntaxFactory.ParseMemberDeclaration(text)!);
-        }
-
-        var parameter = existing.ParameterList.Parameters[0].Identifier.Text;
         if (existing.Body is { } body)
         {
             // Spliced in as text, before the closing brace's line, so that comments and directives
@@ -82,8 +130,8 @@ internal static class ModuleEditing
             var before = method.Substring(0, close);
             var lineStart = before.LastIndexOf('\n') + 1;
             var spliced = before.Substring(lineStart).Trim().Length == 0
-                ? before.Substring(0, lineStart) + Lines(statements(parameter)) + before.Substring(lineStart) + method.Substring(close)
-                : before.TrimEnd() + lineBreak + Lines(statements(parameter)) + memberIndent + method.Substring(close);
+                ? before.Substring(0, lineStart) + Lines([statements]) + before.Substring(lineStart) + method.Substring(close)
+                : before.TrimEnd() + lineBreak + Lines([statements]) + memberIndent + method.Substring(close);
 
             return declaration.ReplaceNode(existing, SyntaxFactory.ParseMemberDeclaration(spliced)!);
         }
@@ -96,7 +144,7 @@ internal static class ModuleEditing
 
         var rewritten = header + lineBreak +
             memberIndent + "{" + lineBreak +
-            Lines(new[] { expression + ";" }.Concat(statements(parameter))) +
+            Lines([expression + ";", statements]) +
             memberIndent + "}" + existing.GetTrailingTrivia().ToFullString();
 
         return declaration.ReplaceNode(existing, SyntaxFactory.ParseMemberDeclaration(rewritten)!);
@@ -147,30 +195,22 @@ internal static class ModuleEditing
     private static string[] Lines(string code) => code.Replace("\r\n", "\n").Split('\n');
 
     /// <summary>
-    /// Adds a <c>using</c> for each namespace the file does not import already — itself, or through
-    /// a global using anywhere in the compilation, which is where implicit usings live.
+    /// Adds a <c>using</c> for each namespace not already in scope at <paramref name="position"/> —
+    /// by a using in the file or in the enclosing namespace, a global using or an implicit one.
     /// </summary>
-    public static CompilationUnitSyntax EnsureUsings(CompilationUnitSyntax unit, Compilation compilation, IEnumerable<string> namespaces)
+    /// <param name="unit">The root to change.</param>
+    /// <param name="model">A semantic model of the document <paramref name="unit"/> came from.</param>
+    /// <param name="position">Where the namespaces' members are used, in that document.</param>
+    /// <param name="namespaces">The namespaces to import.</param>
+    public static CompilationUnitSyntax EnsureUsings(CompilationUnitSyntax unit, SemanticModel model, int position, IEnumerable<string> namespaces)
     {
-        var imported = new HashSet<string>(System.StringComparer.Ordinal);
-        foreach (var tree in compilation.SyntaxTrees)
-        {
-            if (tree.GetRoot() is CompilationUnitSyntax other)
-            {
-                foreach (var directive in other.Usings.Where(u => u.GlobalKeyword != default && u.Alias is null && u.StaticKeyword == default))
-                {
-                    imported.Add(NameOf(directive));
-                }
-            }
-        }
-
-        foreach (var directive in unit.DescendantNodes(node => node is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax).OfType<UsingDirectiveSyntax>())
-        {
-            if (directive.Alias is null && directive.StaticKeyword == default)
-            {
-                imported.Add(NameOf(directive));
-            }
-        }
+        var imported = new HashSet<string>(
+            model.GetImportScopes(position)
+                .SelectMany(scope => scope.Imports)
+                .Select(import => import.NamespaceOrType)
+                .OfType<INamespaceSymbol>()
+                .Select(ns => ns.ToDisplayString()),
+            System.StringComparer.Ordinal);
 
         var missing = namespaces.Distinct().Where(ns => ns.Length > 0 && !imported.Contains(ns)).OrderBy(ns => ns, System.StringComparer.Ordinal).ToList();
         if (missing.Count == 0)
@@ -193,11 +233,5 @@ internal static class ModuleEditing
         return text.Lines.Count > 1
             ? text.ToString(Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(text.Lines[0].End, text.Lines[0].EndIncludingLineBreak))
             : System.Environment.NewLine;
-    }
-
-    private static string NameOf(UsingDirectiveSyntax directive)
-    {
-        var name = directive.Name?.ToString() ?? string.Empty;
-        return name.StartsWith("global::", System.StringComparison.Ordinal) ? name.Substring("global::".Length) : name;
     }
 }

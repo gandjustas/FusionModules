@@ -1,12 +1,12 @@
 namespace FusionModules.Analyzers.Tests;
 
 /// <summary>
-/// MOD0011: a host that creates its builder and never validates the modules it was asked for.
+/// MOD0012: a host that creates its builder and never validates the modules it was asked for.
 /// </summary>
 public class HostValidationAnalyzerTests
 {
     private static Task VerifyAsync(string source) =>
-        AnalyzerTest.VerifyHostReferencingModuleAsync<HostValidationAnalyzer>(projectKind: null, AnalyzerTest.GeneratedForAHost, source);
+        AnalyzerTest.VerifyHostReferencingModuleAsync<HostValidationAnalyzer>("Host", AnalyzerTest.GeneratedForAHost, source);
 
     [Test]
     public Task BuilderThatIsNeverValidated_IsReported() =>
@@ -17,7 +17,7 @@ public class HostValidationAnalyzerTests
             {
                 static void Main(string[] args)
                 {
-                    var builder = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                    var builder = {|MOD0012:WebApplication.CreateBuilder(args)|};
                 }
             }
             """);
@@ -80,7 +80,7 @@ public class HostValidationAnalyzerTests
                 static void Main(string[] args)
                 {
                     var validated = WebApplication.CreateBuilder(args);
-                    var forgotten = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                    var forgotten = {|MOD0012:WebApplication.CreateBuilder(args)|};
                     validated.ValidateModules();
                 }
             }
@@ -112,7 +112,7 @@ public class HostValidationAnalyzerTests
                 static void Main(string[] args)
                 {
                     var host = Host.CreateDefaultBuilder(args)
-                        .{|MOD0011:ConfigureWebHostDefaults|}(web => { });
+                        .{|MOD0012:ConfigureWebHostDefaults|}(web => { });
                 }
             }
             """);
@@ -126,7 +126,7 @@ public class HostValidationAnalyzerTests
             {
                 static void Main(string[] args)
                 {
-                    Host.CreateDefaultBuilder(args).{|MOD0011:ConfigureWebHost|}(web => { });
+                    Host.CreateDefaultBuilder(args).{|MOD0012:ConfigureWebHost|}(web => { });
                 }
             }
             """);
@@ -242,6 +242,32 @@ public class HostValidationAnalyzerTests
                 static void Main(string[] args)
                 {
                     var builder = WebApplication.CreateBuilder(args);
+                }
+            }
+            """);
+
+    [Test]
+    public Task BuilderValidatedAfterAFluentExtension_IsFine() =>
+        // AddServiceDefaults and its kind hand back the builder they were given.
+        VerifyAsync("""
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.Extensions.Hosting;
+
+            static class ServiceDefaults
+            {
+                public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
+                    where TBuilder : IHostApplicationBuilder => builder;
+
+                public static IHostApplicationBuilder AddCaching(this IHostApplicationBuilder builder) => builder;
+            }
+
+            class Program
+            {
+                static void Main(string[] args)
+                {
+                    var builder = WebApplication.CreateBuilder(args).AddServiceDefaults().ValidateModules();
+                    var other = WebApplication.CreateBuilder(args);
+                    other.AddCaching().ValidateModules();
                 }
             }
             """);

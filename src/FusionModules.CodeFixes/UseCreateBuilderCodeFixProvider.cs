@@ -44,10 +44,10 @@ public sealed class UseCreateBuilderCodeFixProvider : CodeFixProvider
 
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    $"Use {SlimBuilderAnalyzer.DefaultBuilderMethodName}",
+                    $"Use {ModuleFacts.CreateBuilderMethodName}",
                     _ => Task.FromResult(context.Document.WithSyntaxRoot(root.ReplaceToken(
                         name.Identifier,
-                        SyntaxFactory.Identifier(SlimBuilderAnalyzer.DefaultBuilderMethodName).WithTriviaFrom(name.Identifier)))),
+                        SyntaxFactory.Identifier(ModuleFacts.CreateBuilderMethodName).WithTriviaFrom(name.Identifier)))),
                     equivalenceKey: nameof(UseCreateBuilderCodeFixProvider)),
                 diagnostic);
         }

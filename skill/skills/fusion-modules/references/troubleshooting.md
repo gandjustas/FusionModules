@@ -116,7 +116,7 @@ The assembly loaded and is one of the host's modules, but ASP.NET Core never ran
 ## Nothing at all happens and no module loads
 
 The host does not call `ValidateModules()`, so nothing compares the variable with its modules —
-MOD0011 says so at build time, and its code fix adds the call. Add it right after the builder is
+MOD0012 says so at build time, and its code fix adds the call. Add it right after the builder is
 created; until then, look at the log for ASP.NET Core's own
 critical message about the first name it could not load.
 
@@ -146,7 +146,8 @@ The usual suspects, in order:
 | MOD0008 | A module calls `IWebHostBuilder.Configure` or `UseStartup`, which replace the pipeline rather than add to it. Override `ModuleBase.Configure`. |
 | MOD0009 | `ModuleBase` already registers the module as an `IStartupFilter`. Registering it again runs `Configure` twice. The fix removes the registration. |
 | MOD0010 | A hub's client interface is not visible outside the module, so SignalR's generated proxy cannot implement it. Grant the proxy's assembly access to internals, or make the interface public. |
-| MOD0011 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
-| MOD0012 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
+| MOD0011 | MVC never finds the module's controllers, pages or views: no `AddApplicationPart` for its assembly, or internal controllers without `AllowInternalControllers()`. The fix writes the call. |
+| MOD0012 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
+| MOD0013 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.

@@ -37,7 +37,8 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
 
         // A test that arranges data through a module's entity types is doing the right thing.
         // MSBuild classifies the project; this only reads the answer.
-        if (ModuleFacts.GetProjectKind(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions) == ProjectKind.Test)
+        var kind = ModuleFacts.GetProjectKind(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions);
+        if (kind == ProjectKind.Test)
         {
             return;
         }
@@ -49,7 +50,7 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (compilation.GetEntryPoint(context.CancellationToken) is not null)
+        if (ModuleFacts.IsHost(kind, compilation, context.CancellationToken))
         {
             CheckUsedReferences(context, hostingStartupAttribute, moduleBase, isHost: true);
             CheckApplicationParts(context, hostingStartupAttribute, moduleBase);
@@ -70,6 +71,14 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         // the build and copy the module to the output directory is exactly what we want people to
         // have. The used references are the assembly references the compiler writes into the output.
         var compilation = context.Compilation;
+
+        // Used references are a subset of references, and asking for them binds every method body:
+        // a project that references no module has nothing to find and does not pay for looking.
+        if (!ModuleFacts.GetReferencedModules(compilation, hostingStartupAttribute, moduleBase).Any())
+        {
+            return;
+        }
+
         var cheap = compilation.GetUsedAssemblyReferences(context.CancellationToken);
         if (FindModules(compilation, cheap, hostingStartupAttribute, moduleBase).Length == 0)
         {
@@ -92,19 +101,18 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var usedLibraries = used
+        var usedAssemblies = used
             .Select(compilation.GetAssemblyOrModuleSymbol)
             .OfType<IAssemblySymbol>()
-            .Where(assembly => !ModuleFacts.IsModuleAssembly(assembly, hostingStartupAttribute, moduleBase))
             .ToArray();
 
         foreach (var module in violations)
         {
             // The compiler counts every assembly a used assembly references as used too. A module
-            // that reaches this project only behind a library is that library's MOD0005, reported
-            // in its own build where the fix is; saying it here as well would send people to the
-            // wrong project.
-            if (usedLibraries.Any(library => References(library, module)))
+            // that reaches this project behind another assembly — a library, whose own build
+            // reports it as MOD0005, or a module that composes it — is not a line in this project:
+            // the assembly in front is reported, and fixing that removes this one too.
+            if (usedAssemblies.Any(carrier => !SymbolEqualityComparer.Default.Equals(carrier, module) && References(carrier, module)))
             {
                 continue;
             }
@@ -127,40 +135,60 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
             .ToArray();
 
     /// <summary>
-    /// Used references as the compiler computes them when it tracks imports — what an ordinary
-    /// build reports only when it also writes an XML documentation file.
+    /// Used references as the compiler computes them when it tracks imports and ignores
+    /// documentation comments: the assemblies the code itself uses.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Without <c>/doc</c> the parse options carry <c>DocumentationMode.None</c>, and then the
     /// compiler cannot tell a used import from an unused one: it counts every assembly that so much
     /// as contributes a type — internal and file-local included — to a namespace the project
     /// imports. A module with one class in <c>Microsoft.Extensions.Hosting</c>, or one built with an
     /// interceptor generator (a file-local attribute in <c>System.Runtime.CompilerServices</c>), is
     /// then "used" by every host that imports those namespaces. <c>DocumentationMode.Parse</c> is the
-    /// least that switches import tracking on. Only the options change, so a <c>cref</c> to a
-    /// module type is not counted: a comment does not put a module in a deployment. This binds the
-    /// project a second time, and runs only when the cheap answer has already named a module.
+    /// least that switches import tracking on.
+    /// </para>
+    /// <para>
+    /// With documentation comments parsed — in the IDE always, and in a build that writes an XML
+    /// documentation file — a <c>cref</c> to a module's type counts as use. A comment does not put a
+    /// module in a deployment, so parsed documentation comments are taken out first.
+    /// </para>
+    /// <para>
+    /// This binds the project a second time, and runs only when the cheap answer has already named
+    /// a module.
+    /// </para>
     /// </remarks>
     private static ImmutableArray<MetadataReference> GetPreciselyUsedReferences(
         Compilation compilation,
         ImmutableArray<MetadataReference> cheap,
         CancellationToken cancellationToken)
     {
-        if (compilation is not CSharpCompilation csharp ||
-            csharp.SyntaxTrees.All(tree => tree.Options.DocumentationMode != DocumentationMode.None))
+        if (compilation is not CSharpCompilation csharp)
         {
             return cheap;
         }
 
-        var trees = csharp.SyntaxTrees
-            .Select(tree => tree.Options.DocumentationMode != DocumentationMode.None
-                ? tree
-                : tree.WithRootAndOptions(
-                    tree.GetRoot(cancellationToken),
-                    ((CSharpParseOptions)tree.Options).WithDocumentationMode(DocumentationMode.Parse)))
-            .ToArray();
+        var changed = false;
+        var trees = csharp.SyntaxTrees.Select(tree =>
+        {
+            var root = tree.GetRoot(cancellationToken);
+            var comments = root.DescendantTrivia().Where(trivia => trivia.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) ||
+                                                                   trivia.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia)).ToArray();
+            var options = (CSharpParseOptions)tree.Options;
+            if (comments.Length == 0 && options.DocumentationMode != DocumentationMode.None)
+            {
+                return tree;
+            }
 
-        return csharp.RemoveAllSyntaxTrees().AddSyntaxTrees(trees).GetUsedAssemblyReferences(cancellationToken);
+            changed = true;
+            return tree.WithRootAndOptions(
+                comments.Length == 0 ? root : root.ReplaceTrivia(comments, (_, _) => default),
+                options.DocumentationMode == DocumentationMode.None ? options.WithDocumentationMode(DocumentationMode.Parse) : options);
+        }).ToArray();
+
+        return changed
+            ? csharp.RemoveAllSyntaxTrees().AddSyntaxTrees(trees).GetUsedAssemblyReferences(cancellationToken)
+            : cheap;
     }
 
     private static bool References(IAssemblySymbol assembly, IAssemblySymbol module) =>
@@ -169,7 +197,11 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
     private static bool HasErrors(CompilationAnalysisContext context) =>
         context.Compilation
             .GetDiagnostics(context.CancellationToken)
-            .Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id.StartsWith("CS", StringComparison.Ordinal));
+            // A warning promoted by TreatWarningsAsErrors does not stop the compiler from working out
+            // which references are used, and must not silence the rule.
+            .Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error &&
+                               !diagnostic.IsWarningAsError &&
+                               diagnostic.Id.StartsWith("CS", StringComparison.Ordinal));
 
     private static void CheckApplicationParts(
         CompilationAnalysisContext context,

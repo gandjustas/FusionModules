@@ -26,9 +26,9 @@ internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Activation order matters: a composing module's configuration has to be applied after
-        // the configurations of the entities it joins. GetLoadedModules preserves the order of
-        // HOSTINGSTARTUPASSEMBLIES, so "the composing module goes last" is a rule you can state.
+        // Order matters: a composing module's configuration has to be applied after the
+        // configurations of the entities it joins. GetLoadedModules returns each module after the
+        // modules its assembly references, and by name otherwise, so it is, in every topology.
         //
         // AppDomain.CurrentDomain.GetAssemblies() filtered by the attribute does do the same job
         // while one host owns the process — and stops the moment a second one shares it. In an

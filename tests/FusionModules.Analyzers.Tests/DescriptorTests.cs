@@ -77,10 +77,11 @@ public class DescriptorTests
     [MethodDataSource(nameof(AllDescriptors))]
     public async Task Descriptor_IsListedWhereRulesAreListed(DiagnosticDescriptor descriptor)
     {
-        // Two hand-maintained lists. The release file is what the Roslyn analyzer RS2000 reads,
-        // and the README table is what a reader reads; both drift the same silent way.
-        var releases = await File.ReadAllTextAsync(
-            Path.Combine(RepositoryRoot, "src", "FusionModules.Analyzers", "AnalyzerReleases.Unshipped.md"));
+        // The release files are what the Roslyn analyzer RS2000 reads — a rule is in a shipped release or
+        // in the unshipped one — and the README table is what a reader reads; both drift the same silent way.
+        var analyzers = Path.Combine(RepositoryRoot, "src", "FusionModules.Analyzers");
+        var releases = await File.ReadAllTextAsync(Path.Combine(analyzers, "AnalyzerReleases.Shipped.md")) +
+            await File.ReadAllTextAsync(Path.Combine(analyzers, "AnalyzerReleases.Unshipped.md"));
         var readme = await File.ReadAllTextAsync(Path.Combine(RepositoryRoot, "README.md"));
 
         await Assert.That(releases).Contains(descriptor.Id);
@@ -100,6 +101,28 @@ public class DescriptorTests
         var implemented = AllDescriptors().Select(descriptor => descriptor().Id).Order();
 
         await Assert.That(documented).IsEquivalentTo(implemented);
+    }
+
+    [Test]
+    public async Task ARulePageSaysWhetherTheRuleHasACodeFix()
+    {
+        // Five pages of rules with a fix once said nothing about it; the header is how a reader
+        // knows the light bulb will help. Found, not listed, like the analyzers above.
+        var fixable = typeof(FusionModules.CodeFixes.MakeTypeInternalCodeFixProvider).Assembly
+            .GetTypes()
+            .Where(type => !type.IsAbstract && typeof(Microsoft.CodeAnalysis.CodeFixes.CodeFixProvider).IsAssignableFrom(type))
+            .SelectMany(type => ((Microsoft.CodeAnalysis.CodeFixes.CodeFixProvider)Activator.CreateInstance(type)!).FixableDiagnosticIds)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var wrong = Directory
+            .EnumerateFiles(Path.Combine(RepositoryRoot, "docs", "rules"), "MOD*.md")
+            .Where(page => File.ReadAllText(page).Contains("**Code fix:** yes", StringComparison.Ordinal) !=
+                           fixable.Contains(Path.GetFileNameWithoutExtension(page)))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Order()
+            .ToList();
+
+        await Assert.That(wrong).IsEmpty();
     }
 
     [Test]

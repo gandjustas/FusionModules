@@ -57,7 +57,8 @@ Each module writes itself into configuration as it activates:
 FusionModules:Modules:<AssemblyName> = <assembly-qualified name of the module type>
 ```
 
-`ModuleBase.GetLoadedModules(IConfiguration)` reads it back, in activation order. This is how
+`ModuleBase.GetLoadedModules(IConfiguration)` reads it back: the host's own assembly first, then
+each module after the modules it references, and by name otherwise. This is how
 anything composed from modules — an EF Core model, a health check, a diagnostic endpoint — finds
 out what is live, without the host having to know that modules exist.
 

@@ -47,7 +47,7 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
         var declaredStartups = ModuleFacts.GetHostingStartupTypes(compilation.Assembly, hostingStartupAttribute).ToArray();
         var moduleBase = ModuleFacts.GetModuleBaseType(compilation);
 
-        // MOD0002 / MOD0012 — check what the assembly declares.
+        // MOD0002 / MOD0013 — check what the assembly declares.
         if (declaredStartups.Length > 0)
         {
             RegisterHostingStartupAttributeCheck(context, hostingStartupAttribute, moduleBase);
@@ -248,7 +248,6 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
     /// </summary>
     private sealed class TypeExemptions(Compilation compilation, DeclaredTypes declared)
     {
-        private readonly INamedTypeSymbol? _controllerBase = compilation.GetTypeByMetadataName(ModuleFacts.ControllerBaseMetadataName);
         private readonly INamedTypeSymbol? _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
         private readonly INamedTypeSymbol? _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
         private readonly INamedTypeSymbol? _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
@@ -260,7 +259,6 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             // may require to be public, and two rules must not argue over the same line.
             declared.HubClients.ContainsKey(type) ||
             (_hub is not null && ModuleFacts.InheritsFrom(type, _hub)) ||
-            (_controllerBase is not null && ModuleFacts.InheritsFrom(type, _controllerBase)) ||
             (_pageModel is not null && ModuleFacts.InheritsFrom(type, _pageModel)) ||
             (_tagHelper is not null && ModuleFacts.Implements(type, _tagHelper)) ||
             ModuleFacts.HasAttribute(type, _viewComponentAttribute) ||

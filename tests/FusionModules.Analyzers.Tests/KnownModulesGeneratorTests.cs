@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using static FusionModules.Analyzers.Tests.GeneratorTest;
 
 namespace FusionModules.Analyzers.Tests;
@@ -27,27 +28,17 @@ public class KnownModulesGeneratorTests
     }
 
     [Test]
-    public async Task PutsAComposingModuleAfterTheModulesItJoins()
+    public async Task ListsAComposingModuleByNameToo()
     {
-        // BillingModule sorts first by name and must not come first: it joins the two entity
-        // modules, so its entity configurations have to be applied after theirs.
+        // A set, not an order: the reference assemblies the compiler sees here lack the references
+        // only a method body makes, so the order configurations are applied in comes from
+        // GetLoadedModules, at runtime.
         var all = await AllAsync(
             new Module("Orders.Entities"),
             new Module("Customers.Entities"),
             new Module("BillingModule", "Orders.Entities", "Customers.Entities"));
 
-        await Assert.That(all).IsEqualTo("Customers.Entities;Orders.Entities;BillingModule");
-    }
-
-    [Test]
-    public async Task OrdersAChainOfDependencies()
-    {
-        var all = await AllAsync(
-            new Module("A"),
-            new Module("B", "A"),
-            new Module("C", "B"));
-
-        await Assert.That(all).IsEqualTo("A;B;C");
+        await Assert.That(all).IsEqualTo("BillingModule;Customers.Entities;Orders.Entities");
     }
 
     [Test]
@@ -131,5 +122,34 @@ public class KnownModulesGeneratorTests
 
         await Assert.That(generated).Contains("public static TBuilder ValidateModules<TBuilder>(this TBuilder builder)");
         await Assert.That(generated).Contains("global::FusionModules.KnownModules.Names");
+    }
+
+    [Test]
+    public async Task IsNotGeneratedForATestProjectThatSeesTheHostsOwn()
+    {
+        // A host that grants its tests InternalsVisibleTo hands them its list and check; a second
+        // copy of each in the tests would be CS0436 wherever they are used.
+        var references = await AnalyzerTest.BaseReferences.Value;
+        var framework = await AnalyzerTest.Framework.Value;
+        var host = AnalyzerTest.Compile(
+            "Host",
+            [AnalyzerTest.GeneratedForAHost, """[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Tests")]"""],
+            references.Add(framework));
+
+        var tests = CSharpCompilation.Create(
+            "Tests",
+            [CSharpSyntaxTree.ParseText("class Fixture { object All => FusionModules.KnownModules.Names; }")],
+            references.Add(framework).Add(host),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var driver = CSharpGeneratorDriver
+            .Create([new KnownModulesGenerator().AsSourceGenerator()], optionsProvider: new Options(new Dictionary<string, string>
+            {
+                ["build_property.FusionModulesProjectKind"] = "Test",
+            }))
+            .RunGeneratorsAndUpdateCompilation(tests, out var output, out _);
+
+        await Assert.That(driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources)).IsEmpty();
+        await Assert.That(output.GetDiagnostics().Where(d => d.Id == "CS0436")).IsEmpty();
     }
 }

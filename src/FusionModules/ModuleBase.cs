@@ -47,6 +47,11 @@ namespace FusionModules;
 /// </example>
 public abstract class ModuleBase : IHostingStartup, IStartupFilter
 {
+    /// <summary>Creates the module. ASP.NET Core does, from the type the assembly's <c>HostingStartup</c> names.</summary>
+    protected ModuleBase()
+    {
+    }
+
     /// <summary>
     /// Configuration section holding the registry of activated modules:
     /// <c>FusionModules:Modules:&lt;AssemblyName&gt;</c> = assembly-qualified name of the module type.
@@ -69,13 +74,13 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// <param name="services">The service collection to add to.</param>
     /// <remarks>
     /// Still called, after the other overload, so a module written for 0.1 keeps working. Two
-    /// overloads made modules split their registrations between them — mgms's thirteen modules of
-    /// fifteen put the database in one and everything else in the other — and every explanation of
-    /// the module had to say which runs first.
+    /// overloads made modules split their registrations between them — the database in one,
+    /// everything else in the other — and every explanation of the module had to say which runs
+    /// first.
     /// </remarks>
     [Obsolete("Override ConfigureServices(IHostApplicationBuilder) instead: builder.Services, builder.Configuration and " +
               "builder.Environment are what this overload's parameters were. This overload still runs, after that one; " +
-              "the code fix for this warning moves the body across.")]
+              "the code fix for this warning moves the body across where it can do so safely.")]
     protected virtual void ConfigureServices(WebHostBuilderContext context, IServiceCollection services)
     {
     }
@@ -139,11 +144,11 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     }
 
     /// <summary>
-    /// Returns the assemblies of the modules activated in this host, in activation order
-    /// (the order they appear in <c>HOSTINGSTARTUPASSEMBLIES</c>, with the entry assembly first).
+    /// Returns the assemblies of the modules activated in this host: the host's own assembly first,
+    /// when it is a module, then each module after the modules it references, and otherwise by name.
     /// </summary>
     /// <param name="configuration">Configuration of the running host.</param>
-    /// <returns>The activated module assemblies, in activation order.</returns>
+    /// <returns>The activated module assemblies, the host's first, then dependencies first.</returns>
     /// <remarks>
     /// <para>
     /// Prefer this over <see cref="AppDomain.GetAssemblies()"/> when composing anything from
@@ -156,8 +161,13 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
     /// nothing throws — the model is simply composed from the wrong set.
     /// </para>
     /// <para>
-    /// Activation order is a contract you can rely on: a module that composes two others — adding
-    /// a relationship between their entities, say — must be listed last.
+    /// The order is a contract you can rely on: a module comes after every module its assembly
+    /// references. A module that composes two others — adding a relationship between their
+    /// entities, say — uses their types, so it comes after them, and its EF Core configuration is
+    /// applied after theirs, wherever <c>HOSTINGSTARTUPASSEMBLIES</c> lists it. Modules that do not
+    /// depend on each other come by name, so one set of modules has one order in every topology,
+    /// and at design time. The host's own assembly — a module ASP.NET Core activates without being
+    /// named in the variable, and before the ones that are — comes first, as it is activated.
     /// </para>
     /// </remarks>
     public static IReadOnlyList<Assembly> GetLoadedModules(IConfiguration configuration)
@@ -165,15 +175,15 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
         ArgumentNullException.ThrowIfNull(configuration);
 
         // Asked for on every DbContext a request creates, and resolving each type from its
-        // assembly-qualified name is most of the cost. The answer depends on the registry and the
-        // variable alone, so it is kept per registry: the registry as it stands is the key, and one
-        // that is still being written by activating modules is a different key, never a stale answer.
+        // assembly-qualified name is most of the cost. The answer depends on the registry alone, so
+        // it is kept per registry: the registry as it stands is the key, and one that is still being
+        // written by activating modules is a different key, never a stale answer.
         var entries = configuration.GetSection(ConfigurationSection)
             .GetChildren()
             .Select(entry => (entry.Key, entry.Value))
             .ToList();
         var requested = configuration[WebHostDefaults.HostingStartupAssembliesKey] ?? string.Empty;
-        var key = requested + "\n" + string.Join("\n", entries.Select(entry => entry.Key + "=" + entry.Value));
+        var key = requested + "|" + string.Join(";", entries.Select(entry => entry.Key + "=" + entry.Value));
 
         return LoadedModulesByRegistry.GetOrAdd(key, _ => Compose(entries, requested));
     }
@@ -182,18 +192,60 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
     private static IReadOnlyList<Assembly> Compose(List<(string Key, string? Value)> entries, string requested)
     {
-        var activationOrder = GetActivationOrder(requested);
+        var named = new HashSet<string>(
+            requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
+
+        var resolved = entries
+            .Select(entry => (entry.Key, Type: ResolveModuleType(entry.Value)))
+            .Where(entry => entry.Type is not null)
+            .Select(entry => (entry.Key, entry.Type!.Assembly))
+            .OrderBy(entry => entry.Assembly.GetName().Name, StringComparer.Ordinal)
+            .ToArray();
+
+        // A module in the registry that the variable does not name is the host's own assembly:
+        // ASP.NET Core activates it first, without being asked, and it comes first here too.
+        var hosts = resolved.Where(entry => !named.Contains(entry.Key)).Select(entry => entry.Assembly).Distinct().ToArray();
+        var modules = resolved.Select(entry => entry.Assembly).Distinct().ToArray();
+
+        var index = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+        foreach (var module in modules)
+        {
+            index.TryAdd(module.GetName().Name ?? string.Empty, module);
+        }
+
+        // Each module after the modules its assembly references — the full assembly, as loaded, so
+        // a reference that only a method body makes counts — and otherwise by name. Assembly
+        // references cannot form a cycle, so marking a module on entry is enough.
+        var placed = new HashSet<Assembly>(hosts);
+        var ordered = new List<Assembly>(hosts);
+
+        void Place(Assembly module)
+        {
+            if (!placed.Add(module))
+            {
+                return;
+            }
+
+            foreach (var dependency in module.GetReferencedAssemblies()
+                         .Select(reference => reference.Name is { } name && index.TryGetValue(name, out var found) ? found : null)
+                         .OfType<Assembly>()
+                         .OrderBy(dependency => dependency.GetName().Name, StringComparer.Ordinal))
+            {
+                Place(dependency);
+            }
+
+            ordered.Add(module);
+        }
+
+        foreach (var module in modules)
+        {
+            Place(module);
+        }
 
         // Read-only, not a bare array: the answer is shared, and a caller that cast it back to an
         // array could otherwise reorder every later caller's modules.
-        return Array.AsReadOnly(entries
-            .Select(entry => (entry.Key, Type: ResolveModuleType(entry.Value)))
-            .Where(module => module.Type is not null)
-            // Configuration children come back sorted by key, so impose the real order here.
-            // The entry assembly is activated first and is not named in the variable: rank -1.
-            .OrderBy(module => activationOrder.TryGetValue(module.Key, out var rank) ? rank : -1)
-            .Select(module => module.Type!.Assembly)
-            .ToArray());
+        return Array.AsReadOnly(ordered.ToArray());
     }
 
     /// <summary>
@@ -224,7 +276,7 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
 
         var entries = new List<KeyValuePair<string, string?>>(moduleAssemblyNames.Length + 1)
         {
-            // So that activation order is available to GetLoadedModules, exactly as at runtime.
+            // So that the configuration looks as it does at runtime.
             new(WebHostDefaults.HostingStartupAssembliesKey, string.Join(';', moduleAssemblyNames)),
         };
 
@@ -318,19 +370,6 @@ public abstract class ModuleBase : IHostingStartup, IStartupFilter
                $"HOSTINGSTARTUPASSEMBLIES = '{requested}'" + Environment.NewLine +
                $"Add {names} to HOSTINGSTARTUPASSEMBLIES, " +
                "or stop using types from that module so the reference goes away.";
-    }
-
-    private static Dictionary<string, int> GetActivationOrder(string requested)
-    {
-        var names = requested.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        var order = new Dictionary<string, int>(names.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < names.Length; i++)
-        {
-            order.TryAdd(names[i], i);
-        }
-
-        return order;
     }
 
     /// <summary>

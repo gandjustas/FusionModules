@@ -119,6 +119,43 @@ internal static class AnalyzerTest
             public sealed class ViewComponentAttribute : System.Attribute { }
         }
 
+        namespace Microsoft.AspNetCore.Mvc
+        {
+            [System.AttributeUsage(System.AttributeTargets.Class)]
+            public sealed class NonControllerAttribute : System.Attribute { }
+        }
+
+        namespace Microsoft.AspNetCore.Razor.Hosting
+        {
+            [System.AttributeUsage(System.AttributeTargets.Assembly, AllowMultiple = true)]
+            public sealed class RazorCompiledItemAttribute : System.Attribute
+            {
+                public RazorCompiledItemAttribute(System.Type type, string kind, string identifier) { }
+            }
+        }
+
+        namespace Microsoft.Extensions.DependencyInjection
+        {
+            public interface IMvcBuilder
+            {
+                IServiceCollection Services { get; }
+            }
+
+            public static class MvcServiceCollectionExtensions
+            {
+                public static IMvcBuilder AddControllers(this IServiceCollection services) => null;
+                public static IMvcBuilder AddControllersWithViews(this IServiceCollection services) => null;
+                public static IMvcBuilder AddRazorPages(this IServiceCollection services) => null;
+            }
+
+            public static class MvcCoreMvcBuilderExtensions
+            {
+                public static IMvcBuilder AddApplicationPart(this IMvcBuilder builder, System.Reflection.Assembly assembly) => builder;
+                public static IMvcBuilder AddJsonOptions(this IMvcBuilder builder, System.Action<object> configure) => builder;
+                public static IMvcBuilder ConfigureApplicationPartManager(this IMvcBuilder builder, System.Action<object> configure) => builder;
+            }
+        }
+
         namespace Microsoft.AspNetCore.Mvc.RazorPages
         {
             public abstract class PageModel { }
@@ -261,6 +298,11 @@ internal static class AnalyzerTest
 
                 System.Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Microsoft.AspNetCore.Hosting.IStartupFilter.Configure(
                     System.Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => next;
+            }
+
+            public static class ModuleDiscovery
+            {
+                public static Microsoft.Extensions.DependencyInjection.IMvcBuilder AllowInternalControllers(this Microsoft.Extensions.DependencyInjection.IMvcBuilder builder) => builder;
             }
         }
         """;
@@ -414,6 +456,12 @@ internal static class AnalyzerTest
     {
         var test = await BuildAsync<TAnalyzer>(withModuleBase: true, sources);
         test.TestState.AdditionalReferences.Add(await ModuleReference.Value);
+        if (sources.Any(source => source.Contains("static void Main", StringComparison.Ordinal)))
+        {
+            // A program, so that a project kind left to the entry point has one to find.
+            test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        }
+
         if (projectKind is not null)
         {
             test.TestState.AnalyzerConfigFiles.Add(("/.globalconfig", $"""
@@ -441,6 +489,24 @@ internal static class AnalyzerTest
         test.TestState.AdditionalReferences.Add(library);
         test.TestState.OutputKind = OutputKind.ConsoleApplication;
         test.TestState.ExpectedDiagnostics.AddRange(expected);
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Verifies a host built with every warning as an error, as under <c>TreatWarningsAsErrors</c>.
+    /// Compiler diagnostics are not compared: the point is what the analyzer reports beside them.
+    /// </summary>
+    public static async Task VerifyHostWithWarningsAsErrorsAsync<TAnalyzer>(string source, params DiagnosticResult[] expected)
+        where TAnalyzer : DiagnosticAnalyzer, new()
+    {
+        var test = await BuildAsync<TAnalyzer>(withModuleBase: true, [source]);
+        test.TestState.AdditionalReferences.Add(await ModuleReference.Value);
+        test.TestState.OutputKind = OutputKind.ConsoleApplication;
+        test.TestState.ExpectedDiagnostics.AddRange(expected);
+        test.CompilerDiagnostics = CompilerDiagnostics.None;
+        test.SolutionTransforms.Add((solution, projectId) => solution.WithProjectCompilationOptions(
+            projectId, solution.GetProject(projectId)!.CompilationOptions!.WithGeneralDiagnosticOption(ReportDiagnostic.Error)));
 
         await test.RunAsync(CancellationToken.None);
     }

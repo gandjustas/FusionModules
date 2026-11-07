@@ -217,7 +217,7 @@ public class CodeFixTests
             {
                 static void Main(string[] args)
                 {
-                    var builder = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                    var builder = {|MOD0012:WebApplication.CreateBuilder(args)|};
                 }
             }
             """,
@@ -246,7 +246,7 @@ public class CodeFixTests
                 static void Main(string[] args)
                 {
                     var host = Host.CreateDefaultBuilder(args)
-                        .{|MOD0011:ConfigureWebHostDefaults|}(web => { });
+                        .{|MOD0012:ConfigureWebHostDefaults|}(web => { });
                 }
             }
             """,
@@ -329,7 +329,7 @@ public class CodeFixTests
             {
                 static void Main(string[] args)
                 {
-                    var builder = {|MOD0011:WebApplication.CreateBuilder(args)|};
+                    var builder = {|MOD0012:WebApplication.CreateBuilder(args)|};
                 }
             }
             """,
@@ -391,12 +391,15 @@ public class CodeFixTests
             CodeActionIndex = codeActionIndex,
         };
 
+        // The generated host code comes with a host.
+        projectKind ??= generated is null ? null : "Host";
+
         string[] shared = generated is null ? [AnalyzerTest.RegisteredModule] : [AnalyzerTest.RegisteredModule, generated];
         await AnalyzerTest.ArrangeAsync(test.TestState, withModuleBase: true, [.. shared, source]);
         await AnalyzerTest.ArrangeAsync(test.FixedState, withModuleBase: true, [.. shared, fixedSource]);
 
         // The generated host code comes with a host, and a host with modules references them.
-        if (generated is not null)
+        if (generated is not null || projectKind == "Host")
         {
             test.TestState.AdditionalReferences.Add(await AnalyzerTest.ModuleReference.Value);
             test.FixedState.AdditionalReferences.Add(await AnalyzerTest.ModuleReference.Value);

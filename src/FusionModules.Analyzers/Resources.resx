@@ -120,7 +120,7 @@
   </data>
 
   <data name="MOD0009_Title" xml:space="preserve">
-    <value>Redundant IStartupFilter registration</value>
+    <value>A module must not register itself as a startup filter</value>
   </data>
   <data name="MOD0009_Message" xml:space="preserve">
     <value>'{0}' already registers itself as an IStartupFilter</value>
@@ -130,12 +130,28 @@
   </data>
 
   <data name="MOD0011_Title" xml:space="preserve">
-    <value>The host does not validate its modules</value>
+    <value>MVC never discovers the module's controllers or pages</value>
   </data>
   <data name="MOD0011_Message" xml:space="preserve">
-    <value>The builder from '{0}' is never passed to ValidateModules, so a misspelled or missing module in HOSTINGSTARTUPASSEMBLIES starts a healthy-looking application that serves 404s</value>
+    <value>MVC never discovers {0}: {1}; every route they map answers 404</value>
   </data>
   <data name="MOD0011_Description" xml:space="preserve">
+    <value>The package stops the host from adding modules as MVC application parts (MOD0007), so each module adds its own assembly — which is also how its Razor pages and views are found — and a module's controllers are internal (MOD0001), which MVC skips unless the module calls AllowInternalControllers(). A module that does neither starts, passes its probe and answers 404. In ConfigureServices: builder.Services.AddControllers().AddApplicationPart(typeof(Module).Assembly).AllowInternalControllers().</value>
+  </data>
+  <data name="MOD0011_NoApplicationPart" xml:space="preserve">
+    <value>the module never adds its assembly as an application part (AddApplicationPart)</value>
+  </data>
+  <data name="MOD0011_InternalNotAllowed" xml:space="preserve">
+    <value>it is not public, and the module never calls AllowInternalControllers()</value>
+  </data>
+
+  <data name="MOD0012_Title" xml:space="preserve">
+    <value>The host does not validate its modules</value>
+  </data>
+  <data name="MOD0012_Message" xml:space="preserve">
+    <value>The builder from '{0}' is never passed to ValidateModules, so a misspelled or missing module in HOSTINGSTARTUPASSEMBLIES starts a healthy-looking application that serves 404s</value>
+  </data>
+  <data name="MOD0012_Description" xml:space="preserve">
     <value>ASP.NET Core logs a critical message for a hosting startup assembly it cannot load and starts anyway. ValidateModules, generated from the host's references, fails startup instead: every name in HOSTINGSTARTUPASSEMBLIES has to load, and each of the host's modules has to have run. Call it on the builder that loads the modules: WebApplication.CreateBuilder(args).ValidateModules(), or ValidateModules() on a generic host with ConfigureWebHostDefaults or ConfigureWebHost.</value>
   </data>
 
@@ -169,13 +185,13 @@
     <value>A library is loaded wherever something that uses it is loaded, and the compiler makes every assembly it uses a dependency of its users. A module used by a plain library ends up in every deployment of every host or module that uses the library. Move the shared type to a contracts assembly, or make the library a module.</value>
   </data>
 
-  <data name="MOD0012_Title" xml:space="preserve">
+  <data name="MOD0013_Title" xml:space="preserve">
     <value>The FusionModules package is not referenced</value>
   </data>
-  <data name="MOD0012_Message" xml:space="preserve">
+  <data name="MOD0013_Message" xml:space="preserve">
     <value>This assembly declares a HostingStartup but does not reference '{0}', so module rules cannot be verified</value>
   </data>
-  <data name="MOD0012_Description" xml:space="preserve">
+  <data name="MOD0013_Description" xml:space="preserve">
     <value>The runtime package is missing, so ModuleBase cannot be found and the rules that depend on it are inactive. The build is green because nothing is being checked.</value>
   </data>
 </root>

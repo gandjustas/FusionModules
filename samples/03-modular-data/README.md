@@ -17,9 +17,9 @@ It does that with a second `IEntityTypeConfiguration<Order>`, in its own assembl
 relationship that `Orders.Entities` deliberately does not declare. Load it and the foreign key
 exists; leave it out and the two tables are independent.
 
-Which means the composing module must come **last** in `HOSTINGSTARTUPASSEMBLIES` — EF Core
-applies configurations in activation order, and this one has to come after the configurations it
-extends.
+Its configuration has to be applied after the configurations it extends, and it is, wherever
+`HOSTINGSTARTUPASSEMBLIES` lists it: `GetLoadedModules` returns each module after the modules its
+assembly references, and this one uses their types.
 
 ## A controller that takes a DbContext
 
@@ -99,9 +99,8 @@ topology would give you a database whose shape depends on which replica reached 
 when it is unset, one topology's tables when it is not.
 [`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) names every module with
 `ModuleBase.CreateModuleRegistry`, so the migration is the same on every machine. The names come
-from `KnownModules`, which the package generates from this project's references — with
-`BillingModule` last, because it joins the other two and EF Core applies configurations in
-activation order.
+from `KnownModules`, which the package generates from this project's references; the order the
+configurations are applied in comes from `GetLoadedModules`, as at runtime.
 
 ## Running it
 

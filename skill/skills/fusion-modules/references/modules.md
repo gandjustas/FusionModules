@@ -146,14 +146,15 @@ modules disagreeing about these cannot both win.
 Build. MOD0001 will report every public type. Apply the "make internal" fix — Fix All handles a
 converted service in one pass.
 
-Exempt by default, because the framework finds them by reflection: controllers, page models, view
-components, tag helpers, SignalR hubs and the client interface of a `Hub<TClient>`, and entity
-types configured by an `IEntityTypeConfiguration<T>` in the same assembly.
+Exempt by default, because the framework finds them by reflection: page models, view components,
+tag helpers, SignalR hubs and the client interface of a `Hub<TClient>`, and entity types configured
+by an `IEntityTypeConfiguration<T>` in the same assembly.
 
-Controllers need a second sentence, because the exemption is true and not enough. A public class
-cannot have a public constructor taking an internal service, nor a public action returning an
-internal DTO — so a public controller drags its services and its models public with it, and then
-whatever those name. Keep the controller internal instead and let discovery see it:
+Controllers are not exempt. A public class cannot have a public constructor taking an internal
+service, nor a public action returning an internal DTO — so a public controller drags its services
+and its models public with it, and then whatever those name. MOD0001 reports it and its fix makes
+it internal; let discovery see it, or MOD0011 reports every route answering 404 (its fix writes
+this):
 
 ```csharp
 services.AddControllers()
