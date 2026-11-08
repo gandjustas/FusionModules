@@ -29,7 +29,7 @@ internal static partial class EndpointTable
 
         try
         {
-            return source.Endpoints;
+            return Current(source);
         }
         catch (Exception e)
         {

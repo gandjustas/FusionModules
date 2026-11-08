@@ -8,6 +8,20 @@ namespace FusionModules.Tool.Tests;
 public class ProbeLogicTests
 {
     [Test]
+    public async Task AnAnnotationIsKnownByTheTypeItDerivesFrom()
+    {
+        // Aspire's WithEnvironment(name, "value") adds an EnvironmentAnnotation, an
+        // EnvironmentCallbackAnnotation of its own type; read by its own name it was passed over, and
+        // the AppHost's ASPNETCORE_HOSTINGSTARTUPASSEMBLIES with it.
+        await Assert.That(probe::FusionModules.Tool.Probe.AppHostProbe.KnownAnnotation(typeof(AspireStandIns.EnvironmentAnnotation)))
+            .IsEqualTo("EnvironmentCallbackAnnotation");
+        await Assert.That(probe::FusionModules.Tool.Probe.AppHostProbe.KnownAnnotation(typeof(AspireStandIns.EnvironmentCallbackAnnotation)))
+            .IsEqualTo("EnvironmentCallbackAnnotation");
+        await Assert.That(probe::FusionModules.Tool.Probe.AppHostProbe.KnownAnnotation(typeof(AspireStandIns.ResourceIconAnnotation)))
+            .IsEqualTo("ResourceIconAnnotation");
+    }
+
+    [Test]
     public async Task APooledDbContext_HasTheLifetimeOfItsRegistration()
     {
         // AddDbContextPool's order: the pool, then the context itself.
@@ -135,4 +149,14 @@ internal static class ApplicationCode
 {
     // Application code calling into a library that throws: the framework stands in for the library.
     public static void Migrate() => _ = int.Parse("not a number", System.Globalization.CultureInfo.InvariantCulture);
+}
+
+// Named as Aspire names them: the probe reads annotations by type name, never by type.
+internal static class AspireStandIns
+{
+    internal class EnvironmentCallbackAnnotation;
+
+    internal sealed class EnvironmentAnnotation : EnvironmentCallbackAnnotation;
+
+    internal sealed class ResourceIconAnnotation;
 }

@@ -167,7 +167,7 @@ internal static class WebProbe
     {
         // Once the startup filters were run on a throwaway builder, the pipeline was not built: what
         // their UseEndpoints left in the routing options is theirs, not the pipeline's.
-        var pipeline = filterEndpoints is null ? services.GetService<EndpointDataSource>()?.Endpoints : null;
+        var pipeline = filterEndpoints is null && services.GetService<EndpointDataSource>() is { } container ? CurrentEndpoints(container) : null;
         if (pipeline is { Count: > 0 } || (pipelineOnly && pipeline is not null))
         {
             return ([.. pipeline], "pipeline");
@@ -185,6 +185,17 @@ internal static class WebProbe
         var source = (application is null ? "" : "application") + (filtered.Count == 0 ? "" : application is null ? "startup-filters" : "+startup-filters");
         return (endpoints, source);
     }
+
+    /// <summary>
+    /// The endpoints each source of the container's composite holds now. The composite builds its
+    /// list once, when first asked, and the application's own route source never says it changed: a
+    /// host that read the list while being built (DescribeApiVersions, for an OpenAPI UI) leaves it
+    /// without what its modules map later — the same reading FusionModules' startup report does.
+    /// </summary>
+    private static IReadOnlyList<Endpoint> CurrentEndpoints(EndpointDataSource source) =>
+        source is CompositeEndpointDataSource composite
+            ? composite.DataSources.SelectMany(CurrentEndpoints).ToList()
+            : source.Endpoints;
 
     // What the startup filters map — FusionModules' modules map in theirs — when the pipeline was
     // never built: computed once, on a throwaway builder.

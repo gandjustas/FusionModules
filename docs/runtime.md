@@ -196,7 +196,7 @@ method); and the same host, accepted content types and `Order`. Whose an endpoin
 serves it, written as the startup report writes it — `host` for the host's own: the
 controller's assembly for an action — wherever the action is declared, so actions inherited from a base
 controller in a shared library count for the module whose controller inherits them — the assembly a
-Razor Page is compiled into, the assembly that declares a minimal API's delegate, and the service or hub type of a gRPC method or a SignalR hub. So the
+Razor Page is compiled into, the assembly that declares a minimal API's delegate, the component type of a routable Razor component, and the service or hub type of a gRPC method or a SignalR hub. So the
 host's own endpoints take part too, and so do a library's (`MapOpenApi`'s document collides with a
 module's route all the same). Endpoints with none of these (health checks, a bare `RequestDelegate`)
 are left out, and so are two endpoints of one owner.
@@ -302,6 +302,13 @@ the application's name instead. Endpoints whose
 handler the framework or a library declares — health checks, `MapOpenApi`'s document, static assets
 — are no module's and not the host's, and are not counted. FusionModules.Testing's `Routes()` names
 owners the same way: `host` (`ModuleRoute.Host`) for the host's routes, `null` for these.
+
+The endpoints counted are those each endpoint source holds when the report is written, not the list
+the container's `EndpointDataSource` built the first time something asked for it. That list is built
+once, and the application's own route source never says it changed — the source a module's minimal
+APIs, gRPC services and hubs go into whenever the host maps an endpoint of its own. A host that reads
+the endpoints while it is being built (Asp.Versioning's `DescribeApiVersions()` does, for an OpenAPI
+UI in Development) would otherwise see its modules serve nothing, though requests reach them.
 
 Modules that serve nothing are named apart: `(none from Local, Orders.Entities)`, or `none from …`
 when no module serves anything. Most of them mean to — a transport, a module of entities, a module of

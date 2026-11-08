@@ -25,17 +25,20 @@ internal static partial class EndpointTable
     /// method either, and without this a module serving only pages read as serving nothing.
     /// </para>
     /// <para>
-    /// A gRPC method and a SignalR hub carry no handler method; they belong to their service and hub
-    /// type, which their metadata names. The metadata types are matched by name, so the package needs a
-    /// reference to neither: eShop's Basket, which serves only gRPC, otherwise read as serving nothing.
+    /// A gRPC method, a SignalR hub and a routable Razor component carry no handler method of their
+    /// own; they belong to their service, hub and component type, which their metadata names. The
+    /// metadata types are matched by name, so the package needs a reference to none of them: eShop's
+    /// Basket, which serves only gRPC, otherwise read as serving nothing, and a module's <c>@page</c>
+    /// components read as nobody's. They are looked at before a handler method: a component's endpoint
+    /// delegate is the framework's.
     /// </para>
     /// </remarks>
     internal static string? Owner(RouteEndpoint endpoint)
     {
         var type = endpoint.Metadata.GetMetadata<ControllerActionDescriptor>()?.ControllerTypeInfo
             ?? endpoint.Metadata.GetMetadata<CompiledPageActionDescriptor>()?.PageTypeInfo
-            ?? endpoint.Metadata.GetMetadata<MethodInfo>()?.DeclaringType
-            ?? endpoint.Metadata.Select(ServiceTypeOf).FirstOrDefault(found => found is not null);
+            ?? endpoint.Metadata.Select(ServiceTypeOf).FirstOrDefault(found => found is not null)
+            ?? endpoint.Metadata.GetMetadata<MethodInfo>()?.DeclaringType;
         return type?.Assembly.GetName().Name;
     }
 
@@ -84,13 +87,17 @@ internal static partial class EndpointTable
             ? application
             : HostLabel;
 
-    /// <summary>The service a gRPC method or the hub a SignalR endpoint belongs to; null for other metadata.</summary>
+    /// <summary>
+    /// The service a gRPC method, the hub a SignalR endpoint or the component a Razor component
+    /// endpoint belongs to; null for other metadata.
+    /// </summary>
     private static Type? ServiceTypeOf(object metadata)
     {
         var property = metadata.GetType().FullName switch
         {
             "Grpc.AspNetCore.Server.GrpcMethodMetadata" => "ServiceType",
             "Microsoft.AspNetCore.SignalR.HubMetadata" => "HubType",
+            "Microsoft.AspNetCore.Components.Endpoints.ComponentTypeMetadata" => "Type",
             _ => null,
         };
 

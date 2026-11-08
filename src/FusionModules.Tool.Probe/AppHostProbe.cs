@@ -113,7 +113,7 @@ internal static class AppHostProbe
                     description.ProjectPath ??= Get(annotation, "ProjectPath") as string;
                 }
 
-                switch (annotationType.Name)
+                switch (KnownAnnotation(annotationType))
                 {
                     case "ContainerImageAnnotation":
                         var registry = Get(annotation, "Registry") as string;
@@ -176,6 +176,33 @@ internal static class AppHostProbe
         description.Endpoints = endpoints.Count > 0 ? endpoints : null;
         description.Relationships = relationships.Count > 0 ? relationships : null;
         return description;
+    }
+
+    /// <summary>The annotations the model is read from, by the name of the Aspire type.</summary>
+    private static readonly string[] KnownAnnotations =
+    [
+        "ContainerImageAnnotation", "DockerfileBuildAnnotation", "EndpointAnnotation", "ReplicaAnnotation",
+        "ResourceRelationshipAnnotation", "WaitAnnotation", "EnvironmentCallbackAnnotation",
+    ];
+
+    /// <summary>
+    /// The known annotation this one is or derives from, else its own name. Aspire's
+    /// <c>WithEnvironment(name, "value")</c> adds an <c>EnvironmentAnnotation</c>, an internal
+    /// <c>EnvironmentCallbackAnnotation</c> of its own type: matched by its own name it was passed
+    /// over, and with it every literal variable of a resource — <c>ASPNETCORE_HOSTINGSTARTUPASSEMBLIES</c>,
+    /// the topology itself.
+    /// </summary>
+    internal static string KnownAnnotation(Type type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            if (Array.IndexOf(KnownAnnotations, current.Name) >= 0)
+            {
+                return current.Name;
+            }
+        }
+
+        return type.Name;
     }
 
     private static void AddRelationship(List<ProbeAspireRelationship> relationships, string? resource, string type)
