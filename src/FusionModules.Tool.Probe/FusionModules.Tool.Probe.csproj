@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The process `dotnet modules inventory` starts inside the target application's runtime:
+
+      dotnet exec (depsfile, runtimeconfig: the application's) FusionModules.Tool.Probe.dll ...
+
+    so it is the application's runtimeconfig that decides which runtime loads it, not this project's.
+    That is why it targets the lowest framework a target may run on, and depends on nothing but the
+    shared framework: whatever it references has to be there already in a net8.0, net9.0 or net10.0
+    application. ASP.NET Core types are referenced at compile time and only touched once the target
+    has shown it is a web application (see WebProbe), so a worker without Microsoft.AspNetCore.App
+    loads it too.
+
+    Shipped inside the FusionModules.Tool package rather than as a package of its own.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+    <IsPackable>false</IsPackable>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>FusionModules.Tool.Probe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- The tests reach the probe's logic through an extern alias: the tool compiles ProbeModel.cs too. -->
+    <InternalsVisibleTo Include="FusionModules.Tool.Tests" />
+  </ItemGroup>
+
+</Project>

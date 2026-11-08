@@ -99,23 +99,49 @@ The risk in this phase is not being wrong, it is being inconsistent — looking 
 in different repositories and reaching confident conclusions from an incomplete picture. The
 checklist below is what to look at, every time.
 
-Do that inventory yourself: grep reads a solution better than a script does, because it sees the
-context around each hit. Run the script only for the two things reading cannot find:
+### Start from the inventory
+
+Collect the facts with one command, then spend the reading on what it cannot see:
 
 ```bash
-pwsh assets/scripts/assess.ps1 -Path <solution-root> -Output fusion-modules-collisions.json
+dotnet tool install --global FusionModules.Tool        # once; or a local tool manifest:
+                                                       # dotnet new tool-manifest && dotnet tool install FusionModules.Tool
+dotnet modules inventory <solution-or-project> --output fusion-modules-inventory.json
 ```
 
-- the same configuration key holding **different values** in different files
-- the same route template declared in more than one place
+It changes nothing in the solution: restore and build go to a directory under the system temp
+directory. It finds the deployment the way a person would — the Aspire AppHost, else the compose
+files beside the solution, else every executable project that is not a test — evaluates every
+project with MSBuild, and then builds each service and captures its host without running its
+infrastructure, the way `dotnet ef` does: the DI registrations, hosted services, `DbContext`s and
+the endpoints as `EndpointDataSource` has them, each with the assembly that owns it. The JSON is
+described in full in the repository's `docs/inventory.md`. Where it goes in the assessment:
 
-Both are silent at runtime, and which one wins is decided by load order — which is decided by
-`HOSTINGSTARTUPASSEMBLIES`, and can therefore differ between topologies.
+| Assessment section | From the inventory |
+|---|---|
+| Services | `deployment.services` (kind `project`), `projects[]` — SDK, `targetFrameworks`, `assemblyName`, `kind` |
+| Call graph | `deployment.services[].references` and `environment`: the edges that exist in configuration (`services__basket-api__http__0`, `ConnectionStrings__eventbus`, `depends_on`). The call sites, `file:line`, still come from reading. |
+| Data | `hosts[].runtime.dbContexts` — provider, connection string (passwords masked), migrations assembly and history table. Two services with one database name on one server share a database. |
+| Deployment | `deployment` — images, Dockerfiles, `replicas`, ports; infrastructure (`kind: infrastructure`, `type: postgres`…) |
+| Background services | `hosts[].runtime.hostedServices` with `application: true` |
+| Mixed target frameworks | `projects[].targetFrameworks` of the hosts |
+| Collisions | `collisions.routes`, `collisions.configurationKeys`, `collisions.services` |
+| What crosses by reflection | `hosts[].runtime.endpoints` of kind `hub` and `grpc` name their types; the rest is reading |
 
-Two caveats. It composes no routes: `MapGroup("/billing")` followed by `MapGet("/overdue")` is
-reported as two templates, not one. And its collisions are candidates — two modules declaring the
-same template only matters if some topology loads both. Confirm before raising. The authoritative
-route inventory comes from `EndpointDataSource` at runtime; see [verify.md](#verification).
+Three things to know before trusting it:
+
+- **Read `errors` and every host whose `runtime.status` is not `started`.** A host that waits for a
+  database between `Build()` and `Run()` is reported as `built` or `timeout`: its registrations are
+  there, its endpoints are not. Inventory those endpoints by reading, and say so in the assessment.
+- **Fakes are marked.** Connection strings and endpoints the deployment does not spell out are
+  invented so the host can register its clients; `hosts[].fakedEnvironment` names them. A
+  `DbContext` connection string built from one tells you the provider, not the database.
+- **Collisions are candidates.** A route served by two services only collides if some topology
+  loads both; `sharedHandler: true` marks the ones a shared library maps everywhere (`/health`),
+  which the host should map once rather than resolve. Confirm before raising.
+
+It does not see middleware order, the call sites behind an HTTP or queue edge, or a type that
+crosses an assembly boundary by reflection. Those are what the reading below is for.
 
 ### What the assessment must contain
 
@@ -149,13 +175,14 @@ compiler will agree. Phase 2 spends this list; collect it while you are already 
 
 **Collisions.** Three kinds, all silent:
 
-- *Routes.* Enumerate every template across every service and list the duplicates. Never merge
-  two services with a known route collision; resolve it with `MapGroup` or an area first.
+- *Routes.* Enumerate every template across every service and list the duplicates —
+  `collisions.routes` has them from the endpoints themselves. Never merge two services with a known
+  route collision; resolve it with `MapGroup` or an area first.
 - *Configuration keys.* The same key with different values in two services means one of them
   changes behaviour after the merge, and nothing will say so.
 - *DI registrations.* A non-`TryAdd` registration of the same service type in two modules means
   the winner is decided by `HOSTINGSTARTUPASSEMBLIES` order. List every interface registered more
-  than once.
+  than once — `collisions.services` lists the application types two services implement differently.
 
 **Proposed module boundaries and topologies**, with the reasoning.
 

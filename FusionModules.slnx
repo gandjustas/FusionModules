@@ -5,6 +5,8 @@
     <Project Path="src/FusionModules.CodeFixes/FusionModules.CodeFixes.csproj" />
     <Project Path="src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj" />
     <Project Path="src/FusionModules.Testing/FusionModules.Testing.csproj" />
+    <Project Path="src/FusionModules.Tool/FusionModules.Tool.csproj" />
+    <Project Path="src/FusionModules.Tool.Probe/FusionModules.Tool.Probe.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FusionModules.Analyzers.Tests/FusionModules.Analyzers.Tests.csproj" />
@@ -13,6 +15,7 @@
     <Project Path="tests/FusionModules.Testing.TestModule/FusionModules.Testing.TestModule.csproj" />
     <Project Path="tests/FusionModules.Testing.Tests/FusionModules.Testing.Tests.csproj" />
     <Project Path="tests/FusionModules.Tests/FusionModules.Tests.csproj" />
+    <Project Path="tests/FusionModules.Tool.Tests/FusionModules.Tool.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/skillgen/skillgen.csproj" />

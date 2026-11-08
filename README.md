@@ -152,9 +152,20 @@ What counts, the settings and the report's fields: [docs/runtime.md](docs/runtim
 
 ## Migrating an existing system
 
-Turn each service's `Program.cs` into a module in the same project: MOD0015 moves the service's
-own registrations and endpoints into `Module.cs` and leaves the host's in place, and the service
-runs as before ([MOD0015](docs/rules/MOD0015.md)).
+Start with what is there. `dotnet modules inventory` reads a solution's Aspire AppHost or
+docker-compose files — or, without either, its executable projects — and writes one JSON file:
+the services, the projects behind them and their references, and each service's registrations,
+hosted services, DbContexts and endpoints, captured the way `dotnet ef` captures a host, without
+starting it. See [docs/inventory.md](docs/inventory.md).
+
+```
+dotnet tool install --global FusionModules.Tool
+dotnet modules inventory MySolution.slnx -o fusion-modules-inventory.json
+```
+
+Then turn each service's `Program.cs` into a module in the same project: MOD0015 moves the
+service's own registrations and endpoints into `Module.cs` and leaves the host's in place, and
+the service runs as before ([MOD0015](docs/rules/MOD0015.md)).
 
 [`skill/`](skill) holds instructions for an AI agent doing the migration: assess, host, modules,
 data, transports, deployment, and a verification loop that runs after every phase rather than at
@@ -258,6 +269,7 @@ To try a change before it is released, install from a local feed:
 dotnet pack src/FusionModules/FusionModules.csproj -c Release -o local-feed
 dotnet pack src/FusionModules.EntityFrameworkCore/FusionModules.EntityFrameworkCore.csproj -c Release -o local-feed
 dotnet pack src/FusionModules.Testing/FusionModules.Testing.csproj -c Release -o local-feed
+dotnet pack src/FusionModules.Tool/FusionModules.Tool.csproj -c Release -o local-feed
 ```
 
 ## Building this repository
