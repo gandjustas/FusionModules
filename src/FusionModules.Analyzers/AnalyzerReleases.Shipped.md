@@ -20,3 +20,19 @@ MOD0010 | FusionModules.Design | Error | A hub's client interface must be reacha
 MOD0011 | FusionModules.Design | Error | MVC never discovers the module's controllers or pages
 MOD0012 | FusionModules.Usage | Warning | The host does not validate its modules
 MOD0013 | FusionModules.Design | Warning | The FusionModules package is not referenced
+
+## Release 0.3.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+MOD0014 | FusionModules.Usage | Warning | Two modules register one service with different implementations
+
+## Release 0.4.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+MOD0015 | FusionModules.Usage | Info | This program's own registrations can move into a module

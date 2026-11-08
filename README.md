@@ -249,11 +249,12 @@ Besides the numbers:
 
 ## Status
 
-Early development, pre-1.0. The public surface is two classes and nine members, locked by
+Early development, pre-1.0. The public surface is three classes and ten members, locked by
 `PublicAPI.Shipped.txt` so that adding to it is a reviewable change. `FusionModules.EntityFrameworkCore`
-adds two static classes and five extension methods, and `FusionModules.Testing` a factory, a
+adds three static classes and six extension methods, and `FusionModules.Testing` a factory, a
 record and three extension methods, each locked the same way and released with `FusionModules` at
-the same version.
+the same version. So is `FusionModules.Tool`, the `dotnet modules` command, which has no public API
+to lock.
 
 On [nuget.org](https://www.nuget.org/packages/FusionModules). Pushing a `v*` tag makes
 `release.yml` build, test, pack, consume the package from a scratch project outside the repository,

@@ -13,3 +13,7 @@ FusionModules.ModuleDiscovery.extension(Microsoft.Extensions.DependencyInjection
 FusionModules.ModuleDiscovery.extension(Microsoft.Extensions.DependencyInjection.IMvcBuilder!).AllowInternalViewComponents() -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
 static FusionModules.ModuleDiscovery.AllowInternalControllers(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
 static FusionModules.ModuleDiscovery.AllowInternalViewComponents(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
+FusionModules.ModuleRouting
+FusionModules.ModuleRouting.extension(Microsoft.AspNetCore.Builder.IApplicationBuilder!)
+FusionModules.ModuleRouting.extension(Microsoft.AspNetCore.Builder.IApplicationBuilder!).UseModuleRouting(bool authentication = true, bool authorization = true, bool antiforgery = true) -> Microsoft.AspNetCore.Builder.IApplicationBuilder!
+static FusionModules.ModuleRouting.UseModuleRouting(this Microsoft.AspNetCore.Builder.IApplicationBuilder! app, bool authentication = true, bool authorization = true, bool antiforgery = true) -> Microsoft.AspNetCore.Builder.IApplicationBuilder!
