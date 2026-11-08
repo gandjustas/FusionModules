@@ -153,6 +153,31 @@ public class ModularWebApplicationFactoryTests
     }
 
     [Test]
+    public async Task Routes_OfAConventionalRoute_AreListedPerAction(CancellationToken cancellationToken)
+    {
+        // As dotnet modules inventory lists them: the controller and action written in, once per
+        // action, rather than the template once per action.
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Production });
+        builder.WebHost.UseTestServer();
+        builder.Logging.ClearProviders();
+        builder.Services.AddControllers().AddApplicationPart(typeof(ConventionalController).Assembly);
+        await using var app = builder.Build();
+        app.MapControllerRoute("default", "{controller}/{action=Index}/{id?}");
+        await app.StartAsync(cancellationToken);
+
+        var routes = app.Services.Routes().Where(route => route.Pattern.StartsWith("/Conventional", StringComparison.Ordinal)).ToList();
+
+        await Assert.That(routes).IsEquivalentTo(
+            [
+                new ModuleRoute(ModuleRoute.Host, ModuleRoute.AnyMethod, "/Conventional/Index/{id?}"),
+                new ModuleRoute(ModuleRoute.Host, ModuleRoute.AnyMethod, "/Conventional/Other/{id?}"),
+            ],
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+        await app.StopAsync(cancellationToken);
+    }
+
+    [Test]
     public async Task StaticAssets_AreLeftOut_UnlessAskedFor()
     {
         // An endpoint per file and per compressed or fingerprinted copy: in the first application
@@ -298,4 +323,12 @@ public class ModularWebApplicationFactoryTests
             }
         }
     }
+}
+
+/// <summary>A controller reached only by a conventional route.</summary>
+public sealed class ConventionalController : Microsoft.AspNetCore.Mvc.ControllerBase
+{
+    public string Index() => "index";
+
+    public string Other() => "other";
 }

@@ -85,6 +85,31 @@ public class SafetyTests
     }
 
     [Test]
+    public async Task AConditionalPartOfAConnectionString_IsLeftOut()
+    {
+        // Aspire 13.6's redis, as AddRedis("redis") writes it: the TLS part is a conditional
+        // expression, named like a resource the model does not have. Guessed as a connection string
+        // of its own, it was glued onto the password: "password=<secret>Host=127.0.0.1;Port=1;…".
+        var model = new ProbeAspireModel
+        {
+            Resources =
+            [
+                new()
+                {
+                    Name = "redis", Type = "RedisResource",
+                    Endpoints = [new() { Name = "tcp", Scheme = "redis", TargetPort = 6379 }],
+                    ConnectionString = "{redis.bindings.tcp.host}:{redis.bindings.tcp.port},password={redis-password.value}{cond-redis-bindings-tcp-tlsenabled-d148d83a.connectionString}",
+                },
+                new() { Name = "api", Type = "ProjectResource", Environment = new() { ["ConnectionStrings__redis"] = "{redis.connectionString}" } },
+            ],
+        };
+
+        var (environment, _) = AspireModel.ProbeEnvironment(model.Resources[1], model);
+
+        await Assert.That(environment["ConnectionStrings__redis"]).IsEqualTo($"{FakeConfiguration.Address},password={FakeConfiguration.Secret}");
+    }
+
+    [Test]
     public async Task TheFakeSecret_IsValidBase64OfAtLeast32Bytes_AndEveryPasswordIsIt()
     {
         await Assert.That(Convert.FromBase64String(FakeConfiguration.Secret).Length).IsGreaterThanOrEqualTo(32);

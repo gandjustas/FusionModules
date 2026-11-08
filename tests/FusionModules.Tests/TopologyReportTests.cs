@@ -150,6 +150,37 @@ public class TopologyReportTests
     }
 
     [Test]
+    public async Task ARoutableComponent_CountsForTheModule()
+    {
+        // A component's endpoint delegate is the framework's; its metadata names the component.
+        // Without reading it, a module's @page components read as nobody's.
+        var result = await ModuleHost.StartAsync([new ComponentsModule()], configureApp: app => app.UseRouting(), applicationName: HostApart);
+
+        await Assert.That((string)Fields(result)["Endpoints"]!).IsEqualTo("FusionModules.Tests 1");
+    }
+
+    [Test]
+    public async Task EndpointsMappedAfterTheHostReadTheTable_AreCounted()
+    {
+        // The container's endpoint list is built once, when first asked, and the application's own
+        // route source never says it changed. A host that reads the list while it is being built —
+        // DescribeApiVersions() does, for an OpenAPI UI in Development — left the list without the
+        // modules' endpoints, which go into that same source; requests still reached them.
+        var result = await ModuleHost.StartAsync(
+            [new EndpointsModule()],
+            configureApp: app =>
+            {
+                app.UseRouting();
+                app.MapGet("/host", () => "host");
+                _ = app.Services.GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>().Endpoints;
+            },
+            applicationName: HostApart);
+
+        // The host's handler is declared here too, in the module's assembly.
+        await Assert.That((string)Fields(result)["Endpoints"]!).IsEqualTo("FusionModules.Tests 3");
+    }
+
+    [Test]
     public async Task EndpointsTheFrameworkServes_AreNotCounted()
     {
         // A health check is the framework's: no module's and not the host's, as the route inventory says too.
@@ -254,6 +285,20 @@ public class TopologyReportTests
     }
 
     internal sealed class StatusHub : Microsoft.AspNetCore.SignalR.Hub;
+
+    private sealed class ComponentsModule : ModuleBase
+    {
+        protected override void ConfigureServices(IHostApplicationBuilder builder) => builder.Services.AddRazorComponents();
+
+        protected override void Configure(IApplicationBuilder app) =>
+            app.UseEndpoints(endpoints => endpoints.MapRazorComponents<ComponentsRoot>());
+    }
+
+    // Public: routable components are found among an assembly's exported types.
+    public sealed class ComponentsRoot : Microsoft.AspNetCore.Components.ComponentBase;
+
+    [Microsoft.AspNetCore.Components.Route("/component")]
+    public sealed class RoutedComponent : Microsoft.AspNetCore.Components.ComponentBase;
 
     private sealed class EndpointsModule : ModuleBase
     {

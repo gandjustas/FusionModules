@@ -58,15 +58,24 @@ public static class EndpointInventory
     /// application's assembly, <c>IHostEnvironment.ApplicationName</c>, serves it — whether or not
     /// that assembly is a module too. What serves a route is
     /// the assembly that declares a minimal API's handler, a controller (wherever its action is
-    /// declared), a Razor Page, a gRPC service or a SignalR hub. A route whose handler is the
+    /// declared), a Razor Page, a routable Razor component, a gRPC service or a SignalR hub. A route
+    /// whose handler is the
     /// framework's or a library's — <c>MapOpenApi</c>'s document, a health check, a bare
     /// <c>RequestDelegate</c>, a static asset — has null: nothing on the endpoint says which module
     /// mapped it.
     /// </para>
     /// <para>
     /// Patterns start with a slash however they were written: an attribute route is stored without
-    /// one and a minimal API's with one, and the two would otherwise read as different routes.
+    /// one and a minimal API's with one, and the two would otherwise read as different routes. A
+    /// conventional route (<c>MapControllerRoute</c>) is listed once per action, with the controller
+    /// and action written in: <c>/Home/Index/{id?}</c>, as <c>dotnet modules inventory</c> lists it.
     /// Endpoints that only generate links and never match a request are left out.
+    /// </para>
+    /// <para>
+    /// The endpoints are those each endpoint source holds now, not the list the container's
+    /// <see cref="EndpointDataSource"/> built the first time it was asked: a host that read that list
+    /// before its modules mapped theirs — an OpenAPI UI's <c>DescribeApiVersions()</c> does — leaves it
+    /// without them, though requests still reach them.
     /// </para>
     /// <para>
     /// Reading the endpoints builds them, as the first request would; a handler that cannot be built
@@ -83,7 +92,7 @@ public static class EndpointInventory
             .ToHashSet(StringComparer.Ordinal);
         var application = services.GetService<IHostEnvironment>()?.ApplicationName;
 
-        return services.GetRequiredService<EndpointDataSource>().Endpoints
+        return EndpointTable.Current(services.GetRequiredService<EndpointDataSource>())
             .OfType<RouteEndpoint>()
             .Where(endpoint => endpoint.Metadata.GetMetadata<ISuppressMatchingMetadata>()?.SuppressMatching != true)
             .Where(endpoint => includeStaticAssets || !IsStaticAsset(endpoint))
@@ -114,9 +123,47 @@ public static class EndpointInventory
         (endpoint.RoutePattern.RawText == DevelopmentFallbackPattern &&
          endpoint.Metadata.Any(metadata => metadata.GetType().FullName == FallbackMetadata));
 
-    /// <summary>The pattern as it was written, with one leading slash.</summary>
+    /// <summary>The pattern as it was written, with one leading slash; a conventional route's per action.</summary>
     private static string Pattern(RoutePattern pattern) =>
-        "/" + (pattern.RawText ?? Rebuild(pattern)).TrimStart('/');
+        "/" + (Conventional(pattern) ?? pattern.RawText ?? Rebuild(pattern)).TrimStart('/');
+
+    /// <summary>
+    /// A conventional route's endpoint for one action, with the values the action requires written
+    /// in: <c>/Home/Index/{id?}</c> rather than <c>/{controller}/{action=Index}/{id?}</c> once per
+    /// action. A required value that is empty — the area of an action in no area — takes its segment
+    /// with it. The other parameters are written by name, optional or catch-all, as
+    /// <c>dotnet modules inventory</c> writes them, so the two lists of one host agree. Null for any
+    /// other pattern: nothing it requires is a parameter of it.
+    /// </summary>
+    private static string? Conventional(RoutePattern pattern)
+    {
+        if (!pattern.Parameters.Any(parameter => pattern.RequiredValues.ContainsKey(parameter.Name)))
+        {
+            return null;
+        }
+
+        var segments = new List<string>();
+        foreach (var segment in pattern.PathSegments)
+        {
+            var text = string.Concat(segment.Parts.Select(part => part switch
+            {
+                RoutePatternLiteralPart literal => literal.Content,
+                RoutePatternSeparatorPart separator => separator.Content,
+                RoutePatternParameterPart parameter when pattern.RequiredValues.TryGetValue(parameter.Name, out var value) =>
+                    value as string ?? string.Empty,
+                RoutePatternParameterPart parameter =>
+                    "{" + (parameter.IsCatchAll ? "*" : string.Empty) + parameter.Name + (parameter.IsOptional ? "?" : string.Empty) + "}",
+                _ => string.Empty,
+            }));
+
+            if (text.Length > 0)
+            {
+                segments.Add(text);
+            }
+        }
+
+        return string.Join("/", segments);
+    }
 
     /// <summary>A pattern built in code has no text of its own; this is it, written out.</summary>
     private static string Rebuild(RoutePattern pattern) =>

@@ -40,6 +40,7 @@
   -->
   <ItemGroup>
     <Compile Include="..\FusionModules\EndpointTable.Owner.cs" Link="Shared\EndpointTable.Owner.cs" />
+    <Compile Include="..\FusionModules\EndpointTable.Current.cs" Link="Shared\EndpointTable.Current.cs" />
   </ItemGroup>
 
 </Project>

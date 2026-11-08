@@ -160,6 +160,16 @@ internal static partial class FakeConfiguration
 
             if (property == "connectionString")
             {
+                // A conditional part of another resource's connection string, not a resource:
+                // Aspire 13 writes redis as "…,password={redis-password.value}{cond-redis-bindings-
+                // tcp-tlsenabled-….connectionString}", the part ",ssl=true" when TLS is on. Nothing
+                // listens on a fake address, with TLS or without: the part is left out, rather than
+                // guessed as a connection string of its own and glued onto the password.
+                if (resource is null && name.StartsWith("cond-", StringComparison.Ordinal))
+                {
+                    return string.Empty;
+                }
+
                 if (resource?.ConnectionString is { } expression && depth < 6 && !expression.Contains(match.Value, StringComparison.Ordinal))
                 {
                     var own = Resolve(expression, resources, self, depth + 1, out var cannot);

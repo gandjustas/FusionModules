@@ -145,12 +145,15 @@ Every route the host matches requests against, read off the endpoint table rathe
 HTTP — a probe of an endpoint that queries the database cannot tell "not deployed" from "deployed and
 broken". One `ModuleRoute(Module, Method, Pattern)` per HTTP method, `*` for a route that takes any,
 ordered by pattern, then method, then module, so two inventories compare by value and `ToString()`
-is a line of a snapshot file. Patterns start with a slash however they were written.
+is a line of a snapshot file. Patterns start with a slash however they were written. A conventional
+route (`MapControllerRoute`) is listed once per action with the controller and action written in —
+`/Home/Index/{id?}` — as [`dotnet modules inventory`](inventory.md) lists it, so the two compare.
 
 `Module` is who the [startup report](runtime.md#the-startup-report) counts the route for — one of:
 
 - the loaded module that serves it: the module assembly that declares a minimal API's handler, a
-  controller (wherever its action is declared), a Razor Page, a gRPC service or a SignalR hub;
+  controller (wherever its action is declared), a Razor Page, a routable Razor component, a gRPC
+  service or a SignalR hub;
 - `host` (`ModuleRoute.Host`), for a route the host's own assembly (`IHostEnvironment.ApplicationName`)
   serves — `GET /` above. The same label whether or not the host is a module itself (its project
   carries `[assembly: HostingStartup(…)]`): the startup report's `endpoints` part counts those routes
