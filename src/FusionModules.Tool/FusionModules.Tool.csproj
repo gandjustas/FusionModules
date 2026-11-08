@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    `dotnet modules inventory`: what a migration to modules needs to know about a solution, as JSON.
+    A .NET tool, so it targets one framework and rolls forward onto whatever runtime the machine has;
+    the probe it starts inside each application (FusionModules.Tool.Probe, net8.0) ships inside this
+    package, under probe/.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <RootNamespace>FusionModules.Tool</RootNamespace>
+    <AssemblyName>dotnet-modules</AssemblyName>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-modules</ToolCommandName>
+    <PackageId>FusionModules.Tool</PackageId>
+    <Description>dotnet modules inventory: services, deployment (Aspire, docker-compose), projects, packages and each host's runtime composition (DI registrations, hosted services, DbContexts, endpoints), captured without running the application's infrastructure. The input to a FusionModules migration.</Description>
+    <PackageTags>$(PackageTags);dotnet-tool;inventory;aspire;docker-compose</PackageTags>
+
+    <!-- A tool has no API surface to validate across frameworks: it has one framework and no consumers. -->
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <!-- Everything is internal; there is nothing for documentation comments to document. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\FusionModules.Tool.Probe\ProbeModel.cs" Link="Probe\ProbeModel.cs" />
+    <Compile Include="..\FusionModules.Tool.Probe\Secrets.cs" Link="Probe\Secrets.cs" />
+    <InternalsVisibleTo Include="FusionModules.Tool.Tests" />
+  </ItemGroup>
+
+  <!--
+    The probe is built for net8.0 and copied next to the tool as probe/FusionModules.Tool.Probe.dll:
+    into the output, the publish directory and so the tool package, and through the project reference
+    into the output of anything referencing this project (the tests). Never referenced as an
+    assembly — the tool only ever starts it.
+  -->
+  <ItemGroup>
+    <!--
+      No SetTargetFramework: the probe has one framework, and the solution and the tests build it
+      without the property. Asked for with it, it would be a second instance of the same project,
+      writing the same obj folder at the same time.
+    -->
+    <ProjectReference Include="..\FusionModules.Tool.Probe\FusionModules.Tool.Probe.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
+  </ItemGroup>
+
+  <Target Name="_FusionModulesIncludeProbe" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveProjectReferences">
+    <MSBuild Projects="..\FusionModules.Tool.Probe\FusionModules.Tool.Probe.csproj"
+             Targets="GetTargetPath"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" ItemName="_FusionModulesProbeAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <_FusionModulesProbeFile Include="@(_FusionModulesProbeAssembly)" />
+      <_FusionModulesProbeFile Include="@(_FusionModulesProbeAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" Condition="Exists('%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(_FusionModulesProbeFile)"
+            Link="probe\%(Filename)%(Extension)"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

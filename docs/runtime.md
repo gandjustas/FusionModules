@@ -203,7 +203,7 @@ are left out, and so are two endpoints of one owner.
 
 It warns rather than fails: endpoints with one template are sometimes told apart by something the
 comparison does not model, a policy or an endpoint filter. The fix is a `MapGroup` prefix or an MVC
-area per module. The skill's `assess.ps1` looks for the same thing before the migration, from the source.
+area per module. `dotnet modules inventory` looks for the same thing before the migration, from each service's endpoints ([inventory.md](inventory.md)).
 
 To compare the routes, the check reads the endpoint table, and that builds each minimal API's request
 delegate — work ASP.NET Core otherwise does on the first request. A handler that cannot be built, because

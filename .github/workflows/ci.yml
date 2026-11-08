@@ -64,10 +64,8 @@ jobs:
   skill:
     # The portable files are generated from skill/skills/fusion-modules. Regenerating them here and
     # failing on a diff is what stops them drifting from it, which they would otherwise do quietly
-    # and only be noticed by whoever used the stale one.
-    #
-    # On Windows too, because assess.ps1 normalises path separators for exactly one reason and
-    # that reason was never exercised.
+    # and only be noticed by whoever used the stale one. On Windows too: the generator writes
+    # line endings, and a Windows checkout is where they would differ.
     strategy:
       fail-fast: false
       matrix:
@@ -84,19 +82,6 @@ jobs:
 
       - name: The portable skill matches its source
         run: git diff --exit-code -- skill/dist
-
-      - name: The collision detector produces both sections
-        # Asserting on the output, not just on exit code: a script that silently finds nothing
-        # looks exactly like a passing one. pwsh rather than python so the step is one step on
-        # both images — python3 is spelled python on the Windows runner.
-        shell: pwsh
-        run: |
-          $out = Join-Path ([IO.Path]::GetTempPath()) 'collisions.json'
-          ./skill/skills/fusion-modules/assets/scripts/assess.ps1 -Path samples -Output $out
-          $keys = (Get-Content -Raw $out | ConvertFrom-Json).PSObject.Properties.Name
-          foreach ($section in 'routeCollisions', 'configurationKeyCollisions') {
-            if ($keys -notcontains $section) { throw "assess.ps1 produced no '$section'" }
-          }
 
       - name: The plugin and its marketplace are well formed
         # Both manifests are hand-written and nothing regenerates them, so nothing else would
