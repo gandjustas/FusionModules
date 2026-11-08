@@ -108,6 +108,7 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0012](docs/rules/MOD0012.md) | The host does not validate its modules |
 | [MOD0013](docs/rules/MOD0013.md) | The FusionModules package is not referenced |
 | [MOD0014](docs/rules/MOD0014.md) | Two modules register one service with different implementations |
+| [MOD0015](docs/rules/MOD0015.md) | This program's own registrations can move into a module |
 
 A host and a test project also get `KnownModules`, generated from their references: every module,
 by name. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
@@ -150,6 +151,10 @@ What counts, the settings and the report's fields: [docs/runtime.md](docs/runtim
 | [06 — Transports](samples/06-transports) | One edge with the network hop present and absent, and one suite proving both |
 
 ## Migrating an existing system
+
+Turn each service's `Program.cs` into a module in the same project: MOD0015 moves the service's
+own registrations and endpoints into `Module.cs` and leaves the host's in place, and the service
+runs as before ([MOD0015](docs/rules/MOD0015.md)).
 
 [`skill/`](skill) holds instructions for an AI agent doing the migration: assess, host, modules,
 data, transports, deployment, and a verification loop that runs after every phase rather than at

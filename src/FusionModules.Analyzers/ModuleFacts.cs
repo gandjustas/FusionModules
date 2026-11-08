@@ -32,6 +32,9 @@ internal static class ModuleFacts
     /// <summary>Set by the package's targets; see <c>FusionModules.targets</c>.</summary>
     public const string ProjectKindOption = "build_property.FusionModulesProjectKind";
 
+    /// <summary>The assembly names of the project's project references, set by the package's targets.</summary>
+    public const string ProjectReferencesOption = "build_property.FusionModulesProjectReferences";
+
     public const string HostApplicationBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostApplicationBuilder";
     public const string HostBuilderMetadataName = "Microsoft.Extensions.Hosting.IHostBuilder";
     public const string WebHostDefaultsMetadataName = "Microsoft.AspNetCore.Hosting.WebHostDefaults";

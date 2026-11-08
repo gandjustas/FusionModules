@@ -92,6 +92,7 @@ internal static class AnalyzerTest
                 public Microsoft.Extensions.DependencyInjection.IServiceCollection Services => null;
                 public Microsoft.Extensions.Configuration.IConfigurationManager Configuration => null;
                 public Microsoft.Extensions.Hosting.IHostEnvironment Environment => null;
+                public WebApplication Build() => new WebApplication();
             }
 
             public sealed class WebApplicationOptions
@@ -99,8 +100,11 @@ internal static class AnalyzerTest
                 public string[] Args { get; set; }
             }
 
-            public sealed class WebApplication
+            public sealed class WebApplication : IApplicationBuilder, Microsoft.AspNetCore.Routing.IEndpointRouteBuilder
             {
+                public void Run() { }
+                public System.Threading.Tasks.Task RunAsync() => System.Threading.Tasks.Task.CompletedTask;
+
                 public static WebApplicationBuilder CreateBuilder() => new WebApplicationBuilder();
                 public static WebApplicationBuilder CreateBuilder(string[] args) => new WebApplicationBuilder();
                 public static WebApplicationBuilder CreateBuilder(WebApplicationOptions options) => new WebApplicationBuilder();
@@ -109,6 +113,11 @@ internal static class AnalyzerTest
                 public static WebApplicationBuilder CreateSlimBuilder(WebApplicationOptions options) => new WebApplicationBuilder();
                 public static WebApplicationBuilder CreateEmptyBuilder(WebApplicationOptions options) => new WebApplicationBuilder();
             }
+        }
+
+        namespace Microsoft.AspNetCore.Routing
+        {
+            public interface IEndpointRouteBuilder { }
         }
 
         namespace Microsoft.AspNetCore.Mvc
@@ -298,6 +307,11 @@ internal static class AnalyzerTest
 
                 System.Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Microsoft.AspNetCore.Hosting.IStartupFilter.Configure(
                     System.Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => next;
+            }
+
+            public static class ModuleRouting
+            {
+                public static Microsoft.AspNetCore.Builder.IApplicationBuilder UseModuleRouting(this Microsoft.AspNetCore.Builder.IApplicationBuilder app, bool authentication = true, bool authorization = true, bool antiforgery = true) => app;
             }
 
             public static class ModuleDiscovery

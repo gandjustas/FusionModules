@@ -205,6 +205,23 @@ A module also gets a generated file, `FusionModules.ModuleRecords.g.cs`, when it
 service: internal assembly attributes that record what it registers, which is how the host's build
 knows. They add nothing to the module's public surface.
 
+## `FusionModulesDeduplicateModuleFile`
+
+Default: on. When [MOD0015](rules/MOD0015.md)'s fix runs through `dotnet format`, the workspace
+writes `<Compile Include="Module.cs" />` into the project file for the file it adds, and the SDK's
+default glob includes the file as well — NETSDK1022 on the next build, about a line nobody wrote. A
+target that runs before the SDK's duplicate check keeps one item (the first, with its metadata) of
+each file listed twice under a name the fix gives: at the project's root, matching
+`^\w*Module\d*\.cs$` — `Module.cs`, `Module2.cs` when a `Module.cs` is there already,
+`OrderingApiModule.cs` when the namespace has a `Module` type. Only in a project with default compile
+items; any other duplicate is still reported. The redundant line can be deleted either way.
+
+```xml
+<PropertyGroup>
+  <FusionModulesDeduplicateModuleFile>false</FusionModulesDeduplicateModuleFile>
+</PropertyGroup>
+```
+
 ## Properties the samples use
 
 Not part of the package. They belong to this repository's own build and are documented here because
