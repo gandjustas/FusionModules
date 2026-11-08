@@ -1,1 +1,5 @@
 #nullable enable
+FusionModules.ModuleRouting
+FusionModules.ModuleRouting.extension(Microsoft.AspNetCore.Builder.IApplicationBuilder!)
+FusionModules.ModuleRouting.extension(Microsoft.AspNetCore.Builder.IApplicationBuilder!).UseModuleRouting(bool authentication = true, bool authorization = true, bool antiforgery = true) -> Microsoft.AspNetCore.Builder.IApplicationBuilder!
+static FusionModules.ModuleRouting.UseModuleRouting(this Microsoft.AspNetCore.Builder.IApplicationBuilder! app, bool authentication = true, bool authorization = true, bool antiforgery = true) -> Microsoft.AspNetCore.Builder.IApplicationBuilder!

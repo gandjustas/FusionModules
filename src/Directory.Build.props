@@ -36,4 +36,20 @@
     <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
   </PropertyGroup>
 
+  <!--
+    MinVer's AssemblyVersion is Major.0.0.0: 0.0.0.0 for every 0.x build, prerelease or not. For the
+    analyzers that is an identity two builds share, and a process that has loaded one of them —
+    dotnet format over a solution whose projects restored different prereleases — keeps using it for
+    the other. Every build gets an assembly version of its own: the version's numbers, and a revision
+    from the prerelease label (0 for a release).
+  -->
+  <Target Name="FusionModulesAssemblyVersion" AfterTargets="MinVer" Condition="'$(MinVerMajor)' != ''">
+    <PropertyGroup>
+      <_FusionModulesRevision>0</_FusionModulesRevision>
+      <_FusionModulesRevision Condition="'$(MinVerPreRelease)' != ''">$([MSBuild]::Add($([MSBuild]::Modulo($([System.Math]::Abs($([MSBuild]::StableStringHash('$(MinVerPreRelease)')))), 65000)), 1))</_FusionModulesRevision>
+      <AssemblyVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch).$(_FusionModulesRevision)</AssemblyVersion>
+      <FileVersion>$(AssemblyVersion)</FileVersion>
+    </PropertyGroup>
+  </Target>
+
 </Project>

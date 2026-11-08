@@ -266,6 +266,9 @@ cat > "$work/consumer/NoModules/NoModules.csproj" <<XML
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="FusionModules" Version="$version" />
+    <!-- What dotnet format writes for the file MOD0015's fix adds, here under the name it takes when
+         Module.cs is someone else's: the default glob has it too, and the package drops the duplicate. -->
+    <Compile Include="Module2.cs" />
   </ItemGroup>
 </Project>
 XML
@@ -273,6 +276,9 @@ cat > "$work/consumer/NoModules/Program.cs" <<'CS'
 var app = WebApplication.CreateBuilder(args).Build();
 _ = WebApplication.CreateSlimBuilder(args);   // no module to load: no MOD0006
 await app.RunAsync();
+CS
+cat > "$work/consumer/NoModules/Module2.cs" <<'CS'
+internal static class ListedTwice { }
 CS
 
 # MOD0013 says the runtime package is missing, so the project has to have the analyzer without it.
@@ -449,7 +455,9 @@ CS
 # A topology test through FusionModules.Testing, with nothing else: Microsoft.AspNetCore.Mvc.Testing
 # has to come with the package, and so do its buildTransitive targets, which copy the host's
 # .deps.json here — without them WebApplicationFactory cannot start the host at all. So this one is
-# run, not only built. No test framework either: the package has to need none.
+# run, not only built. No test framework either: the package has to need none. Marked the way
+# Microsoft.Testing.Platform marks a test project, IsTestingPlatformApplication without
+# IsTestProject: it must still be classified as a test, not held to a host's rules.
 mkdir -p "$work/consumer/HostTests"
 cat > "$work/consumer/HostTests/HostTests.csproj" <<XML
 <Project Sdk="Microsoft.NET.Sdk">
@@ -458,7 +466,7 @@ cat > "$work/consumer/HostTests/HostTests.csproj" <<XML
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Exe</OutputType>
-    <IsTestProject>true</IsTestProject>
+    <IsTestingPlatformApplication>true</IsTestingPlatformApplication>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="FusionModules" Version="$version" />
@@ -579,7 +587,7 @@ fi
 
 log "A web project without modules builds clean"
 if dotnet build "$work/consumer/NoModules" --nologo -v q > "$work/nomodules.log" 2>&1; then
-    pass "builds"
+    pass "builds, with Module2.cs listed in the project file as well (no NETSDK1022)"
     if grep -q "MOD" "$work/nomodules.log"; then fail "unexpected diagnostics:"; grep "MOD" "$work/nomodules.log"; else pass "no diagnostics"; fi
 else
     fail "did not build"; cat "$work/nomodules.log"
@@ -650,6 +658,17 @@ parts="$(property "$host" GenerateMvcApplicationPartsAssemblyAttributes)"
 
 kind="$(property "$module" FusionModulesProjectKind)"
 [ "$kind" = "Module" ] && pass "library detected as FusionModulesProjectKind=Module" || fail "FusionModulesProjectKind was '$kind', expected 'Module'"
+
+kind="$(dotnet msbuild "$work/consumer/HostTests" -getProperty:FusionModulesProjectKind -v:q 2>/dev/null | tr -d '')"
+[ "$kind" = "Test" ] && pass "a Microsoft.Testing.Platform project detected as FusionModulesProjectKind=Test" || fail "FusionModulesProjectKind was '$kind' for IsTestingPlatformApplication, expected 'Test'"
+
+# What the analyzers read is what the build wrote: MOD0015 needs the host's project references.
+editorconfig="$(find "$work/consumer/Host/obj" -name '*.GeneratedMSBuildEditorConfig.editorconfig' | head -1)"
+if [ -n "$editorconfig" ] && grep -q "^build_property.FusionModulesProjectReferences = .*GoodModule" "$editorconfig"; then
+    pass "the host's project references reach the analyzers"
+else
+    fail "no FusionModulesProjectReferences naming GoodModule in the host's editorconfig"; [ -n "$editorconfig" ] && grep FusionModules "$editorconfig"
+fi
 
 # The implicit usings a module loses when it stops being a Microsoft.NET.Sdk.Web project.
 case "$module" in

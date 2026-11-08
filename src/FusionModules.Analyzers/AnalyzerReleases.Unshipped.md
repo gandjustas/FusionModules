@@ -6,3 +6,4 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 MOD0014 | FusionModules.Usage | Warning | Two modules register one service with different implementations
+MOD0015 | FusionModules.Usage | Info | This program's own registrations can move into a module
