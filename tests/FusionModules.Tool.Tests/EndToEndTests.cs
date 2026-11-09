@@ -38,6 +38,10 @@ public class EndToEndTests
         await Assert.That(runtime.Endpoints!.Select(e => (e.Route!, e.Assembly!))).IsEquivalentTo(
             [("/", "Host"), ("/greeting", "GreetingModule"), ("/weather/", "WeatherModule")]);
         await Assert.That(runtime.Services!).Contains(s => s.ServiceType == "WeatherModule.Forecaster" && s.Assembly == "WeatherModule");
+
+        // Who registered what, as FusionModules recorded it: the module's own, and nobody's for the host's.
+        await Assert.That(runtime.Services!.Single(s => s.ServiceType == "WeatherModule.Forecaster").Module).IsEqualTo("WeatherModule");
+        await Assert.That(runtime.Services!.Where(s => s.Module is not null).All(s => s.Module is "WeatherModule" or "GreetingModule")).IsTrue();
         await Assert.That(runtime.HostedServices!.Select(h => h.Type!)).IsEquivalentTo(["Microsoft.AspNetCore.Hosting.GenericWebHostService"]);
 
         // FusionModules' own wiring is not the application's: the modules are listed apart, and

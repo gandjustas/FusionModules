@@ -1,36 +1,88 @@
-using System.Text.RegularExpressions;
+using FusionModules.Tool.Probe;
 
 namespace FusionModules.Tool;
 
 /// <summary>
-/// The three silent collisions of a merge, from what the hosts actually compose rather than from a
-/// reading of the source: the same route in two services, the same configuration key with two
-/// values, the same application service type with two implementations. All three are decided by
-/// load order once the services share a process, and nothing reports them.
+/// What hosts that were apart collide on once they compose one process, from what they actually
+/// register and map rather than from a reading of the source. The inventory's <c>collisions</c> are
+/// these over all its hosts; <c>dotnet modules topology</c> takes them over the hosts it names, which
+/// is what that host would say before anyone builds it.
 /// </summary>
-internal static partial class Collisions
+internal static class Collisions
 {
+    private const string FusionModulesAssembly = "FusionModules";
+
     public static CollisionsInfo Find(IReadOnlyList<HostInfo> hosts) => new()
     {
-        Routes = Routes(hosts),
-        ConfigurationKeys = ConfigurationKeys(hosts),
         Services = Services(hosts),
+        Routes = Routes(hosts),
+        EndpointNames = EndpointNames(hosts),
+        TypeNames = TypeNames(hosts),
+        ConfigurationKeys = ConfigurationKeys(hosts),
+        DbContexts = DbContexts(hosts),
     };
 
-    /// <summary>Route parameters compared by position only: {id:int} and {itemId} are the same route.</summary>
-    internal static string NormalizeRoute(string route)
+    /// <summary>
+    /// The startup check's rule over the inventory: a service type that two owners register with
+    /// different sets of implementations — the same implementation twice is redundant, not wrong.
+    /// Implementations are told apart with their assemblies, as the check tells types apart.
+    /// </summary>
+    /// <remarks>
+    /// The check is on what modules register, each module an owner, in one host or in two. What a
+    /// program registers, the composed host registers once, from one program: two programs that
+    /// disagree are a reconciliation, listed apart. A host with no module yet counts as its own future
+    /// module. The framework's services, consumed as sequences, and those shared by design are left out.
+    /// </remarks>
+    private static List<ServiceCollision> Services(IReadOnlyList<HostInfo> hosts)
     {
-        var normalized = Parameter().Replace(route.Trim().ToLowerInvariant(), "{}");
-        return "/" + normalized.Trim('/');
+        var registrations = hosts
+            .SelectMany(host => (host.Runtime?.Services ?? []).Where(Counts).Select(service => (
+                Host: host.Service,
+                Module: service.Module ?? (host.Runtime!.Modules is { Count: > 0 } ? null : host.Service),
+                Service: service)))
+            .GroupBy(entry => Names.Service(entry.Service), StringComparer.Ordinal);
+
+        var collisions = new List<ServiceCollision>();
+        foreach (var group in registrations)
+        {
+            foreach (var byModules in new[] { true, false })
+            {
+                var owners = group
+                    .Where(entry => entry.Module is not null == byModules)
+                    .GroupBy(entry => (entry.Host, entry.Module))
+                    .Select(owner => new ServiceSite
+                    {
+                        Service = owner.Key.Host,
+                        Module = owner.Key.Module,
+                        Implementations = [.. owner.Select(entry => Names.Implementation(entry.Service)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+                    })
+                    .ToList();
+                if (owners.Count > 1 && owners.Any(owner => !owner.Implementations.SequenceEqual(owners[0].Implementations)))
+                {
+                    collisions.Add(new ServiceCollision { ServiceType = group.Key, ByModules = byModules, Sites = owners });
+                }
+            }
+        }
+
+        return [.. collisions.OrderBy(collision => !collision.ByModules).ThenBy(collision => collision.ServiceType, StringComparer.Ordinal)];
     }
 
+    private static bool Counts(ProbeService service) =>
+        !TopologyConventions.IsFrameworkAssembly(service.ServiceAssembly) &&
+        !TopologyConventions.SharedByDesign.Contains(service.ServiceType) &&
+        service.Assembly != FusionModulesAssembly &&
+        service.ServiceAssembly != FusionModulesAssembly;
+
+    /// <summary>
+    /// One route in two services with overlapping methods (an endpoint without methods overlaps every
+    /// method): the startup check logs it, and a request it matches gets a 500.
+    /// </summary>
     private static List<RouteCollision> Routes(IReadOnlyList<HostInfo> hosts)
     {
-        var sites = hosts
-            .SelectMany(h => (h.Runtime?.Endpoints ?? []).Where(e => e.Route is not null).Select(e => (Host: h, Endpoint: e)))
-            .GroupBy(s => NormalizeRoute(s.Endpoint.Route!), StringComparer.Ordinal);
-
         var collisions = new List<RouteCollision>();
+        var sites = hosts
+            .SelectMany(host => (host.Runtime?.Endpoints ?? []).Where(endpoint => endpoint.Route is not null).Select(endpoint => (Host: host, Endpoint: endpoint)))
+            .GroupBy(site => Names.Route(site.Endpoint.Route!), StringComparer.Ordinal);
         foreach (var group in sites)
         {
             var entries = group.ToList();
@@ -45,25 +97,61 @@ internal static partial class Collisions
             collisions.Add(new RouteCollision
             {
                 Route = group.Key,
-                SharedHandler = overlapping.Select(s => s.Endpoint.Handler).Distinct().Count() == 1,
-                Sites = [.. overlapping.Select(s => new RouteSite
+                SharedHandler = overlapping.Select(site => site.Endpoint.Handler).Distinct().Count() == 1,
+                Sites = [.. overlapping.Select(site => new RouteSite
                 {
-                    Service = s.Host.Service,
-                    Route = s.Endpoint.Route,
-                    Methods = s.Endpoint.Methods,
-                    Handler = s.Endpoint.Handler,
-                    Assembly = s.Endpoint.Assembly,
-                    Authorization = s.Endpoint.Authorization,
+                    Service = site.Host.Service,
+                    Route = site.Endpoint.Route,
+                    Methods = site.Endpoint.Methods,
+                    Handler = site.Endpoint.Handler,
+                    Assembly = site.Endpoint.Assembly,
+                    Authorization = site.Endpoint.Authorization,
                 })],
             });
         }
 
-        return [.. collisions.OrderBy(c => c.Route, StringComparer.Ordinal)];
+        return [.. collisions.OrderBy(collision => collision.Route, StringComparer.Ordinal)];
     }
 
     private static bool Overlap(List<string>? a, List<string>? b) =>
         a is null || b is null || a.Intersect(b, StringComparer.OrdinalIgnoreCase).Any();
 
+    /// <summary>
+    /// One endpoint name on two endpoints: names are unique in a host, and generating a link by name
+    /// throws on the first request that resolves them — every request, with MVC.
+    /// </summary>
+    private static List<NameCollision> EndpointNames(IReadOnlyList<HostInfo> hosts) =>
+        Named(hosts.SelectMany(host => (host.Runtime?.Endpoints ?? [])
+            .Where(endpoint => endpoint.Name is not null)
+            .Select(endpoint => (endpoint.Name!, host.Service, $"{string.Join(",", endpoint.Methods ?? ["*"])} {endpoint.Route}"))),
+            StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// One full type name from two assemblies — a generated client compiled into each service, say:
+    /// two types to the container, one name to whatever keys by name, named HTTP and gRPC clients and
+    /// options among them.
+    /// </summary>
+    private static List<NameCollision> TypeNames(IReadOnlyList<HostInfo> hosts) =>
+        Named(hosts.SelectMany(host => (host.Runtime?.Services ?? [])
+            .Where(service => service.ServiceAssembly is not null && !TopologyConventions.IsFrameworkAssembly(service.ServiceAssembly))
+            .Select(service => (service.ServiceType, host.Service, service.ServiceAssembly!))
+            .Distinct()),
+            StringComparer.Ordinal,
+            twoPlaces: sites => sites.Select(site => site.Where).Distinct(StringComparer.Ordinal).Count() > 1);
+
+    private static List<NameCollision> Named(IEnumerable<(string Name, string Service, string Where)> entries, StringComparer comparer, Func<List<NameSite>, bool>? twoPlaces = null) =>
+        [.. entries
+            .GroupBy(entry => entry.Name, comparer)
+            .Select(group => new NameCollision { Name = group.Key, Sites = [.. group.Select(entry => new NameSite { Service = entry.Service, Where = entry.Where })] })
+            .Where(collision => collision.Sites.Count > 1 &&
+                                (twoPlaces is null || (twoPlaces(collision.Sites) && collision.Sites.Select(site => site.Service).Distinct().Count() > 1)))
+            .OrderBy(collision => collision.Name, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// One configuration key with two values, per layer: each appsettings file, and what the
+    /// deployment sets — minus what the tool made up and the runtime's own switches. The host has one
+    /// configuration, and one of the services reads the other's value.
+    /// </summary>
     private static List<ConfigurationCollision> ConfigurationKeys(IReadOnlyList<HostInfo> hosts)
     {
         var entries = new List<(string Source, string Key, string Service, string? Value)>();
@@ -71,72 +159,48 @@ internal static partial class Collisions
         {
             foreach (var (file, keys) in host.Configuration ?? [])
             {
-                entries.AddRange(keys.Select(k => (file.ToLowerInvariant(), k.Key, host.Service, k.Value)));
+                entries.AddRange(keys.Select(key => (file.ToLowerInvariant(), key.Key, host.Service, key.Value)));
             }
 
-            // What the deployment sets, minus what the tool made up and the runtime's own switches.
             var faked = host.FakedEnvironment?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
             foreach (var (name, value) in host.Environment ?? [])
             {
-                if (faked.Contains(name) || name.StartsWith("ASPNETCORE_", StringComparison.OrdinalIgnoreCase)
-                    || name.StartsWith("DOTNET_", StringComparison.OrdinalIgnoreCase) || name.StartsWith("OTEL_", StringComparison.OrdinalIgnoreCase))
+                if (!faked.Contains(name) && !RuntimeSwitch(name))
                 {
-                    continue;
-                }
-
-                entries.Add(("environment", AppSettingsReader.KeyOf(name), host.Service, value));
-            }
-        }
-
-        return [.. entries
-            .GroupBy(e => (e.Source, Key: e.Key.ToLowerInvariant()))
-            .Where(g => g.Select(e => e.Service).Distinct().Count() > 1 && g.Select(e => e.Value).Distinct().Count() > 1)
-            .Select(g => new ConfigurationCollision
-            {
-                Key = g.First().Key,
-                Source = g.Key.Source,
-                Values = [.. g.Select(e => new ConfigurationSite { Service = e.Service, Value = e.Value })],
-            })
-            .OrderBy(c => c.Source, StringComparer.Ordinal)
-            .ThenBy(c => c.Key, StringComparer.OrdinalIgnoreCase)];
-    }
-
-    private static List<ServiceCollision> Services(IReadOnlyList<HostInfo> hosts)
-    {
-        var entries = new List<(string ServiceType, string Service, Probe.ProbeService Registration)>();
-        foreach (var host in hosts)
-        {
-            var application = host.Runtime?.ApplicationAssemblies?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
-            foreach (var registration in host.Runtime?.Services ?? [])
-            {
-                // An application-defined service type; framework interfaces (IConfigureOptions<>,
-                // IHostedService) are meant to be registered many times.
-                if (registration.ServiceAssembly is { } assembly && application.Contains(assembly))
-                {
-                    entries.Add((registration.Key is null ? registration.ServiceType : $"{registration.ServiceType} [{registration.Key}]", host.Service, registration));
+                    entries.Add(("environment", AppSettingsReader.KeyOf(name), host.Service, value));
                 }
             }
         }
 
         return [.. entries
-            .GroupBy(e => e.ServiceType, StringComparer.Ordinal)
-            .Where(g => g.Select(e => e.Service).Distinct().Count() > 1
-                        && g.Select(e => e.Registration.ImplementationType ?? e.Registration.Factory).Distinct().Count() > 1)
-            .Select(g => new ServiceCollision
+            .GroupBy(entry => (entry.Source, Key: entry.Key.ToLowerInvariant()))
+            .Where(group => group.Select(entry => entry.Service).Distinct().Count() > 1 && group.Select(entry => entry.Value).Distinct().Count() > 1)
+            .Select(group => new ConfigurationCollision
             {
-                ServiceType = g.Key,
-                Sites = [.. g.Select(e => new ServiceSite
-                {
-                    Service = e.Service,
-                    ImplementationType = e.Registration.ImplementationType,
-                    Factory = e.Registration.Factory,
-                    Assembly = e.Registration.Assembly,
-                    Lifetime = e.Registration.Lifetime,
-                })],
+                Key = group.First().Key,
+                Source = group.Key.Source,
+                Values = [.. group.Select(entry => new ConfigurationSite { Service = entry.Service, Value = entry.Value })],
             })
-            .OrderBy(c => c.ServiceType, StringComparer.Ordinal)];
+            .OrderBy(collision => collision.Source, StringComparer.Ordinal)
+            .ThenBy(collision => collision.Key, StringComparer.OrdinalIgnoreCase)];
     }
 
-    [GeneratedRegex(@"\{[^{}]*\}")]
-    private static partial Regex Parameter();
+    private static bool RuntimeSwitch(string name) =>
+        name.StartsWith("ASPNETCORE_", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("DOTNET_", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("OTEL_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>One context type that two services point at different databases or providers: in one host, one of them writes to the other's.</summary>
+    private static List<DbContextCollision> DbContexts(IReadOnlyList<HostInfo> hosts) =>
+        [.. hosts
+            .SelectMany(host => (host.Runtime?.DbContexts ?? []).Select(context => (host.Service, Context: context)))
+            .GroupBy(entry => entry.Context.Type, StringComparer.Ordinal)
+            .Where(group => group.Select(entry => entry.Service).Distinct().Count() > 1 &&
+                            group.Select(entry => (entry.Context.Provider, entry.Context.ConnectionString)).Distinct().Count() > 1)
+            .Select(group => new DbContextCollision
+            {
+                Type = group.Key,
+                Sites = [.. group.Select(entry => new DbContextSite { Service = entry.Service, Provider = entry.Context.Provider, ConnectionString = entry.Context.ConnectionString })],
+            })
+            .OrderBy(collision => collision.Type, StringComparer.Ordinal)];
 }

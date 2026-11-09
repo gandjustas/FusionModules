@@ -76,9 +76,10 @@ listed in the error. Defaults to the current directory.
 | `--work-dir <dir>` | Where restore and build output go. Default: a directory per solution under the system temp directory, kept between runs so the next build is incremental. |
 | `--parallel <n>` | Hosts probed at once. Default: half the processors, at most 4. |
 | `-q`, `--quiet` | No progress. |
+| `--compare <file>` | Compare the new document with one taken before, as [`compare`](#comparing-two-inventories) does: the report goes to standard output with `-o`, to standard error without. |
 
 The exit code is 0 whenever a document was written, however many services failed to build or
-start — those are in `errors`. It is 1 when the input cannot be resolved or an argument cannot be
+start — those are in `errors` — and with `--compare`, 2 when the two differ. It is 1 when the input cannot be resolved or an argument cannot be
 read (`--timeout abc`, `--parallel 0`): the message and a pointer to `--help` go to standard error.
 
 ## What it reads, in order
@@ -465,7 +466,8 @@ would be empty are left out.
           { "serviceType": "eShop.IntegrationEventLogEF.Services.IIntegrationEventLogService", "lifetime": "Scoped",
             "implementation": "type",     // type | instance | factory
             "implementationType": "eShop.IntegrationEventLogEF.Services.IntegrationEventLogService<eShop.Catalog.API.Infrastructure.CatalogContext>",
-            "assembly": "IntegrationEventLogEF", "serviceAssembly": "IntegrationEventLogEF" },
+            "assembly": "IntegrationEventLogEF", "serviceAssembly": "IntegrationEventLogEF",
+            "module": "Catalog.API" },   // the module whose ConfigureServices made it; null for the program's
           { "serviceType": "…", "implementation": "factory", "factory": "Microsoft.Extensions.DependencyInjection.Foo.<AddFoo>b__0_0", "key": "orders" },
           { "serviceType": "Duende.IdentityServer.Services.IProfileService", "implementationType": "…ProfileService", "wins": false },
           { "serviceType": "Duende.IdentityServer.Services.IProfileService", "implementationType": "…ProfileService<…ApplicationUser>", "wins": true }
@@ -498,19 +500,22 @@ would be empty are left out.
   "aspire": { "version": "13.6.0", "resources": [ /* every resource, with its annotation type names */ ] },
 
   "collisions": {
+    "services": [
+      { "serviceType": "eShop.IntegrationEventLogEF.Services.IIntegrationEventLogService", "byModules": true,
+        "sites": [ { "service": "catalog-api", "module": "Catalog.API", "implementations": ["…<CatalogContext> (IntegrationEventLogEF)"] },
+                   { "service": "ordering-api", "module": "Ordering.API", "implementations": ["…<OrderingContext> (IntegrationEventLogEF)"] } ] }
+    ],
     "routes": [
       { "route": "/health", "sharedHandler": true,
         "sites": [ { "service": "catalog-api", "route": "/health", "handler": "…HealthCheckMiddleware.InvokeAsync", "assembly": "…" } ] }
     ],
+    "endpointNames": [ { "name": "GetItemById", "sites": [ { "service": "catalog-api", "where": "GET /api/catalog/items/{id:int}" } ] } ],
+    "typeNames": [ { "name": "Basket.API.Grpc.BasketClient", "sites": [ { "service": "webapp", "where": "WebApp" } ] } ],
     "configurationKeys": [
       { "key": "Identity:Audience", "source": "appsettings.json",
         "values": [ { "service": "basket-api", "value": "basket" }, { "service": "ordering-api", "value": "orders" } ] }
     ],
-    "services": [
-      { "serviceType": "eShop.IntegrationEventLogEF.Services.IIntegrationEventLogService",
-        "sites": [ { "service": "catalog-api", "implementationType": "…<CatalogContext>" },
-                   { "service": "ordering-api", "implementationType": "…<OrderingContext>" } ] }
-    ]
+    "dbContexts": [ { "type": "…", "sites": [ { "service": "…", "provider": "…", "connectionString": "…" } ] } ]
   },
 
   "errors": [ { "stage": "probe", "subject": "ordering.api", "message": "built: Microsoft.Data.SqlClient.SqlException: …" } ]
@@ -540,6 +545,9 @@ would be empty are left out.
   registration a single resolution returns, the last, `false` on those it overrides. Registrations
   that touch no application type are listed too when they take part. A refactoring that changes
   registration order changes these.
+- **`runtime.services[].module`** — the module whose `ConfigureServices` made the registration, as
+  FusionModules records it for its startup checks: the module's assembly name. Null for what the
+  program and the framework register, and in a host without modules.
 - **`runtime.dbContexts[].lifetime`** — the context's own registration; `Pooled` for a pooled
   factory that registers no context.
 - **`runtime.endpoints[].route`** is the route the endpoint answers. For a conventional MVC route
@@ -550,16 +558,83 @@ would be empty are left out.
   method — for a health check, the framework's. The endpoints `MapStaticAssets` maps — one per
   file and encoding, thousands in a web UI — are one entry of kind `static-assets`, without a
   route, and counted in `staticAssetEndpoints`.
-- **`collisions.routes`** — routes compared by shape (parameters by position, case ignored)
-  across *services*, with overlapping HTTP methods (no methods means all). `sharedHandler` marks a
-  route every site serves with the same handler, usually mapped by a shared library.
+- **`collisions`** — what the hosts would collide on in one process, by the rules of FusionModules'
+  startup checks; [`topology`](#previewing-a-topology) reads the same over the hosts it names.
+- **`collisions.services`** — a service type that two owners register with different sets of
+  implementations, an implementation told apart with its assembly (a type name compiled into two
+  services is two types). The owners are modules (`byModules: true`, each site a module, two in one
+  host as well as in two): the startup check fails. Or they are programs (`byModules: false`): the
+  composed host registers it once, from one program, and the difference is reconciled there. A host
+  with no module yet counts as its future module. The framework's services — consumed as sequences
+  — EF Core's `DbContextOptions` and FusionModules' own are left out.
+- **`collisions.routes`** — one route across *services*, compared as the matcher compares routes:
+  literals case-insensitively, parameters by their constraints and not their names (`{id}` and
+  `{itemId}` are one route, `{id:int}` another), with overlapping HTTP methods (no methods means
+  all). `sharedHandler` marks a route every site serves with the same handler, usually mapped by a
+  shared library.
+- **`collisions.endpointNames`** — one endpoint name on two endpoints: names are unique in a host,
+  and generating a link by name throws.
+- **`collisions.typeNames`** — one full service type name from two assemblies: named HTTP and gRPC
+  clients and options key by the name and see one.
+- **`collisions.dbContexts`** — one context type that two services point at different databases or
+  providers.
 - **`collisions.configurationKeys`** — the same key with different values in two services,
   compared per file name (`appsettings.json` with `appsettings.json`, `appsettings.Development.json`
   with its namesake), and in the environment the deployment sets (`source: environment`, variables
   read as keys: `Identity__Url` is `Identity:Url`; faked values and `ASPNETCORE_*`, `DOTNET_*`,
-  `OTEL_*` left out).
-- **`collisions.services`** — a service type defined in an application assembly that two services
-  register with different implementations. In one process the last registration wins.
+  `OTEL_*` left out). `"//"` properties, comments by convention, and `$schema` are not keys.
+
+## Comparing two inventories
+
+```bash
+dotnet modules inventory Shop.slnx -o before.json
+# … a step of the migration …
+dotnet modules inventory Shop.slnx -o after.json --compare before.json
+dotnet modules compare before.json after.json          # the same, from two files
+```
+
+Host by host, what each composes: its endpoints with their authorization, its registrations and
+which of them wins, the framework's registrations per library, its hosted services and the order the
+application's start in, its DbContexts with their databases, its status and errors. One line per
+thing, `-` for what is gone and `+` for what is new; a host is "the same" when it has none. What a
+conversion changes by design is not a difference: a lambda that moved from `Program` to `Module`
+or into a method of the service's own (a lambda is compared by its assembly), keys made unique per run (Scrutor's `Decorate`), FusionModules'
+own registrations. Modules that come or go, and errors that are gone, are notes. Exit code 0 the
+same, 2 different, 1 when a file is not an inventory.
+
+When services join one host, `--merged` compares the host with the services it took in:
+
+```bash
+dotnet modules compare before.json after.json --merged webapp catalog-api basket-api ordering-api
+```
+
+The host serves the union of their endpoints and starts their hosted services, each no more times
+than one service did — a bus started by five modules runs five times — and has every registration
+and DbContext one of them had, the programs' shared ones once.
+
+## Previewing a topology
+
+```bash
+dotnet modules topology inventory.json                           # every host of the inventory
+dotnet modules topology inventory.json catalog-api ordering-api  # these, as one host
+dotnet modules topology inventory.json --pairs                   # which pairs merge cleanly
+```
+
+What a host composing these services would report, before anyone builds it: the
+[`collisions`](#notes-on-the-fields) over the hosts named, in order of their consequences, each kind
+with what to do about it by hand. Modules registering one service differently fail startup; one
+endpoint name twice fails requests; programs registering one service differently are reconciled in
+the host's program; one route in two services is logged at startup and answers 500; one type name
+from two assemblies, one configuration key with two values and one DbContext on two databases
+follow. Exit code 2 when the host would fail startup.
+
+It reads what the services register and map when they run, not their source, so it sees what the
+inventory sees and no more. Not in it: options (two `AddJwtBearer` with different audiences, a
+global `AuthorizeFilter`), what factories and instances return, and the contracts the startup check
+lets through — `[MultipleImplementations]` and `FusionModules:AllowedServiceCollisions` — which it
+reports all the same. A service with no module yet counts as its future module: move its
+`Program.cs` into one (MOD0015) and take the inventory again to tell its program's registrations
+apart.
 
 ## The work directory
 

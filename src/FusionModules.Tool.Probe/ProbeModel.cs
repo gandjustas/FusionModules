@@ -113,6 +113,12 @@ internal sealed class ProbeService
     public string? ServiceAssembly { get; set; }
 
     /// <summary>
+    /// The module whose <c>ConfigureServices</c> made this registration, as FusionModules recorded
+    /// it; null for the program's own and the framework's, and in a host without modules.
+    /// </summary>
+    public string? Module { get; set; }
+
+    /// <summary>
     /// Set when the service type (and key) is registered more than once and is not one the framework
     /// resolves as a collection: true on the registration a single resolution returns — the last —
     /// false on the ones it overrides. A refactoring that flips registration order flips these.

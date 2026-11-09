@@ -32,6 +32,7 @@
   <ItemGroup>
     <Compile Include="..\FusionModules.Tool.Probe\ProbeModel.cs" Link="Probe\ProbeModel.cs" />
     <Compile Include="..\FusionModules.Tool.Probe\Secrets.cs" Link="Probe\Secrets.cs" />
+    <Compile Include="..\Shared\TopologyConventions.cs" Link="Shared\TopologyConventions.cs" />
     <InternalsVisibleTo Include="FusionModules.Tool.Tests" />
   </ItemGroup>
 

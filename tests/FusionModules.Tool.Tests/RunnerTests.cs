@@ -100,6 +100,38 @@ public class RunnerTests
         await Assert.That(() => Program.Parse([".", "--timeout"])).Throws<ArgumentException>().WithMessageContaining("needs a value");
 
     [Test]
+    public async Task CompareAndTopology_TakeTheirArguments()
+    {
+        var plain = Program.ParseCompare(["a.json", "b.json"]);
+        await Assert.That((plain.Before, plain.After, plain.Host, plain.Services.Count)).IsEqualTo(("a.json", "b.json", (string?)null, 0));
+        var merged = Program.ParseCompare(["a.json", "b.json", "--merged", "webapp", "catalog-api", "basket-api"]);
+        await Assert.That((merged.Host, merged.Services.Count)).IsEqualTo(("webapp", 2));
+
+        var topology = Program.ParseTopology(["inventory.json", "catalog-api", "ordering-api", "--pairs"]);
+        await Assert.That((topology.Inventory, topology.Hosts.Count, topology.Pairs)).IsEqualTo(("inventory.json", 2, true));
+        await Assert.That(Program.Parse([".", "--compare", "before.json"]).Compare).IsEqualTo("before.json");
+    }
+
+    [Test]
+    [Arguments("compare", new[] { "a.json" })]
+    [Arguments("compare", new[] { "a.json", "b.json", "--merged", "webapp" })]
+    [Arguments("compare", new[] { "a.json", "b.json", "--pairs" })]
+    [Arguments("topology", new string[0])]
+    [Arguments("topology", new[] { "inventory.json", "--pairs", "catalog-api" })]
+    public async Task CompareAndTopology_RefuseWhatTheyDoNotTake(string command, string[] args) =>
+        await Assert.That(() => command == "compare" ? (object)Program.ParseCompare(args) : Program.ParseTopology(args)).Throws<ArgumentException>();
+
+    [Test]
+    public async Task AFileThatIsNotAnInventory_IsAnInputError()
+    {
+        using var fixture = new Fixture(("other.json", """{ "name": "not an inventory" }"""), ("broken.json", "{"));
+
+        await Assert.That(async () => await Program.ReadAsync(fixture["other.json"])).Throws<InventoryInputException>().WithMessageContaining("is not an inventory");
+        await Assert.That(async () => await Program.ReadAsync(fixture["broken.json"])).Throws<InventoryInputException>().WithMessageContaining("is not an inventory");
+        await Assert.That(async () => await Program.ReadAsync(fixture["missing.json"])).Throws<InventoryInputException>().WithMessageContaining("No inventory");
+    }
+
+    [Test]
     public async Task TwoServicesOfOneProject_RunInWorkingDirectoriesOfTheirOwn()
     {
         using var fixture = new Fixture();
