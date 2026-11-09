@@ -26,6 +26,7 @@ internal static class ServiceProbe
         ProbeError.ApplicationAssemblies = application;
 
         List<ServiceDescriptor>? snapshot = null;
+        Dictionary<ServiceDescriptor, string>? byModule = null;
         IConfiguration? configuration = null;
         string? environmentName = null;
         var isWeb = false;
@@ -60,6 +61,7 @@ internal static class ServiceProbe
                 hostBuilder.ConfigureServices((context, services) =>
                 {
                     snapshot = [.. services];
+                    byModule = RegisteredByModules(services);
                     configuration = context.Configuration;
                     environmentName = context.HostingEnvironment.EnvironmentName;
                     isWeb = services.Any(d => d.ServiceType.FullName == ServerInterface);
@@ -94,7 +96,7 @@ internal static class ServiceProbe
 
         if (snapshot is not null)
         {
-            DescribeServices(snapshot, application, allServices, result);
+            DescribeServices(snapshot, byModule ?? [], application, allServices, result);
         }
 
         if (host is null)
@@ -224,7 +226,7 @@ internal static class ServiceProbe
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ReplaceServer(IServiceCollection services) => WebProbe.ReplaceServer(services);
 
-    private static void DescribeServices(List<ServiceDescriptor> snapshot, HashSet<string> application, bool allServices, ProbeOutput result)
+    private static void DescribeServices(List<ServiceDescriptor> snapshot, Dictionary<ServiceDescriptor, string> byModule, HashSet<string> application, bool allServices, ProbeOutput result)
     {
         result.TotalServices = snapshot.Count;
         result.Services = [];
@@ -237,7 +239,9 @@ internal static class ServiceProbe
         {
             try
             {
-                described.Add((descriptor, Describe(descriptor), Touches(descriptor, application)));
+                var service = Describe(descriptor);
+                service.Module = byModule.GetValueOrDefault(descriptor);
+                described.Add((descriptor, service, Touches(descriptor, application)));
             }
             catch (Exception exception)
             {
@@ -289,6 +293,36 @@ internal static class ServiceProbe
         }
 
         result.Modules = modules.Count > 0 ? modules : null;
+    }
+
+    /// <summary>
+    /// Which module made each registration, from the record FusionModules keeps for its startup
+    /// checks: the ledger the first module registers as an instance, whose list holds what each
+    /// module's <c>ConfigureServices</c> added, by descriptor. Read while the host is being built, in
+    /// the probe's own <c>ConfigureServices</c> — every module's has run, and the startup check that
+    /// empties the list has not. Read by name: a FusionModules without the ledger, or a host without
+    /// modules, leaves every registration unattributed.
+    /// </summary>
+    private static Dictionary<ServiceDescriptor, string> RegisteredByModules(IServiceCollection services)
+    {
+        var byModule = new Dictionary<ServiceDescriptor, string>(ReferenceEqualityComparer.Instance);
+        var ledger = services.FirstOrDefault(descriptor => !descriptor.IsKeyedService && descriptor.ServiceType.FullName == "FusionModules.ModuleLedger")?.ImplementationInstance;
+        if (ledger?.GetType().GetField("_added", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(ledger) is not System.Collections.IEnumerable added)
+        {
+            return byModule;
+        }
+
+        foreach (var entry in added)
+        {
+            var type = entry.GetType();
+            if (type.GetProperty("Module")?.GetValue(entry) is string module &&
+                type.GetProperty("Descriptor")?.GetValue(entry) is ServiceDescriptor descriptor)
+            {
+                byModule[descriptor] = module;
+            }
+        }
+
+        return byModule;
     }
 
     private const string ModuleBase = "FusionModules.ModuleBase";

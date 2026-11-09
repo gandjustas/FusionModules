@@ -1437,7 +1437,10 @@ Read off the endpoint table, not probed over HTTP: an HTTP probe cannot tell "no
 "deployed and broken", and it drags a database into a question about composition. Swagger JSON
 works too if the services already produce it.
 
-Store one file per service, then one per topology, and diff them. After the conversion the topology
+Store one file per service, then one per topology, and diff them. `dotnet modules inventory -o
+after.json --compare before.json` does it for a whole solution, host by host, and
+`dotnet modules topology inventory.json <services…>` previews what one host composing them would
+fail on before it exists. After the conversion the topology
 side can come from `Routes()` (section 4): `Routes().Select(route => $"{route.Method} {route.Pattern}").Distinct().Order(StringComparer.Ordinal)`
 writes the template's lines — one method per line, `*` for any.
 

@@ -6,20 +6,25 @@ namespace FusionModules.Tool.Tests;
 public class AnalysisTests
 {
     [Test]
-    [Arguments("/api/items/{id:int}", "/api/items/{}")]
+    [Arguments("/api/items/{id}", "/api/items/{}")]
     [Arguments("api/Items/{itemId}/", "/api/items/{}")]
+    [Arguments("/api/items/{id:int}", "/api/items/{int}")]
+    [Arguments("/api/items/{id:int:min(1)}", "/api/items/{int,min(1)}")]
+    [Arguments("/orders/{id?}", "/orders/{?}")]
+    [Arguments("/orders/{page=1}", "/orders/{?}")]
+    [Arguments("/files/{**path}", "/files/{*}")]
     [Arguments("/", "/")]
-    public async Task Routes_AreComparedByShape(string route, string expected) =>
-        await Assert.That(Collisions.NormalizeRoute(route)).IsEqualTo(expected);
+    public async Task Routes_AreComparedAsTheMatcherComparesThem(string route, string expected) =>
+        await Assert.That(Names.Route(route)).IsEqualTo(expected);
 
     [Test]
     public async Task TheSameRouteInTwoServices_WithOverlappingMethods_Collides()
     {
         var hosts = new[]
         {
-            Host("catalog", endpoints: [Endpoint("/api/items/{id:int}", "GET"), Endpoint("/health", null, "HealthCheckMiddleware.InvokeAsync")]),
+            Host("catalog", endpoints: [Endpoint("/api/items/{id}", "GET"), Endpoint("/health", null, "HealthCheckMiddleware.InvokeAsync")]),
             Host("ordering", endpoints: [Endpoint("/api/items/{itemId}", "GET", "Ordering.Items.Get"), Endpoint("/api/items/{id}", "DELETE"), Endpoint("/health", null, "HealthCheckMiddleware.InvokeAsync")]),
-            Host("basket", endpoints: [Endpoint("/api/items/{id}", "POST")]),
+            Host("basket", endpoints: [Endpoint("/api/items/{id}", "POST"), Endpoint("/api/items/{id:int}", "GET")]),
         };
 
         var collisions = Collisions.Find(hosts).Routes;
@@ -27,6 +32,8 @@ public class AnalysisTests
         var items = collisions.Single(c => c.Route == "/api/items/{}");
         await Assert.That(items.Sites.Select(s => s.Service)).IsEquivalentTo(["catalog", "ordering"]);
         await Assert.That(items.SharedHandler).IsFalse();
+        // A constraint makes it another route to the matcher: basket's {id:int} is not catalog's {id}.
+        await Assert.That(collisions.Any(c => c.Route == "/api/items/{int}")).IsFalse();
         await Assert.That(collisions.Single(c => c.Route == "/health").SharedHandler).IsTrue();
     }
 
@@ -52,7 +59,7 @@ public class AnalysisTests
         var collision = Collisions.Find([catalog, ordering]).Services.Single();
 
         await Assert.That(collision.ServiceType).IsEqualTo("Shared.IEventLog");
-        await Assert.That(collision.Sites.Select(s => s.ImplementationType!)).IsEquivalentTo(["Shared.EventLog<Catalog.Db>", "Shared.EventLog<Ordering.Db>"]);
+        await Assert.That(collision.Sites.SelectMany(s => s.Implementations)).IsEquivalentTo(["Shared.EventLog<Catalog.Db>", "Shared.EventLog<Ordering.Db>"]);
     }
 
     [Test]

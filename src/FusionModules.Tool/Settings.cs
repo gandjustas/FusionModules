@@ -44,7 +44,9 @@ internal static class AppSettingsReader
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                foreach (var property in element.EnumerateObject())
+                // A "//" property is a comment by convention, and $schema is for the editor: neither is
+                // configuration anything reads.
+                foreach (var property in element.EnumerateObject().Where(property => !property.Name.StartsWith("//", StringComparison.Ordinal) && property.Name != "$schema"))
                 {
                     Flatten(property.Value, prefix.Length == 0 ? property.Name : $"{prefix}:{property.Name}", keys);
                 }

@@ -218,11 +218,17 @@ internal sealed class HostInfo
 
 internal sealed class CollisionsInfo
 {
+    public List<ServiceCollision> Services { get; set; } = [];
+
     public List<RouteCollision> Routes { get; set; } = [];
+
+    public List<NameCollision> EndpointNames { get; set; } = [];
+
+    public List<NameCollision> TypeNames { get; set; } = [];
 
     public List<ConfigurationCollision> ConfigurationKeys { get; set; } = [];
 
-    public List<ServiceCollision> Services { get; set; } = [];
+    public List<DbContextCollision> DbContexts { get; set; } = [];
 }
 
 internal sealed class RouteCollision
@@ -273,7 +279,14 @@ internal sealed class ConfigurationSite
 
 internal sealed class ServiceCollision
 {
+    /// <summary>The service type, with its key.</summary>
     public string ServiceType { get; set; } = "";
+
+    /// <summary>
+    /// True when modules register it, each site a module: the startup check fails. False when the
+    /// programs do: the composed host registers it once, from one program, so it is reconciled there.
+    /// </summary>
+    public bool ByModules { get; set; }
 
     public List<ServiceSite> Sites { get; set; } = [];
 }
@@ -282,13 +295,42 @@ internal sealed class ServiceSite
 {
     public string Service { get; set; } = "";
 
-    public string? ImplementationType { get; set; }
+    /// <summary>The module that registers it; the service's own name for a service with no module yet; null for its program.</summary>
+    public string? Module { get; set; }
 
-    public string? Factory { get; set; }
+    /// <summary>Each a type or a factory's method, with its assembly.</summary>
+    public List<string> Implementations { get; set; } = [];
+}
 
-    public string? Assembly { get; set; }
+internal sealed class NameCollision
+{
+    public string Name { get; set; } = "";
 
-    public string? Lifetime { get; set; }
+    public List<NameSite> Sites { get; set; } = [];
+}
+
+internal sealed class NameSite
+{
+    public string Service { get; set; } = "";
+
+    /// <summary>The endpoint that has the name, or the assembly that has the type.</summary>
+    public string Where { get; set; } = "";
+}
+
+internal sealed class DbContextCollision
+{
+    public string Type { get; set; } = "";
+
+    public List<DbContextSite> Sites { get; set; } = [];
+}
+
+internal sealed class DbContextSite
+{
+    public string Service { get; set; } = "";
+
+    public string? Provider { get; set; }
+
+    public string? ConnectionString { get; set; }
 }
 
 internal sealed class InventoryError

@@ -165,7 +165,10 @@ dotnet modules inventory MySolution.slnx -o fusion-modules-inventory.json
 
 Then turn each service's `Program.cs` into a module in the same project: MOD0015 moves the
 service's own registrations and endpoints into `Module.cs` and leaves the host's in place, and
-the service runs as before ([MOD0015](docs/rules/MOD0015.md)).
+the service runs as before ([MOD0015](docs/rules/MOD0015.md)). `dotnet modules inventory -o
+after.json --compare fusion-modules-inventory.json` checks that each step changed nothing a host
+composes, and `dotnet modules topology fusion-modules-inventory.json <services…>` tells what one
+host composing those services would fail on, and what to do about each, before it exists.
 
 [`skill/`](skill) holds instructions for an AI agent doing the migration: assess, host, modules,
 data, transports, deployment, and a verification loop that runs after every phase rather than at
