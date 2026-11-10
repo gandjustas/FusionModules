@@ -23,6 +23,28 @@ public class CodeFixTests
             """);
 
     [Test]
+    public Task MakeInternal_TakesAPageModel_AndLeavesItsHandlersPublic() =>
+        // ActivatorUtilities sees public constructors only, and handlers are found with GetMethods():
+        // the members stay public, the class does not.
+        VerifyFixAsync<ModuleAnalyzer, MakeTypeInternalCodeFixProvider>(
+            """
+            public class {|MOD0001:IndexModel|} : Microsoft.AspNetCore.Mvc.RazorPages.PageModel
+            {
+                public IndexModel() { }
+
+                public void OnGet() { }
+            }
+            """,
+            """
+            internal class IndexModel : Microsoft.AspNetCore.Mvc.RazorPages.PageModel
+            {
+                public IndexModel() { }
+
+                public void OnGet() { }
+            }
+            """);
+
+    [Test]
     public Task MakeInternal_KeepsTheDocCommentAttached() =>
         // Removing and re-adding the modifier loses the leading trivia, which is a silent way to
         // delete every doc comment in a project during a Fix All.

@@ -213,6 +213,13 @@ them did not compile. `FusionModules.Testing` is those, with no test framework i
 Modules also load by name at runtime, so `PublishTrimmed` and `PublishAot` are off the table for
 the host. That is the cost of the approach and it is worth knowing before you adopt it.
 
+## Upgrading from 0.3
+
+- MOD0001 reports a public `PageModel` in a module, as it does a controller: a public one takes the
+  services it is built with and the models it binds public with it. Razor Pages finds an internal
+  one as it is. `dotnet format analyzers --diagnostics MOD0001` makes them internal and leaves their
+  constructors and handler methods public, as they have to stay.
+
 ## Upgrading from 0.1
 
 0.2 numbers the rules by severity — errors first, then warnings — and that moves most of them.

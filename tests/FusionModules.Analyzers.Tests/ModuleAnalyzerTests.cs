@@ -45,9 +45,20 @@ public class ModuleAnalyzerTests
             """);
 
     [Test]
-    public Task PageModelInModule_IsFine() =>
+    public Task PublicPageModelInModule_IsReported() =>
+        // Like a controller: Razor Pages finds pages by [RazorCompiledItem], the generated page class
+        // is internal, and a public model drags its constructor's services and bound models public.
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
-            public class IndexModel : Microsoft.AspNetCore.Mvc.RazorPages.PageModel { }
+            public class {|MOD0001:IndexModel|} : Microsoft.AspNetCore.Mvc.RazorPages.PageModel { }
+            """);
+
+    [Test]
+    public Task InternalPageModelInModule_IsFine() =>
+        AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
+            internal class IndexModel : Microsoft.AspNetCore.Mvc.RazorPages.PageModel
+            {
+                public void OnGet() { }
+            }
             """);
 
     [Test]
