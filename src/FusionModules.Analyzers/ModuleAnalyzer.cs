@@ -248,7 +248,6 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
     /// </summary>
     private sealed class TypeExemptions(Compilation compilation, DeclaredTypes declared)
     {
-        private readonly INamedTypeSymbol? _pageModel = compilation.GetTypeByMetadataName(ModuleFacts.PageModelMetadataName);
         private readonly INamedTypeSymbol? _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
         private readonly INamedTypeSymbol? _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
         private readonly INamedTypeSymbol? _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
@@ -259,7 +258,6 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
             // may require to be public, and two rules must not argue over the same line.
             declared.HubClients.ContainsKey(type) ||
             (_hub is not null && ModuleFacts.InheritsFrom(type, _hub)) ||
-            (_pageModel is not null && ModuleFacts.InheritsFrom(type, _pageModel)) ||
             (_tagHelper is not null && ModuleFacts.Implements(type, _tagHelper)) ||
             ModuleFacts.HasAttribute(type, _viewComponentAttribute) ||
             type.Name.EndsWith("ViewComponent", StringComparison.Ordinal);

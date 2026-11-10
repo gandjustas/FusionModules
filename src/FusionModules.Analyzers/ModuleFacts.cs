@@ -12,7 +12,6 @@ internal static class ModuleFacts
     public const string HostingStartupAttributeMetadataName = "Microsoft.AspNetCore.Hosting.HostingStartupAttribute";
     public const string ApplicationPartAttributeMetadataName = "Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartAttribute";
     public const string ControllerBaseMetadataName = "Microsoft.AspNetCore.Mvc.ControllerBase";
-    public const string PageModelMetadataName = "Microsoft.AspNetCore.Mvc.RazorPages.PageModel";
     public const string ViewComponentAttributeMetadataName = "Microsoft.AspNetCore.Mvc.ViewComponentAttribute";
     public const string TagHelperMetadataName = "Microsoft.AspNetCore.Razor.TagHelpers.ITagHelper";
     public const string EntityTypeConfigurationMetadataName = "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1";
