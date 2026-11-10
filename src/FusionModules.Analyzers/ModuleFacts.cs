@@ -16,7 +16,6 @@ internal static class ModuleFacts
     public const string TagHelperMetadataName = "Microsoft.AspNetCore.Razor.TagHelpers.ITagHelper";
     public const string EntityTypeConfigurationMetadataName = "Microsoft.EntityFrameworkCore.IEntityTypeConfiguration`1";
     public const string ModuleBaseMetadataName = "FusionModules.ModuleBase";
-    public const string HubMetadataName = "Microsoft.AspNetCore.SignalR.Hub";
     public const string HubOfTMetadataName = "Microsoft.AspNetCore.SignalR.Hub`1";
     public const string InternalsVisibleToAttributeMetadataName =
         "System.Runtime.CompilerServices.InternalsVisibleToAttribute";

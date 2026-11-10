@@ -45,6 +45,28 @@ public class CodeFixTests
             """);
 
     [Test]
+    public Task MakeInternal_TakesAHub_AndLeavesItsMethodsPublic() =>
+        // ActivatorUtilities sees public constructors only, and hub methods are found with
+        // GetMethods(Public | Instance): the members stay public, the class does not.
+        VerifyFixAsync<ModuleAnalyzer, MakeTypeInternalCodeFixProvider>(
+            """
+            public sealed class {|MOD0001:PaymentHub|} : Microsoft.AspNetCore.SignalR.Hub
+            {
+                public PaymentHub() { }
+
+                public System.Threading.Tasks.Task Subscribe(string topic) => System.Threading.Tasks.Task.CompletedTask;
+            }
+            """,
+            """
+            internal sealed class PaymentHub : Microsoft.AspNetCore.SignalR.Hub
+            {
+                public PaymentHub() { }
+
+                public System.Threading.Tasks.Task Subscribe(string topic) => System.Threading.Tasks.Task.CompletedTask;
+            }
+            """);
+
+    [Test]
     public Task MakeInternal_KeepsTheDocCommentAttached() =>
         // Removing and re-adding the modifier loses the leading trivia, which is a silent way to
         // delete every doc comment in a project during a Fix All.

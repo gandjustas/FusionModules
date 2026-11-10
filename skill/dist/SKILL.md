@@ -1017,10 +1017,10 @@ Build. MOD0001 will report every public type. Apply the "make internal" fix — 
 converted service in one pass.
 
 Exempt by default, because the framework finds them by reflection: view components, tag helpers,
-SignalR hubs and the client interface of a `Hub<TClient>`, and entity types configured by an
+the client interface of a SignalR `Hub<TClient>`, and entity types configured by an
 `IEntityTypeConfiguration<T>` in the same assembly.
 
-Controllers and page models are not exempt. A public class cannot have a public constructor taking an internal
+Controllers, page models and hubs are not exempt. A public class cannot have a public constructor taking an internal
 service, nor a public action returning an internal DTO — so a public controller drags its services
 and its models public with it, and then whatever those name. MOD0001 reports it and its fix makes
 it internal; let discovery see it, or MOD0011 reports every route answering 404 (its fix writes
@@ -1037,7 +1037,7 @@ The class becomes `internal`, the constructor stays public — MVC's activator r
 internal, because C# bounds a member's effective accessibility by its containing type. One call
 covers the whole application.
 
-The other three kinds the framework finds by reflection each answer differently, and guessing costs
+The other kinds the framework reaches each answer differently, and guessing costs
 a day:
 
 - **View components** — `.AllowInternalViewComponents()`, same call site. Invoke by name or through
@@ -1048,6 +1048,10 @@ a day:
   internal; nothing else to call. Page discovery reads the attributes the Razor compiler emits
   rather than scanning types, and the generated page class is itself internal. Keep the
   constructor and handler methods public.
+- **SignalR hubs** — MOD0001 reports a public hub too, and its fix makes it internal; nothing else to
+  call, because `MapHub` names the type. Keep the constructor and hub methods public. The client
+  interface of a `Hub<TClient>` is the exception and stays public, for SignalR's generated proxy
+  (MOD0010).
 - **Tag helpers** — keep them public. `@addTagHelper` binds in the compiler against Roslyn symbols
   and requires public, for the current assembly as much as for referenced ones. An internal tag
   helper produces no descriptor at all: the element renders as literal HTML, with no error, no

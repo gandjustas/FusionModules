@@ -39,9 +39,9 @@ names. Here the entire closure stays internal.
 ## What else to look at
 
 **[`Modules/Notifications/NotificationHub.cs`](Modules/Notifications/NotificationHub.cs)** — the
-hub is internal. SignalR resolves it by reflection the way MVC resolves a controller, so MOD0001
-exempts it; unlike a controller there is no cascade, because a hub's methods are called by the
-framework rather than by anyone who would need to name their types.
+hub is internal, as MOD0001 requires: `MapHub` names it, so nothing has to discover it. Its
+constructor and methods stay public, and as members of an internal class they may take the
+module's internal services and models; a public hub would drag those public with it.
 
 **[`Modules/Notifications/Module.cs`](Modules/Notifications/Module.cs)** — `MapHub` lives in the
 module's `Configure`, because no application part discovers a hub. And a note on `AddSignalR`

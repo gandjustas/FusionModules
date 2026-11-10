@@ -250,14 +250,13 @@ public sealed class ModuleAnalyzer : DiagnosticAnalyzer
     {
         private readonly INamedTypeSymbol? _viewComponentAttribute = compilation.GetTypeByMetadataName(ModuleFacts.ViewComponentAttributeMetadataName);
         private readonly INamedTypeSymbol? _tagHelper = compilation.GetTypeByMetadataName(ModuleFacts.TagHelperMetadataName);
-        private readonly INamedTypeSymbol? _hub = compilation.GetTypeByMetadataName(ModuleFacts.HubMetadataName);
 
         public bool IsExempt(INamedTypeSymbol type) =>
             declared.EntityTypes.Contains(type) ||
-            // A hub is found by reflection like a controller; its client interface is one MOD0010
-            // may require to be public, and two rules must not argue over the same line.
+            // A hub's client interface is one MOD0010 may require to be public, and two rules must
+            // not argue over the same line. The hub itself is not exempt: MapHub names it, and its
+            // constructor and methods are public members of an internal class, as a controller's are.
             declared.HubClients.ContainsKey(type) ||
-            (_hub is not null && ModuleFacts.InheritsFrom(type, _hub)) ||
             (_tagHelper is not null && ModuleFacts.Implements(type, _tagHelper)) ||
             ModuleFacts.HasAttribute(type, _viewComponentAttribute) ||
             type.Name.EndsWith("ViewComponent", StringComparison.Ordinal);

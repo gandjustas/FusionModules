@@ -219,6 +219,9 @@ the host. That is the cost of the approach and it is worth knowing before you ad
   services it is built with and the models it binds public with it. Razor Pages finds an internal
   one as it is. `dotnet format analyzers --diagnostics MOD0001` makes them internal and leaves their
   constructors and handler methods public, as they have to stay.
+- MOD0001 reports a public SignalR hub the same way, and the same command makes it internal. The
+  client interface of a `Hub<TClient>` stays exempt and public: SignalR's generated proxy needs it
+  ([MOD0010](docs/rules/MOD0010.md)).
 
 ## Upgrading from 0.1
 
