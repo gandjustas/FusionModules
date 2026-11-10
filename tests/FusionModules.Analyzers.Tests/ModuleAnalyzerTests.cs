@@ -241,7 +241,7 @@ public class ModuleAnalyzerTests
 
             public interface IPaymentClient { }
 
-            public class PaymentHub : Hub<IPaymentClient> { }
+            sealed class PaymentHub : Hub<IPaymentClient> { }
             """);
 
     [Test]
@@ -281,12 +281,16 @@ public class ModuleAnalyzerTests
             """);
 
     [Test]
-    public Task HubItself_IsExemptFromMod0001() =>
-        // SignalR resolves a hub by reflection, exactly as MVC resolves a controller.
+    public Task PublicHub_IsReported_AndItsClientInterfaceIsNot() =>
+        // Like a controller: MapHub names the hub, and a public one drags the services its
+        // constructor takes and the models its methods take public with it. The client interface
+        // stays exempt; the proxy needs it public, and MOD0010 asks about it.
         AnalyzerTest.VerifyModuleAsync<ModuleAnalyzer>("""
             using Microsoft.AspNetCore.SignalR;
 
-            public sealed class PaymentHub : Hub { }
+            public interface IPaymentClient { }
+
+            public sealed class {|MOD0001:PaymentHub|} : Hub<IPaymentClient> { }
             """);
 
     [Test]
