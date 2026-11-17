@@ -217,8 +217,8 @@ each file listed twice under a name the fix gives: at the project's root, matchi
 items; any other duplicate is still reported. The redundant line can be deleted either way.
 
 The same goes for the files [MOD0016](rules/MOD0016.md)'s fix adds, one per entity: a file named
-`…Configuration.cs` (`OrderConfiguration.cs`, `OrderEntityConfiguration2.cs`), in any folder of the
-project, listed twice is kept once.
+`…Configuration.cs` (`OrderConfiguration.cs`, `OrderEntityConfiguration2.cs`) or `…Extensions.cs`
+(`ShopContextExtensions.cs`), in any folder of the project, listed twice is kept once.
 
 ```xml
 <PropertyGroup>

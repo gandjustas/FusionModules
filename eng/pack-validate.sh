@@ -271,6 +271,7 @@ cat > "$work/consumer/NoModules/NoModules.csproj" <<XML
     <Compile Include="Module2.cs" />
     <!-- And for the files MOD0016's fix adds, one per entity, wherever the project keeps them. -->
     <Compile Include="Data\OrderConfiguration.cs" />
+    <Compile Include="Data\ShopContextExtensions.cs" />
   </ItemGroup>
 </Project>
 XML
@@ -285,6 +286,9 @@ CS
 mkdir -p "$work/consumer/NoModules/Data"
 cat > "$work/consumer/NoModules/Data/OrderConfiguration.cs" <<'CS'
 internal static class AlsoListedTwice { }
+CS
+cat > "$work/consumer/NoModules/Data/ShopContextExtensions.cs" <<'CS'
+internal static class ListedTwiceToo { }
 CS
 
 # MOD0013 says the runtime package is missing, so the project has to have the analyzer without it.

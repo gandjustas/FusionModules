@@ -40,12 +40,14 @@ and reach them with `Set<T>()` on a `DbContext` the host registers
 (`services.AddTransient<DbContext>(sp => sp.GetRequiredService<AppContext>())`).
 
 A context that still configures its entities in `OnModelCreating` has nothing a module could take
-with it. [MOD0016](rules/MOD0016.md) marks such a context, and its fix writes each entity's
-configuration as an `IEntityTypeConfiguration<T>` class in a file of its own — the form
-`ApplyModuleConfigurations` finds — leaving in the context what belongs to no single entity:
+with it, and one with `DbSet<T>` properties names every entity's type. [MOD0016](rules/MOD0016.md)
+marks such a context, and its fix writes each entity's configuration as an
+`IEntityTypeConfiguration<T>` class in a file of its own — the form `ApplyModuleConfigurations`
+finds — and turns each property into an extension member of `DbContext`, so that `context.Orders`
+reads the same from any code that has a `DbContext`:
 
 ```bash
-dotnet format analyzers src/Shop.Data/Shop.Data.csproj --diagnostics MOD0016 --severity info
+dotnet format analyzers Shop.slnx --diagnostics MOD0016 --severity info
 ```
 
 ## For `dotnet ef` and tests

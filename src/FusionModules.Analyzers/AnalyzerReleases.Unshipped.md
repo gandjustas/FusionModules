@@ -5,4 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-MOD0016 | FusionModules.Usage | Info | Entity configuration written in OnModelCreating can move into IEntityTypeConfiguration classes
+MOD0016 | FusionModules.Usage | Info | Entity configuration and DbSet properties can move out of the DbContext

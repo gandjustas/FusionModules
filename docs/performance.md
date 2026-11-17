@@ -102,9 +102,10 @@ time.
 
 [MOD0016](rules/MOD0016.md)'s analyzer, added after 0.4.0, looks up three EF Core types when a
 compilation starts and registers nothing in a project without them. With them it is called for every
-method declaration and reads only those named `OnModelCreating` that override one; what it needs of
-the whole compilation — its configuration classes, another context that scans the assembly — it asks
-only for a context that has entity configuration to move.
+class declaration and reads only those that declare an `OnModelCreating` override or a `DbSet`
+property; what it needs of the whole compilation — its configuration classes, another context that
+scans the assembly — it asks only for a context that has something to move. How a `DbSet` property
+is used it does not read at all: that would bind every method of the project, and is the fix's to do.
 
 17 November 2026, .NET SDK 10.0.404, the machine and the method above; `release/0.4` at `a25791e`
 against the same with the rule. The compiler charges, over `samples/Samples.slnx` (52 compilations,
@@ -123,6 +124,9 @@ is the noise of one run. Over `BillingModule.csproj`, two runs of five pairs eac
 analyzers were charged 0.039 s and 0.029 s before, 0.041 s and 0.029 s after, the new one 0.004 s of
 it; `Csc` took 1.7–2.9 s per build with the analyzers on either side, on a machine that was building
 other things, so the pairs say nothing either way.
+
+With the `DbSet` properties read as well, 18 November 2026, the same solution: 0.023 s over the 46
+compilations again, and 0.004 s of `BillingModule.csproj`'s 0.021 s.
 
 On a context that has something to move — ten entities configured in `OnModelCreating` and two
 helpers, EF Core 10 — the compiler charges the analyzer 0.001 s in that project's compilation, the

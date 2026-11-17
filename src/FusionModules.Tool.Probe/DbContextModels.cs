@@ -200,7 +200,9 @@ internal static partial class DbContextModels
 
     /// <summary>
     /// A debug view's lines, without what is not the model: the bookkeeping the conventions leave on
-    /// it while it is built, which the view prints as the name of a collection's type.
+    /// it while it is built, which the view prints as the name of a collection's type; and a schema
+    /// set to nothing, which is what <c>ToTable("Orders")</c> leaves — the table is in the model's
+    /// default schema with it as without it.
     /// </summary>
     private static List<string> Lines(string text)
     {
@@ -220,7 +222,7 @@ internal static partial class DbContextModels
         static int Indent(string line) => line.Length - line.TrimStart().Length;
     }
 
-    [GeneratedRegex(@"^\s+(\w*Convention\w*(:\w+)?|QueryFilter): [\w.]+(`\d+\[.*\])?$|^\s+\w*ConventionState\w*: ")]
+    [GeneratedRegex(@"^\s+(\w*Convention\w*(:\w+)?|QueryFilter): [\w.]+(`\d+\[.*\])?$|^\s+\w*ConventionState\w*: |^\s+Relational:Schema:$")]
     private static partial Regex Bookkeeping();
 
     private static object? LongDefault(object model) =>

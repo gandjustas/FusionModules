@@ -41,6 +41,7 @@ internal static class EntityConfigurationSplit
     public static async Task<Solution> SplitAsync(Document document, TextSpan? at, CancellationToken cancellationToken)
     {
         var solution = document.Project.Solution;
+        var tried = new HashSet<string>(System.StringComparer.Ordinal);
         for (var round = 0; round < 64; round++)
         {
             if (solution.GetDocument(document.Id) is not { } current ||
@@ -52,18 +53,22 @@ internal static class EntityConfigurationSplit
             }
 
             EntityConfigurations.Plan? plan = null;
-            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(EntityConfigurations.MightApply))
+            foreach (var type in root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(EntityConfigurations.MightApply))
             {
-                if (at is { } span && !method.Span.IntersectsWith(span))
+                if (at is { } span && !type.Span.IntersectsWith(span))
                 {
                     continue;
                 }
 
-                plan = EntityConfigurations.Analyze(model, method, types, cancellationToken);
-                if (plan is not null)
+                // A context the fix found nothing to do for — its properties are all assigned
+                // somewhere — is not a reason to leave the document's other contexts.
+                plan = EntityConfigurations.Analyze(model, type, types, cancellationToken);
+                if (plan is not null && tried.Add(plan.Context.ToDisplayString()))
                 {
                     break;
                 }
+
+                plan = null;
             }
 
             if (plan is null)
@@ -71,13 +76,7 @@ internal static class EntityConfigurationSplit
                 return solution;
             }
 
-            var changed = await ApplyAsync(current, root, types, plan, cancellationToken).ConfigureAwait(false);
-            if (changed is null)
-            {
-                return solution;
-            }
-
-            solution = changed;
+            solution = await ApplyAsync(current, root, types, plan, cancellationToken).ConfigureAwait(false) ?? solution;
             if (at is not null)
             {
                 return solution;
@@ -88,14 +87,24 @@ internal static class EntityConfigurationSplit
     }
 
     /// <summary>A class to write: a new one, or statements for one that exists.</summary>
-    private sealed class Target(EntityConfigurations.Move move, string builder, string body)
+    private sealed class Target(INamedTypeSymbol entity, string entityText, INamedTypeSymbol? existing, string builder, string body)
     {
-        public EntityConfigurations.Move Move { get; } = move;
+        public INamedTypeSymbol Entity { get; } = entity;
+
+        /// <summary>The entity as the context names it.</summary>
+        public string EntityText { get; } = entityText;
+
+        public INamedTypeSymbol? Existing { get; } = existing;
 
         public string Builder { get; } = builder;
 
         /// <summary>The statements of <c>Configure</c>, not indented, with line feeds.</summary>
         public string Body { get; } = body;
+
+        public EntityConfigurations.Move? Move { get; set; }
+
+        /// <summary>Whether the context has to apply the class itself.</summary>
+        public bool Apply { get; set; }
 
         public string ClassName { get; set; } = string.Empty;
     }
@@ -115,6 +124,14 @@ internal static class EntityConfigurationSplit
         var contextNamespace = plan.Context.ContainingNamespace is { IsGlobalNamespace: false } declared ? declared.ToDisplayString() : string.Empty;
         var place = Place(document, types, contextNamespace);
 
+        // The properties that can go, as the whole solution uses them; the table name a class says
+        // for one that stays is not needed.
+        var sets = await EntityConfigurationProperties.SelectAsync(document, plan, cancellationToken).ConfigureAwait(false);
+        foreach (var move in plan.Moves.Where(move => !sets.Properties.Any(property => property.Move == move)))
+        {
+            move.Table = null;
+        }
+
         var targets = new List<Target>();
         foreach (var move in plan.Moves)
         {
@@ -123,10 +140,16 @@ internal static class EntityConfigurationSplit
                 : EntityConfigurations.ConfigureOf(move.Existing, move.Entity, cancellationToken)?.ParameterList.Parameters[0].Identifier.ValueText;
             if ((move.Existing is not null && parameter is null) || BuilderName(move, parameter) is not { } builder)
             {
+                sets.Properties.RemoveAll(property => property.Move == move);
                 continue;
             }
 
             var parts = new List<string>();
+            if (move.Table is not null && move.Existing is null)
+            {
+                parts.Add(TableStatement(builder, move.Table));
+            }
+
             var emitted = new HashSet<EntityConfigurations.Item>();
             foreach (var piece in move.Pieces)
             {
@@ -138,10 +161,43 @@ internal static class EntityConfigurationSplit
                 parts.Add(Render(text, piece, builder, plan.Context.Name));
             }
 
-            targets.Add(new Target(move, builder, string.Join("\n", parts.Where(part => part.Length > 0))));
+            if (move.Table is not null && move.Existing is not null)
+            {
+                parts.Add(TableStatement(builder, move.Table));
+            }
+
+            targets.Add(new Target(move.Entity, move.Pieces[0].EntityName!.ToString(), move.Existing, builder, string.Join("\n", parts.Where(part => part.Length > 0)))
+            {
+                Move = move,
+                Apply = move.Apply,
+            });
         }
 
-        if (targets.Count == 0)
+        // An entity that had a property and no configuration gets a class that says as much as the
+        // property did; one whose class is there already has the table name added to it.
+        var first = new List<Target>();
+        foreach (var property in sets.Properties.Where(property => property.Target != EntityConfigurations.PropertyTarget.Move))
+        {
+            if (property.Target == EntityConfigurations.PropertyTarget.New)
+            {
+                var target = new Target(property.Entity, EntityConfigurationProperties.EntityText(property.Declaration), null, "builder", property.Table is null ? string.Empty : TableStatement("builder", property.Table))
+                {
+                    Apply = !plan.Scanned,
+                };
+                targets.Add(target);
+                if (target.Apply)
+                {
+                    first.Add(target);
+                }
+            }
+            else if (property.Table is not null &&
+                     EntityConfigurations.ConfigureOf(property.Existing!, property.Entity, cancellationToken)?.ParameterList.Parameters[0].Identifier.ValueText is { } parameter)
+            {
+                targets.Add(new Target(property.Entity, EntityConfigurationProperties.EntityText(property.Declaration), property.Existing, parameter, TableStatement(parameter, property.Table)));
+            }
+        }
+
+        if (targets.Count == 0 && sets.Properties.Count == 0)
         {
             return null;
         }
@@ -154,8 +210,12 @@ internal static class EntityConfigurationSplit
         var gone = new HashSet<MethodDeclarationSyntax>();
         foreach (var target in targets)
         {
-            var move = target.Move;
-            target.ClassName = move.Existing?.Name ?? ClassName(compilation, place.Namespace, move.Entity.Name, taken);
+            target.ClassName = target.Existing?.Name ?? ClassName(compilation, place.Namespace, target.Entity.Name, taken);
+            if (target.Move is not { } move)
+            {
+                continue;
+            }
+
             for (var i = 0; i < move.Pieces.Count; i++)
             {
                 var piece = move.Pieces[i];
@@ -209,11 +269,24 @@ internal static class EntityConfigurationSplit
             list.Add((node, change));
         }
 
-        foreach (var method in new[] { plan.Method }.Concat(plan.Helpers.Select(helper => helper.Helper)).Where(method => !gone.Contains(method)))
+        // The classes of the entities that were in the model from the start are applied first, in
+        // the order of their properties: before anything else reads the model.
+        var unit = IndentUnit(plan.Type);
+        var memberIndent = ModuleEditing.MemberIndent(plan.Type);
+        var modelBuilder = plan.Method?.ParameterList.Parameters[0].Identifier.ValueText ?? "modelBuilder";
+        var prefix = first.Select(target => $"{modelBuilder}.ApplyConfiguration(new {target.ClassName}());").ToList();
+        var methods = plan.Helpers.Select(helper => helper.Helper).ToList();
+        if (plan.Method is not null)
         {
-            if (method.Body is { } body && body.Statements.Any(statement => removed.Contains(statement) || replaced.ContainsKey(statement)))
+            methods.Insert(0, plan.Method);
+        }
+
+        foreach (var method in methods.Where(method => !gone.Contains(method)))
+        {
+            var leading = method == plan.Method ? prefix : [];
+            if (method.Body is { } body && (leading.Count > 0 || body.Statements.Any(statement => removed.Contains(statement) || replaced.ContainsKey(statement))))
             {
-                Edit(document.Id, body, _ => Rebuild(body, removed, replaced, lineBreak));
+                Edit(document.Id, body, _ => Rebuild(body, removed, replaced, lineBreak, leading, memberIndent + unit));
             }
             else if (method.ExpressionBody is { } arrow && replaced.TryGetValue(arrow.Expression, out var replacement))
             {
@@ -226,19 +299,36 @@ internal static class EntityConfigurationSplit
             Edit(document.Id, method, _ => null);
         }
 
+        if (plan.Method is null && prefix.Count > 0)
+        {
+            // A context with nothing but sets gets the method that says what they said. A base that
+            // is not DbContext itself has a model of its own to build, after them.
+            var lines = new List<string> { string.Empty, $"{memberIndent}protected override void OnModelCreating(ModelBuilder {modelBuilder})", memberIndent + "{" };
+            lines.AddRange(prefix.Select(statement => memberIndent + unit + statement));
+            if (!SymbolEqualityComparer.Default.Equals(plan.Context.BaseType, types.DbContext))
+            {
+                lines.Add($"{memberIndent}{unit}base.OnModelCreating({modelBuilder});");
+            }
+
+            lines.Add(memberIndent + "}");
+            var method = SyntaxFactory.ParseMemberDeclaration(string.Join(lineBreak, lines) + lineBreak)!;
+            Edit(document.Id, plan.Type, now => ((ClassDeclarationSyntax)now).AddMembers(
+                ((ClassDeclarationSyntax)now).Members.Count == 0 ? method.WithLeadingTrivia(method.GetLeadingTrivia().Skip(1)) : method));
+        }
+
         // The statements a class of the project already has room for.
         var wanted = Usings(root, plan, contextNamespace, place.Namespace);
         var appendedTo = new HashSet<DocumentId>();
-        foreach (var target in targets.Where(target => target.Move.Existing is not null))
+        foreach (var target in targets.Where(target => target.Existing is not null && target.Body.Length > 0))
         {
-            var configure = EntityConfigurations.ConfigureOf(target.Move.Existing!, target.Move.Entity, cancellationToken)!;
+            var configure = EntityConfigurations.ConfigureOf(target.Existing!, target.Entity, cancellationToken)!;
             if (project.GetDocument(configure.SyntaxTree) is not { } home)
             {
                 return null;
             }
 
             var statements = target.Body;
-            Edit(home.Id, configure.Body!, _ => Append(configure.Body!, statements, ModuleEditing.LineBreakOf(configure.SyntaxTree.GetRoot(cancellationToken))));
+            Edit(home.Id, configure.Body!, now => Append((BlockSyntax)now, statements, ModuleEditing.LineBreakOf(configure.SyntaxTree.GetRoot(cancellationToken)), ModuleEditing.IndentationOf(configure)));
             appendedTo.Add(home.Id);
         }
 
@@ -271,35 +361,31 @@ internal static class EntityConfigurationSplit
         }
 
         // The context names the new classes; and no longer needs the usings only the moved code did.
-        var context = solution.GetDocument(document.Id)!;
-        if (targets.Any(target => target.Move.Apply) && place.Namespace.Length > 0 && !Encloses(place.Namespace, contextNamespace))
+        var applying = new List<string>();
+        if (targets.Any(target => target.Apply && target.Existing is null) && place.Namespace.Length > 0 && !Encloses(place.Namespace, contextNamespace))
         {
-            solution = await AddUsingsAsync(solution, document.Id, [$"using {place.Namespace};"], cancellationToken, prune: false).ConfigureAwait(false);
-            context = solution.GetDocument(document.Id)!;
+            applying.Add($"using {place.Namespace};");
         }
 
-        var after = await UnusedUsingsAsync(context, cancellationToken).ConfigureAwait(false);
-        after.ExceptWith(before);
-        if (after.Count > 0)
+        if (plan.Method is null && prefix.Count > 0)
         {
-            var contextRoot = (CompilationUnitSyntax)(await context.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false))!;
-            solution = await WriteAsync(solution, document.Id, WithoutUsings(contextRoot, after), cancellationToken).ConfigureAwait(false);
+            applying.Add($"using {EntityFrameworkCore};");
+        }
+
+        if (applying.Count > 0)
+        {
+            solution = await AddUsingsAsync(solution, document.Id, applying, cancellationToken, prune: true).ConfigureAwait(false);
         }
 
         // The new classes, each in its own file.
-        var fileScoped = plan.Method.Ancestors().OfType<FileScopedNamespaceDeclarationSyntax>().Any() ||
-            (!plan.Method.Ancestors().OfType<NamespaceDeclarationSyntax>().Any() &&
-             root.SyntaxTree.Options is CSharpParseOptions options &&
-             options.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp10);
-        var unit = IndentUnit(plan.Method);
-        foreach (var target in targets.Where(target => target.Move.Existing is null))
+        var fileScoped = FileScoped(plan.Type, root);
+        foreach (var target in targets.Where(target => target.Existing is null))
         {
-            var entity = target.Move.Pieces[0].EntityName!.ToString();
             string Class(IEnumerable<string> usings) =>
-                RenderClass(usings, place.Namespace, fileScoped, target.ClassName, entity, target.Builder, target.Body, unit, lineBreak);
+                RenderClass(usings, place.Namespace, fileScoped, target.ClassName, target.EntityText, target.Builder, target.Body, unit, lineBreak);
 
             var current = solution.GetProject(project.Id)!;
-            var fileName = FileName(current, place, target.ClassName);
+            var fileName = FileName(current, place.Folders, place.PathPrefix, target.ClassName);
             var draft = current.AddDocument(
                 fileName,
                 SourceText.From(Class(wanted), text.Encoding),
@@ -309,11 +395,34 @@ internal static class EntityConfigurationSplit
             solution = draft.WithText(SourceText.From(Class(wanted.Where(directive => !unused.Contains(directive))), text.Encoding)).Project.Solution;
         }
 
+        // The properties go last: by now the model does not need them.
+        solution = await EntityConfigurationProperties.RemoveAsync(
+            solution, document.Id, plan, sets, wanted, fileScoped, unit, lineBreak, text.Encoding, cancellationToken).ConfigureAwait(false);
+
+        var context = solution.GetDocument(document.Id)!;
+        var after = await UnusedUsingsAsync(context, cancellationToken).ConfigureAwait(false);
+        after.ExceptWith(before);
+        if (after.Count > 0)
+        {
+            var contextRoot = (CompilationUnitSyntax)(await context.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false))!;
+            solution = await WriteAsync(solution, document.Id, WithoutUsings(contextRoot, after), cancellationToken).ConfigureAwait(false);
+        }
+
         return solution;
     }
 
+    private static string TableStatement(string builder, string table) =>
+        $"{builder}.ToTable({SymbolDisplay.FormatLiteral(table, quote: true)});";
+
+    /// <summary>Whether a new file beside the declaration declares its namespace with a semicolon: as the declaration's file does.</summary>
+    internal static bool FileScoped(SyntaxNode declaration, CompilationUnitSyntax root) =>
+        declaration.Ancestors().OfType<FileScopedNamespaceDeclarationSyntax>().Any() ||
+        (!declaration.Ancestors().OfType<NamespaceDeclarationSyntax>().Any() &&
+         root.SyntaxTree.Options is CSharpParseOptions options &&
+         options.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp10);
+
     /// <summary>The document with a new root, in the encoding it had: a byte order mark stays.</summary>
-    private static async Task<Solution> WriteAsync(Solution solution, DocumentId id, SyntaxNode root, CancellationToken cancellationToken)
+    internal static async Task<Solution> WriteAsync(Solution solution, DocumentId id, SyntaxNode root, CancellationToken cancellationToken)
     {
         var encoding = (await solution.GetDocument(id)!.GetTextAsync(cancellationToken).ConfigureAwait(false)).Encoding;
         return solution.WithDocumentText(id, SourceText.From(root.ToFullString(), encoding));
@@ -343,7 +452,7 @@ internal static class EntityConfigurationSplit
     }
 
     /// <summary>A document's path up to its file name, separators as they are.</summary>
-    private static string? PathPrefix(Document document) =>
+    internal static string? PathPrefix(Document document) =>
         document.FilePath is { Length: > 0 } path
             ? path.Substring(0, path.Length - System.IO.Path.GetFileName(path).Length)
             : null;
@@ -368,12 +477,12 @@ internal static class EntityConfigurationSplit
         return name;
     }
 
-    private static string FileName(Project project, (string Namespace, IReadOnlyList<string> Folders, string? PathPrefix) place, string className)
+    internal static string FileName(Project project, IReadOnlyList<string> folders, string? pathPrefix, string className)
     {
         bool Taken(string name) => project.Documents.Any(document =>
-            place.PathPrefix is not null && document.FilePath is { } path
-                ? string.Equals(path, place.PathPrefix + name, System.StringComparison.OrdinalIgnoreCase)
-                : document.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase) && document.Folders.SequenceEqual(place.Folders));
+            pathPrefix is not null && document.FilePath is { } path
+                ? string.Equals(path, pathPrefix + name, System.StringComparison.OrdinalIgnoreCase)
+                : document.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase) && document.Folders.SequenceEqual(folders));
 
         var fileName = $"{className}.cs";
         for (var i = 2; Taken(fileName); i++)
@@ -456,7 +565,7 @@ internal static class EntityConfigurationSplit
     /// The text of a span with the edits made, without the indentation it had where it stood: its
     /// lines keep their indentation against each other. Line feeds, whatever the document has.
     /// </summary>
-    private static string Extract(SourceText text, TextSpan span, List<(TextSpan Span, string Text)> edits)
+    internal static string Extract(SourceText text, TextSpan span, List<(TextSpan Span, string Text)> edits)
     {
         var start = span.Start;
         var end = span.End;
@@ -544,9 +653,15 @@ internal static class EntityConfigurationSplit
     /// A method's block without the moved statements. A blank line that set a moved group apart
     /// still sets apart what follows it, and none is left at the top of the block.
     /// </summary>
-    private static BlockSyntax Rebuild(BlockSyntax block, HashSet<SyntaxNode> removed, Dictionary<SyntaxNode, SyntaxNode> replaced, string lineBreak)
+    private static BlockSyntax Rebuild(
+        BlockSyntax block, HashSet<SyntaxNode> removed, Dictionary<SyntaxNode, SyntaxNode> replaced, string lineBreak, List<string> leading, string indent)
     {
-        var statements = new List<StatementSyntax>();
+        // What the method says first from now on, under the indentation its statements have.
+        var first = block.Statements.FirstOrDefault() is { } existing ? ModuleEditing.IndentationOf(existing) : indent;
+        var statements = leading
+            .Select(text => SyntaxFactory.ParseStatement(text).WithLeadingTrivia(SyntaxFactory.Whitespace(first)).WithTrailingTrivia(SyntaxFactory.EndOfLine(lineBreak)))
+            .ToList();
+        var added = statements.Count;
         var dropped = false;
         var apart = false;
         foreach (var statement in block.Statements)
@@ -559,13 +674,13 @@ internal static class EntityConfigurationSplit
             }
 
             var kept = replaced.TryGetValue(statement, out var replacement) ? (StatementSyntax)replacement : statement;
-            if (dropped && statements.Count == 0)
+            if (dropped && statements.Count == added)
             {
                 while (StartsWithBlankLine(kept))
                 {
-                    var leading = kept.GetLeadingTrivia();
-                    var lineEnd = leading.IndexOf(SyntaxKind.EndOfLineTrivia);
-                    kept = kept.WithLeadingTrivia(leading.Skip(lineEnd + 1));
+                    var trivia = kept.GetLeadingTrivia();
+                    var lineEnd = trivia.IndexOf(SyntaxKind.EndOfLineTrivia);
+                    kept = kept.WithLeadingTrivia(trivia.Skip(lineEnd + 1));
                 }
             }
             else if (dropped && apart && !StartsWithBlankLine(kept))
@@ -600,11 +715,11 @@ internal static class EntityConfigurationSplit
     }
 
     /// <summary>The block of a class's <c>Configure</c> with the statements after its own.</summary>
-    private static BlockSyntax Append(BlockSyntax body, string statements, string lineBreak)
+    private static BlockSyntax Append(BlockSyntax body, string statements, string lineBreak, string methodIndent)
     {
-        var indent = body.Statements.FirstOrDefault() is { } first
-            ? ModuleEditing.IndentationOf(first)
-            : ModuleEditing.IndentationOf(body.Parent!) + "    ";
+        var indent = body.Statements.FirstOrDefault() is { } first && first.GetLeadingTrivia().LastOrDefault() is { RawKind: (int)SyntaxKind.WhitespaceTrivia } whitespace
+            ? whitespace.ToString()
+            : methodIndent + "    ";
         var parsed = (BlockSyntax)SyntaxFactory.ParseStatement(("{\n" + ModuleEditing.Indent(statements, indent, "\n") + "\n}").Replace("\n", lineBreak));
         return body.AddStatements([.. parsed.Statements]);
     }
@@ -616,7 +731,7 @@ internal static class EntityConfigurationSplit
     private static List<string> Usings(CompilationUnitSyntax root, EntityConfigurations.Plan plan, string contextNamespace, string targetNamespace)
     {
         var directives = root.Usings
-            .Concat(plan.Method.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(ns => ns.Usings))
+            .Concat(plan.Type.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(ns => ns.Usings))
             .Where(directive => directive.GlobalKeyword.RawKind == 0)
             .Select(directive => directive.WithoutTrivia().ToString())
             .ToList();
@@ -644,7 +759,7 @@ internal static class EntityConfigurationSplit
     }
 
     /// <summary>Whether code in <paramref name="inner"/> sees the members of <paramref name="outer"/> without a using.</summary>
-    private static bool Encloses(string outer, string inner) =>
+    internal static bool Encloses(string outer, string inner) =>
         inner == outer || inner.StartsWith(outer + ".", System.StringComparison.Ordinal);
 
     private static string RenderClass(
@@ -688,18 +803,18 @@ internal static class EntityConfigurationSplit
         return (string.Join("\n", lines) + "\n").Replace("\n", lineBreak);
     }
 
-    /// <summary>What one level of indentation is in the context's file: a method's against its class.</summary>
-    private static string IndentUnit(MethodDeclarationSyntax method)
+    /// <summary>What one level of indentation is in the context's file: a member's against its class.</summary>
+    private static string IndentUnit(ClassDeclarationSyntax type)
     {
-        var inner = ModuleEditing.IndentationOf(method);
-        var outer = method.Parent is null ? string.Empty : ModuleEditing.IndentationOf(method.Parent);
+        var inner = ModuleEditing.MemberIndent(type);
+        var outer = ModuleEditing.IndentationOf(type);
         return inner.Length > outer.Length && inner.StartsWith(outer, System.StringComparison.Ordinal)
             ? inner.Substring(outer.Length)
             : "    ";
     }
 
     /// <summary>Adds the usings a document lacks and, unless told otherwise, takes back those it turns out not to need.</summary>
-    private static async Task<Solution> AddUsingsAsync(
+    internal static async Task<Solution> AddUsingsAsync(
         Solution solution, DocumentId id, IReadOnlyCollection<string> wanted, CancellationToken cancellationToken, bool prune = true)
     {
         var document = solution.GetDocument(id)!;
@@ -765,7 +880,7 @@ internal static class EntityConfigurationSplit
     /// The usings of a document that the compiler finds unnecessary, or said twice. It reports
     /// them only where documentation comments are parsed, so the document is read that way.
     /// </summary>
-    private static async Task<HashSet<string>> UnusedUsingsAsync(Document document, CancellationToken cancellationToken)
+    internal static async Task<HashSet<string>> UnusedUsingsAsync(Document document, CancellationToken cancellationToken)
     {
         var unused = new HashSet<string>(System.StringComparer.Ordinal);
         if (await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false) is not { Options: CSharpParseOptions options } tree ||

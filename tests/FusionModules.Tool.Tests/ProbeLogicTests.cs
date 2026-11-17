@@ -208,7 +208,7 @@ public class ProbeLogicTests
             var minimum = 3;
             return
             [
-                new Entity("Shop.Order", "EntityType: Order\n  Properties:\n    Id (int) Required PK\n  Annotations:\n    RelationshipDiscoveryConvention:NavigationCandidates: System.Collections.Immutable.ImmutableSortedDictionary`2[A,B]\n",
+                new Entity("Shop.Order", "EntityType: Order\n  Properties:\n    Id (int) Required PK\n  Annotations:\n    RelationshipDiscoveryConvention:NavigationCandidates: System.Collections.Immutable.ImmutableSortedDictionary`2[A,B]\n    Relational:Schema:\n",
                     (System.Linq.Expressions.Expression<Func<string, bool>>)(o => o.Length > minimum),
                     new Dictionary<string, object?> { ["Name"] = null, ["Id"] = 2, ["Price"] = 10m },
                     new Dictionary<string, object?> { ["Price"] = 9.5m, ["Name"] = "first", ["Id"] = 1 }),
