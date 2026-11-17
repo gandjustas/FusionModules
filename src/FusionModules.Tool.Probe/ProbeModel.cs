@@ -164,6 +164,28 @@ internal sealed class ProbeDbContext
     public string? MigrationsHistoryTable { get; set; }
 
     public string? Error { get; set; }
+
+    /// <summary>The context's model; null when it was not read — <see cref="ModelError"/> says why, when there is a why.</summary>
+    public ProbeDbModel? Model { get; set; }
+
+    public string? ModelError { get; set; }
+}
+
+/// <summary>A context's model in EF Core's own words: its debug view, line by line.</summary>
+internal sealed class ProbeDbModel
+{
+    /// <summary>What the model says outside its entity types: a default schema, sequences.</summary>
+    public List<string> Lines { get; set; } = [];
+
+    public List<ProbeDbEntity> Entities { get; set; } = [];
+}
+
+internal sealed class ProbeDbEntity
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>The entity type's debug view, then its query filters and its seed data.</summary>
+    public List<string> Lines { get; set; } = [];
 }
 
 internal sealed class ProbeEndpoint

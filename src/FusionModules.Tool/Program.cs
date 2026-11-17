@@ -93,7 +93,8 @@ internal static class Program
                                    with 2 when they differ.
 
         compare: whether a step changed what a host composes — its endpoints, registrations, hosted
-        services, DbContexts and errors — host by host. Exit code 0 the same, 2 different.
+        services, DbContexts with their models, and errors — host by host. Exit code 0 the same,
+        2 different.
           --merged <host> <service>...  Compare the host of the second inventory with the services of
                                    the first that it took in.
 

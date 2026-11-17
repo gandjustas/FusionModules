@@ -40,6 +40,36 @@ public class ProbeLogicTests
     }
 
     [Test]
+    public async Task AContextsModel_IsItsEntitiesInEfCoresWords_WithSeedDataAndFilters_AndWithoutBookkeeping()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<ModelledContext>();
+        services.AddScoped<BrokenContext>();
+        var result = new probe::FusionModules.Tool.Probe.ProbeOutput();
+
+        probe::FusionModules.Tool.Probe.DbContexts.Describe([.. services], services.BuildServiceProvider(), result);
+
+        var model = result.DbContexts!.Single(c => c.Type.EndsWith(nameof(ModelledContext), StringComparison.Ordinal)).Model!;
+        await Assert.That(model.Lines).IsEquivalentTo(["Annotations:", "  Relational:DefaultSchema: shop"]);
+        await Assert.That(model.Entities.Select(entity => entity.Name)).IsEquivalentTo(["Shop.Customer", "Shop.Order"]);
+        await Assert.That(model.Entities.Single(entity => entity.Name == "Shop.Order").Lines).IsEquivalentTo(
+        [
+            "EntityType: Order",
+            "  Properties:",
+            "    Id (int) Required PK",
+            "  QueryFilter: o => (o.Length > value(FusionModules.Tool.Tests.ProbeLogicTests+ModelledContext+<>c__DisplayClass).minimum)",
+            "  Seed: Id=1, Name=\"first\", Price=9.5",
+            "  Seed: Id=2, Name=null, Price=10",
+        ]);
+
+        // A context that cannot be created has no model, and says why; nothing else of it is lost.
+        var broken = result.DbContexts!.Single(c => c.Type.EndsWith(nameof(BrokenContext), StringComparison.Ordinal));
+        await Assert.That(broken.Model).IsNull();
+        await Assert.That(broken.ModelError).Contains("no tenant");
+        await Assert.That(broken.Lifetime).IsEqualTo("Scoped");
+    }
+
+    [Test]
     public async Task ErrorDetail_ShowsTheThrowSite_AndWhereTheApplicationCalledIn()
     {
         // Passed in, not set on the static the probe sets once: the tests run in parallel.
@@ -141,6 +171,63 @@ public class ProbeLogicTests
     }
 
     private sealed class PooledContext : Microsoft.EntityFrameworkCore.DbContext;
+
+    private sealed class BrokenContext : Microsoft.EntityFrameworkCore.DbContext
+    {
+        public BrokenContext() => throw new InvalidOperationException("no tenant");
+    }
+
+    /// <summary>A context as EF Core's are reached: its internal services hand out the design-time model.</summary>
+    private sealed class ModelledContext : Microsoft.EntityFrameworkCore.DbContext,
+        Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<IServiceProvider>, IServiceProvider,
+        Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel, Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel
+    {
+        public IServiceProvider Instance => this;
+
+        public Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel Model => this;
+
+        public object? GetService(Type serviceType) => serviceType == typeof(Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel) ? this : null;
+
+        public string ToDebugString(Microsoft.EntityFrameworkCore.Infrastructure.MetadataDebugStringOptions options, int indent) =>
+            options != Microsoft.EntityFrameworkCore.Infrastructure.MetadataDebugStringOptions.LongDefault
+                ? "short"
+                : """
+                  Model:
+                    EntityType: Order
+                      Properties:
+                        Id (int) Required PK
+                    EntityType: Customer
+                  Annotations:
+                    BaseTypeDiscoveryConvention:DerivedTypes: System.Collections.Generic.Dictionary`2[System.Type,System.Collections.Generic.List`1[X]]
+                    ProductVersion: 10.0.0
+                    Relational:DefaultSchema: shop
+                  """;
+
+        public IEnumerable<Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType> GetEntityTypes()
+        {
+            var minimum = 3;
+            return
+            [
+                new Entity("Shop.Order", "EntityType: Order\n  Properties:\n    Id (int) Required PK\n  Annotations:\n    RelationshipDiscoveryConvention:NavigationCandidates: System.Collections.Immutable.ImmutableSortedDictionary`2[A,B]\n",
+                    (System.Linq.Expressions.Expression<Func<string, bool>>)(o => o.Length > minimum),
+                    new Dictionary<string, object?> { ["Name"] = null, ["Id"] = 2, ["Price"] = 10m },
+                    new Dictionary<string, object?> { ["Price"] = 9.5m, ["Name"] = "first", ["Id"] = 1 }),
+                new Entity("Shop.Customer", "EntityType: Customer\n", null),
+            ];
+        }
+
+        private sealed class Entity(string name, string view, System.Linq.Expressions.LambdaExpression? filter, params IDictionary<string, object?>[] seed)
+            : Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType
+        {
+            public string Name => name;
+
+            public string ToDebugString(Microsoft.EntityFrameworkCore.Infrastructure.MetadataDebugStringOptions options, int indent) => view;
+
+            public IEnumerable<IDictionary<string, object?>> GetSeedData(bool providerValues) => seed;
+
+            public System.Linq.Expressions.LambdaExpression? GetQueryFilter() => filter;
+        }
+    }
 
     private sealed class FactoryOnlyContext : Microsoft.EntityFrameworkCore.DbContext;
 }

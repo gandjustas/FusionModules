@@ -479,7 +479,15 @@ would be empty are left out.
           { "type": "eShop.Catalog.API.Infrastructure.CatalogContext", "assembly": "Catalog.API", "lifetime": "Scoped", "pooled": true,
             "provider": "Npgsql.EntityFrameworkCore.PostgreSQL",
             "connectionString": "Host=127.0.0.1;Port=1;Database=catalogdb;Username=postgres;Password=***",
-            "migrationsAssembly": null, "migrationsHistoryTable": null }
+            "migrationsAssembly": null, "migrationsHistoryTable": null,
+            "model": {                       // null: not read — "modelError" says why
+              "lines": [ "Annotations:", "  Relational:MaxIdentifierLength: 63" ],
+              "entities": [
+                { "name": "eShop.Catalog.API.Model.CatalogBrand",
+                  "lines": [ "EntityType: CatalogBrand", "  Properties:", "    Id (int) Required PK AfterSave:Throw ValueGenerated.OnAdd",
+                             "    Brand (string) Required MaxLength(100)", "  Keys:", "    Id PK",
+                             "  Annotations:", "    Relational:TableName: CatalogBrand" ] }
+              ] } }
         ],
         "endpointsReadFrom": "pipeline",  // pipeline | application | startup-filters | action-descriptors, joined with +
         "staticAssetEndpoints": null,     // 2096: what MapStaticAssets mapped, one static-assets entry below
@@ -550,6 +558,16 @@ would be empty are left out.
   program and the framework register, and in a host without modules.
 - **`runtime.dbContexts[].lifetime`** — the context's own registration; `Pooled` for a pooled
   factory that registers no context.
+- **`runtime.dbContexts[].model`** — the context's model in EF Core's own words: for every entity
+  type its debug view (`ToDebugString(MetadataDebugStringOptions.LongDefault)`) line by line — table
+  and schema, properties with their types, lengths, precision and converters, keys, indexes,
+  navigations and foreign keys, owned types, annotations — followed by what the view leaves out: its
+  query filters (`QueryFilter: o => …`) and its seed data, a `Seed:` line per row. `lines` is what
+  the model says outside its entity types: a default schema, sequences. The design-time model is the
+  one read, as `dotnet ef` reads it, and building it connects to nothing. The context is taken from
+  the container (or from its `IDbContextFactory<T>`); one that cannot be created there — it needs a
+  request, a tenant — has `model: null` and the exception in `modelError`, and everything else of it.
+  Left out: the EF Core version, and the bookkeeping its conventions leave on a model.
 - **`runtime.endpoints[].route`** is the route the endpoint answers. For a conventional MVC route
   that is the template with the action's values filled in — `/Account/Login/{id?}` — and the
   template is in `template`. Link-generation-only endpoints are left out. **`assembly`** is the
@@ -595,12 +613,31 @@ dotnet modules compare before.json after.json          # the same, from two file
 
 Host by host, what each composes: its endpoints with their authorization, its registrations and
 which of them wins, the framework's registrations per library, its hosted services and the order the
-application's start in, its DbContexts with their databases, its status and errors. One line per
-thing, `-` for what is gone and `+` for what is new; a host is "the same" when it has none. What a
+application's start in, its DbContexts with their databases and their models, its status and
+errors. One line per thing, `-` for what is gone and `+` for what is new; a host is "the same" when
+it has none. What a
 conversion changes by design is not a difference: a lambda that moved from `Program` to `Module`
 or into a method of the service's own (a lambda is compared by its assembly), keys made unique per run (Scrutor's `Decorate`), FusionModules'
 own registrations. Modules that come or go, and errors that are gone, are notes. Exit code 0 the
 same, 2 different, 1 when a file is not an inventory.
+
+A context's model is compared entity type by entity type. One that came or went is a line; one
+that changed has a line for each thing that did, under the headings it stands under in the debug
+view, so that an annotation says whose it is:
+
+```text
+ordering-api: 3 differences
+  - model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 18
+  + model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 10
+  - model Ordering.OrderingContext: Ordering.Order: EntityType / Seed: Id=1, Name="first"
+```
+
+That is the check for a refactoring of `OnModelCreating` — [MOD0016](rules/MOD0016.md)'s fix, which
+moves entity configuration into `IEntityTypeConfiguration<T>` classes, or a hand-made one: the
+model is the same when nothing is reported. A query filter is compared as its expression reads,
+without the numbers the compiler gives closures, so one that moved to another class is the same
+filter. A model that one of the two inventories does not have — taken by an earlier version of the
+tool, or the context could not be created — is a note, `model of … not compared`, not a difference.
 
 When services join one host, `--merged` compares the host with the services it took in:
 
@@ -610,7 +647,9 @@ dotnet modules compare before.json after.json --merged webapp catalog-api basket
 
 The host serves the union of their endpoints and starts their hosted services, each no more times
 than one service did — a bus started by five modules runs five times — and has every registration
-and DbContext one of them had, the programs' shared ones once.
+and DbContext one of them had, the programs' shared ones once. A context type that several of them
+had — one composed from modules — has in the host every entity type any of them had in it, each as
+it was; an entity type only the host has is a note.
 
 ## Previewing a topology
 
