@@ -36,12 +36,30 @@ internal static class EntityConfigurations
         method.ParameterList.Parameters.Count == 1 &&
         method.Modifiers.Any(SyntaxKind.OverrideKeyword);
 
+    /// <summary>Whether the class could be a context with something to move, by its syntax alone.</summary>
+    public static bool MightApply(ClassDeclarationSyntax type) =>
+        type.Members.Any(member => member switch
+        {
+            MethodDeclarationSyntax method => MightApply(method),
+            PropertyDeclarationSyntax property => IsDbSetName(property.Type),
+            _ => false,
+        });
+
+    private static bool IsDbSetName(TypeSyntax type) => type switch
+    {
+        GenericNameSyntax { Identifier.ValueText: "DbSet" } => true,
+        QualifiedNameSyntax { Right: GenericNameSyntax { Identifier.ValueText: "DbSet" } } => true,
+        NullableTypeSyntax nullable => IsDbSetName(nullable.ElementType),
+        _ => false,
+    };
+
     /// <summary>The types the analysis asks about, and what it has to know of the whole compilation.</summary>
     internal sealed class Types
     {
         private readonly Compilation compilation;
         private readonly Lazy<Dictionary<ISymbol, List<INamedTypeSymbol>>> configurations;
         private readonly Lazy<bool> ownAssemblyIsModule;
+        private readonly Lazy<bool> relational;
 
         private Types(Compilation compilation, INamedTypeSymbol modelBuilder, INamedTypeSymbol dbContext, INamedTypeSymbol configuration)
         {
@@ -50,6 +68,8 @@ internal static class EntityConfigurations
             DbContext = dbContext;
             Configuration = configuration;
             ModuleExtensions = compilation.GetTypeByMetadataName("FusionModules.EntityFrameworkCore.ModuleModelBuilderExtensions");
+            DbSet = compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.DbSet`1");
+            relational = new Lazy<bool>(() => compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.RelationalEntityTypeBuilderExtensions") is not null);
             ownAssemblyIsModule = new Lazy<bool>(() => ModuleFacts.IsModuleAssembly(
                 compilation.Assembly,
                 compilation.GetTypeByMetadataName(ModuleFacts.HostingStartupAttributeMetadataName),
@@ -66,6 +86,12 @@ internal static class EntityConfigurations
 
         /// <summary>The class of <c>ApplyModuleConfigurations</c>, where the project references FusionModules.EntityFrameworkCore.</summary>
         public INamedTypeSymbol? ModuleExtensions { get; }
+
+        /// <summary><c>DbSet&lt;&gt;</c>.</summary>
+        public INamedTypeSymbol? DbSet { get; }
+
+        /// <summary>Whether the project maps to tables: <c>ToTable</c> is there to call.</summary>
+        public bool Relational => relational.Value;
 
         /// <summary>Whether <c>ApplyModuleConfigurations</c> scans this assembly: it does a module's.</summary>
         public bool OwnAssemblyIsModule => ownAssemblyIsModule.Value;
@@ -97,13 +123,13 @@ internal static class EntityConfigurations
         /// would gain their entities. Read from the syntax: the question is asked once per context
         /// that has something to move.
         /// </summary>
-        public bool ScansElsewhere(MethodDeclarationSyntax self, CancellationToken cancellationToken)
+        public bool ScansElsewhere(MethodDeclarationSyntax? self, CancellationToken cancellationToken)
         {
             foreach (var symbol in compilation.GetSymbolsWithName(MethodName, SymbolFilter.Member, cancellationToken))
             {
                 foreach (var reference in symbol.DeclaringSyntaxReferences)
                 {
-                    if (reference.SyntaxTree == self.SyntaxTree && reference.Span == self.Span)
+                    if (self is not null && reference.SyntaxTree == self.SyntaxTree && reference.Span == self.Span)
                     {
                         continue;
                     }
@@ -152,6 +178,13 @@ internal static class EntityConfigurations
     {
         /// <summary>Anything the analysis does not move, and moves nothing across.</summary>
         Barrier,
+
+        /// <summary>
+        /// A call that sets something of the model and reads none of its entity types: the base call of
+        /// a plain context, <c>HasDefaultSchema</c>. Configuration is not moved across it either, but an
+        /// entity may come into the model after it.
+        /// </summary>
+        Harmless,
 
         /// <summary>The configuration of one entity.</summary>
         Entity,
@@ -278,15 +311,73 @@ internal static class EntityConfigurations
 
         /// <summary>Whether the first statement becomes <c>ApplyConfiguration</c>: nothing scans the assembly.</summary>
         public bool Apply { get; } = apply;
+
+        /// <summary>The table the entity's DbSet property named, to be said by the class once the property is gone.</summary>
+        public string? Table { get; set; }
+    }
+
+    /// <summary>Where the entity of a DbSet property gets its place in the model once the property is gone.</summary>
+    internal enum PropertyTarget
+    {
+        /// <summary>The class its configuration moves into.</summary>
+        Move,
+
+        /// <summary>A class the context applies already.</summary>
+        Existing,
+
+        /// <summary>A class of its own, created for it: nothing configured the entity but the property.</summary>
+        New,
+    }
+
+    /// <summary>
+    /// A <c>DbSet&lt;T&gt;</c> property of the context, on its way to an extension member of
+    /// <c>DbContext</c>. The property did two things for the model — it put the entity in, from the
+    /// start, and named its table — and both have to be said by a configuration class before it goes.
+    /// </summary>
+    internal sealed class PropertyPlan(PropertyDeclarationSyntax declaration, IPropertySymbol symbol, INamedTypeSymbol entity)
+    {
+        public PropertyDeclarationSyntax Declaration { get; } = declaration;
+
+        public IPropertySymbol Symbol { get; } = symbol;
+
+        public INamedTypeSymbol Entity { get; } = entity;
+
+        public PropertyTarget Target { get; set; }
+
+        public Move? Move { get; set; }
+
+        public INamedTypeSymbol? Existing { get; set; }
+
+        /// <summary>The table name a class has to say; null when the name does not change, or is said already.</summary>
+        public string? Table { get; set; }
+
+        /// <summary>Why the property stays; null when it can go.</summary>
+        public string? Left { get; set; }
     }
 
     /// <summary>What a fix would do to one context.</summary>
     internal sealed class Plan(
-        INamedTypeSymbol context, MethodDeclarationSyntax method, List<Move> moves, List<(string Entity, string Reason)> stays, List<HelperCall> helpers)
+        INamedTypeSymbol context, ClassDeclarationSyntax type, MethodDeclarationSyntax? method, List<Move> moves, List<PropertyPlan> properties,
+        List<(string Entity, string Reason)> stays, List<HelperCall> helpers, bool scanned)
     {
         public INamedTypeSymbol Context { get; } = context;
 
-        public MethodDeclarationSyntax Method { get; } = method;
+        /// <summary>The declaration of the context that is read: the one with <c>OnModelCreating</c>, when there is one.</summary>
+        public ClassDeclarationSyntax Type { get; } = type;
+
+        /// <summary><c>OnModelCreating</c>; null for a context that has none, and only properties.</summary>
+        public MethodDeclarationSyntax? Method { get; } = method;
+
+        /// <summary>The DbSet properties, those that can go and those that stay.</summary>
+        public List<PropertyPlan> Properties { get; } = properties;
+
+        /// <summary>Whether the context finds its assembly's configuration classes itself.</summary>
+        public bool Scanned { get; } = scanned;
+
+        /// <summary>Where the diagnostic is: the method's name, or the context's.</summary>
+        public SyntaxToken Identifier => Method?.Identifier ?? Type.Identifier;
+
+        public int MovableProperties => Properties.Count(property => property.Left is null);
 
         public List<Move> Moves { get; } = moves;
 
@@ -319,6 +410,16 @@ internal static class EntityConfigurations
         public const string ModelBuilder = "uses the model builder";
         public const string BeforeExisting = "comes before its configuration class is applied";
         public const string NoBody = "has nothing to move";
+        public const string Overridable = "is static or can be overridden";
+        public const string Attributes = "has attributes";
+        public const string NotPlain = "is more than the context's set of the entity";
+        public const string Inline = "has configuration that stays in OnModelCreating and no class";
+        public const string Registered = "would come into the model after a statement that may read its entity types";
+        public const string ExpressionBody = "needs a statement in OnModelCreating, which has an expression body";
+        public const string TwoSets = "is one of two sets of one entity";
+        public const string NotRelational = "names its table, and the provider is not a relational one";
+
+        public static string Implements(string member) => $"implements {member}";
 
         public static string Member(string name) => $"uses the context's '{name}'";
 
@@ -334,20 +435,45 @@ internal static class EntityConfigurations
     /// <summary>
     /// The plan for a context's <c>OnModelCreating</c>, or null when nothing of it moves.
     /// </summary>
-    public static Plan? Analyze(SemanticModel model, MethodDeclarationSyntax method, Types types, CancellationToken cancellationToken)
+    public static Plan? Analyze(SemanticModel model, ClassDeclarationSyntax type, Types types, CancellationToken cancellationToken)
     {
-        if (model.GetDeclaredSymbol(method, cancellationToken) is not { IsOverride: true, Parameters.Length: 1 } symbol ||
-            symbol.ContainingType is not { ContainingType: null } context ||
-            !SymbolEqualityComparer.Default.Equals(symbol.Parameters[0].Type, types.ModelBuilder) ||
+        if (model.GetDeclaredSymbol(type, cancellationToken) is not INamedTypeSymbol { ContainingType: null } context ||
             !Inherits(context, types.DbContext))
         {
             return null;
         }
 
+        bool IsOnModelCreating(IMethodSymbol? method) =>
+            method is { IsOverride: true, Parameters.Length: 1 } && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, types.ModelBuilder);
+
+        var declaration = type.Members.OfType<MethodDeclarationSyntax>()
+            .FirstOrDefault(method => MightApply(method) && IsOnModelCreating(model.GetDeclaredSymbol(method, cancellationToken)));
         var analysis = new Analysis(model, types, context, cancellationToken);
-        analysis.Flatten(method, symbol.Parameters[0]);
-        return analysis.Plan(method);
+        if (declaration is not null)
+        {
+            analysis.Flatten(declaration, model.GetDeclaredSymbol(declaration, cancellationToken)!.Parameters[0]);
+        }
+        else if (context.GetMembers(MethodName).OfType<IMethodSymbol>().Any(IsOnModelCreating) ||
+                 FirstSet(context, types)?.DeclaringSyntaxReferences.FirstOrDefault() is not { } first ||
+                 first.SyntaxTree != type.SyntaxTree || !type.Span.Contains(first.Span))
+        {
+            // A partial context is read where its OnModelCreating is; one without it, where its first set is.
+            return null;
+        }
+
+        return analysis.Plan(type, declaration);
     }
+
+    private static IPropertySymbol? FirstSet(INamedTypeSymbol context, Types types) =>
+        context.GetMembers().OfType<IPropertySymbol>().FirstOrDefault(property => SetOf(property, types) is not null);
+
+    /// <summary>The entity of a <c>DbSet&lt;T&gt;</c> property.</summary>
+    private static INamedTypeSymbol? SetOf(IPropertySymbol property, Types types) =>
+        types.DbSet is not null &&
+        property.Type is INamedTypeSymbol { TypeArguments.Length: 1 } set &&
+        SymbolEqualityComparer.Default.Equals(set.OriginalDefinition, types.DbSet)
+            ? set.TypeArguments[0] as INamedTypeSymbol
+            : null;
 
     /// <summary>
     /// The <c>Configure</c> of a configuration class that statements can be added to: the class has
@@ -433,7 +559,7 @@ internal static class EntityConfigurations
             }
         }
 
-        public Plan? Plan(MethodDeclarationSyntax method)
+        public Plan? Plan(ClassDeclarationSyntax type, MethodDeclarationSyntax? method)
         {
             if (items.Any(item => item.Kind == ItemKind.UnknownScan))
             {
@@ -444,7 +570,8 @@ internal static class EntityConfigurations
                 .Where(item => item.Kind == ItemKind.Entity)
                 .GroupBy(item => item.Piece!.Entity!, (IEqualityComparer<INamedTypeSymbol>)SymbolEqualityComparer.Default)
                 .ToList();
-            if (entities.Count == 0)
+            var properties = Properties();
+            if (entities.Count == 0 && properties.All(property => property.Left is not null))
             {
                 return null;
             }
@@ -504,8 +631,216 @@ internal static class EntityConfigurations
                 }
             }
 
-            return moves.Count == 0 ? null : new Plan(context, method, moves, stays, helpers);
+            Place(properties, moves, scan, method);
+            stays.AddRange(properties.Where(property => property.Left is not null).Select(property => ("property " + property.Symbol.Name, property.Left!)));
+
+            return moves.Count == 0 && properties.All(property => property.Left is not null)
+                ? null
+                : new Plan(context, type, method, moves, properties, stays, helpers, scan >= 0);
         }
+
+        /// <summary>
+        /// The context's DbSet properties, each with the reason it stays when its own shape gives one:
+        /// what an extension member can stand in for is a plain property of the context — an
+        /// auto-property or <c>=> Set&lt;T&gt;()</c> — that no interface asks for and nothing overrides.
+        /// </summary>
+        private List<PropertyPlan> Properties()
+        {
+            var properties = new List<PropertyPlan>();
+            foreach (var property in context.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (SetOf(property, types) is not { } entity ||
+                    property.ExplicitInterfaceImplementations.Length > 0 ||
+                    property.DeclaringSyntaxReferences.Length != 1 ||
+                    property.DeclaringSyntaxReferences[0].GetSyntax(cancellationToken) is not PropertyDeclarationSyntax declaration)
+                {
+                    continue;
+                }
+
+                properties.Add(new PropertyPlan(declaration, property, entity) { Left = Shape(declaration, property, entity) });
+            }
+
+            foreach (var twice in properties.GroupBy(property => property.Entity, (IEqualityComparer<INamedTypeSymbol>)SymbolEqualityComparer.Default).Where(group => group.Count() > 1))
+            {
+                foreach (var property in twice)
+                {
+                    property.Left ??= Reasons.TwoSets;
+                }
+            }
+
+            return properties;
+        }
+
+        private string? Shape(PropertyDeclarationSyntax declaration, IPropertySymbol property, INamedTypeSymbol entity)
+        {
+            if (property.IsStatic || property.IsVirtual || property.IsAbstract || property.IsOverride)
+            {
+                return Reasons.Overridable;
+            }
+
+            if (declaration.AttributeLists.Count > 0)
+            {
+                return Reasons.Attributes;
+            }
+
+            if (declaration.ContainsDirectives)
+            {
+                return Reasons.Directives;
+            }
+
+            if (!Reachable(entity) || entity.IsGenericType)
+            {
+                return Reasons.Unreachable(entity.Name);
+            }
+
+            foreach (var member in context.AllInterfaces.SelectMany(type => type.GetMembers(property.Name)))
+            {
+                if (SymbolEqualityComparer.Default.Equals(context.FindImplementationForInterfaceMember(member), property))
+                {
+                    return Reasons.Implements($"{member.ContainingType.Name}.{member.Name}");
+                }
+            }
+
+            // { get; set; }, with nothing or "= null!" after it; or => Set<T>().
+            var plain = declaration.ExpressionBody is { } arrow
+                ? arrow.Expression is InvocationExpressionSyntax { ArgumentList.Arguments.Count: 0 } call &&
+                  call.Expression is GenericNameSyntax { Identifier.ValueText: "Set" }
+                      or MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax, Name: GenericNameSyntax { Identifier.ValueText: "Set" } }
+                : declaration.AccessorList is { } accessors &&
+                  accessors.Accessors.All(accessor => accessor.Body is null && accessor.ExpressionBody is null && accessor.AttributeLists.Count == 0) &&
+                  (declaration.Initializer is null ||
+                   declaration.Initializer.Value is PostfixUnaryExpressionSyntax { Operand: LiteralExpressionSyntax } suppressed && suppressed.IsKind(SyntaxKind.SuppressNullableWarningExpression));
+            return plain ? null : Reasons.NotPlain;
+        }
+
+        /// <summary>
+        /// Where each property's entity gets its place in the model without the property, and whether
+        /// that is as good a place. The property put the entity in before <c>OnModelCreating</c> ran;
+        /// a class puts it in where the class is applied — or, for an entity with no configuration at
+        /// all, as the method's first statement — so nothing before that may read the model's entity
+        /// types. And the property named the table, which the class then has to.
+        /// </summary>
+        private void Place(List<PropertyPlan> properties, List<Move> moves, int scan, MethodDeclarationSyntax? method)
+        {
+            foreach (var property in properties.Where(property => property.Left is null))
+            {
+                var entity = property.Entity;
+                var pieces = items.Where(item => item.Kind == ItemKind.Entity && SymbolEqualityComparer.Default.Equals(item.Piece!.Entity, entity)).ToList();
+                var existing = types.ConfigurationsOf(entity);
+                var applied = items
+                    .Where(item => item.Kind == ItemKind.Apply && types.EntitiesOf(item.Applied!).Contains(entity, SymbolEqualityComparer.Default))
+                    .ToList();
+                var classes = existing.Concat(applied.Select(item => item.Applied!)).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default).ToList();
+
+                var at = pieces.Select(item => item.Index).Concat(applied.Select(item => item.Index)).DefaultIfEmpty(int.MaxValue).Min();
+                if (moves.FirstOrDefault(move => SymbolEqualityComparer.Default.Equals(move.Entity, entity)) is { } move)
+                {
+                    property.Target = PropertyTarget.Move;
+                    property.Move = move;
+                    property.Existing = move.Existing;
+                    at = scan >= 0 ? Math.Min(at, scan) : at;
+                }
+                else if (pieces.Count > 0 && classes.Count == 0)
+                {
+                    property.Left = Reasons.Inline;
+                }
+                else if (classes.Count == 0)
+                {
+                    property.Target = PropertyTarget.New;
+                    at = scan >= 0 ? scan : -1;
+                    if (scan < 0 && method is { Body: null })
+                    {
+                        property.Left = Reasons.ExpressionBody;
+                    }
+                }
+                else if (classes.Count == 1 && (applied.Count > 0 || (scan >= 0 && IsScanned(classes[0]))))
+                {
+                    property.Target = PropertyTarget.Existing;
+                    property.Existing = classes[0];
+                    at = applied.Count == 0 ? Math.Min(at, scan) : at;
+                }
+                else
+                {
+                    property.Left = Reasons.Existing(classes[0].Name);
+                }
+
+                if (property.Left is null && items.Take(Math.Max(at, 0)).Any(item => item.Kind == ItemKind.Barrier))
+                {
+                    property.Left = Reasons.Registered;
+                }
+
+                if (property.Left is null && property.Symbol.Name != entity.Name && !NamesItsTable(entity, pieces, classes, properties))
+                {
+                    // The class says what the property said. A class that is not source, or has no block to add to, cannot.
+                    if (!types.Relational)
+                    {
+                        property.Left = Reasons.NotRelational;
+                    }
+                    else if (property.Existing is { } target && !CanTakeMore(target, entity))
+                    {
+                        property.Left = Reasons.Existing(target.Name);
+                    }
+                    else
+                    {
+                        property.Table = property.Symbol.Name;
+                        if (property.Move is not null)
+                        {
+                            property.Move.Table = property.Table;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether the entity's table is named without its DbSet property: by a call in its own
+        /// configuration, by an attribute, or by the entity it derives from, whose table it shares
+        /// unless the hierarchy is mapped a table per type.
+        /// </summary>
+        private bool NamesItsTable(INamedTypeSymbol entity, List<Item> pieces, List<INamedTypeSymbol> classes, List<PropertyPlan> properties)
+        {
+            if (entity.GetAttributes().Any(attribute => attribute.AttributeClass?.Name == "TableAttribute"))
+            {
+                return true;
+            }
+
+            var named = new HashSet<string>(
+                pieces.SelectMany(item => (item.Piece!.Helper ?? item.Node).DescendantTokens().Concat(item.Node.DescendantTokens()))
+                    .Where(token => token.IsKind(SyntaxKind.IdentifierToken))
+                    .Select(token => token.ValueText),
+                StringComparer.Ordinal);
+            foreach (var type in classes)
+            {
+                if (type.DeclaringSyntaxReferences.Length == 0)
+                {
+                    // Not source: what it says of the table is not known, and nothing can be added to it.
+                    return false;
+                }
+
+                named.UnionWith(Names(type));
+            }
+
+            if (TableCalls.Any(named.Contains))
+            {
+                return true;
+            }
+
+            for (var parent = entity.BaseType; parent is not null; parent = parent.BaseType)
+            {
+                if (properties.Any(property => SymbolEqualityComparer.Default.Equals(property.Entity, parent)) ||
+                    items.Any(item => item.Kind == ItemKind.Entity && SymbolEqualityComparer.Default.Equals(item.Piece!.Entity, parent)) ||
+                    types.ConfigurationsOf(parent).Count > 0)
+                {
+                    // One table for the hierarchy, unless it is mapped a table per type: then each type's is its own.
+                    return !items.SelectMany(item => item.Node.DescendantTokens()).Any(token => token.ValueText is "UseTpcMappingStrategy" or "UseTptMappingStrategy") &&
+                           !types.ConfigurationsOf(parent).SelectMany(Names).Any(name => name is "UseTpcMappingStrategy" or "UseTptMappingStrategy");
+                }
+            }
+
+            return false;
+        }
+
+        private static readonly string[] TableCalls = ["ToTable", "ToView", "ToSqlQuery", "ToFunction", "ToContainer", "ToCollection"];
 
         /// <summary>
         /// Which of an entity's statements move, and where to. With a scan in the method the class is
@@ -755,6 +1090,12 @@ internal static class EntityConfigurations
                     item.Piece = piece;
                     return;
                 }
+
+                if (IsModelCall(invocation, builder))
+                {
+                    item.Kind = ItemKind.Harmless;
+                    return;
+                }
             }
 
             // What stays configures entities too, and the message says which.
@@ -767,6 +1108,34 @@ internal static class EntityConfigurations
                     noted.Add((entity, Reasons.Nested));
                 }
             }
+        }
+
+        /// <summary>
+        /// A statement that sets something of the model without reading its entity types: the base call
+        /// of a context that derives from <c>DbContext</c> itself, which does nothing; or a call on the
+        /// model builder that EF Core or a provider declares — <c>HasDefaultSchema</c>,
+        /// <c>HasPostgresExtension</c>, <c>HasSequence(…).StartsAt(…)</c>. An extension of anybody
+        /// else's may add entities or walk the model.
+        /// </summary>
+        private bool IsModelCall(InvocationExpressionSyntax invocation, IParameterSymbol builder)
+        {
+            if (invocation.Expression is MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax, Name.Identifier.ValueText: MethodName })
+            {
+                return SymbolEqualityComparer.Default.Equals(context.BaseType, types.DbContext);
+            }
+
+            for (ExpressionSyntax? current = invocation; current is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member } call; current = member.Expression)
+            {
+                if (IsParameter(member.Expression, builder))
+                {
+                    return model.GetSymbolInfo(call, cancellationToken).Symbol is IMethodSymbol method &&
+                           method.Name is not ("Entity" or "SharedTypeEntity") &&
+                           !method.Name.StartsWith("Apply", StringComparison.Ordinal) &&
+                           (method.ReducedFrom ?? method).ContainingAssembly.Name.Contains("EntityFrameworkCore");
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

@@ -21,7 +21,23 @@ public class EntityConfigurationTests
 
             public class DbContextOptions<TContext> { }
 
-            public class DbSet<TEntity> where TEntity : class { }
+            public abstract class DbSet<TEntity> : System.Linq.IQueryable<TEntity> where TEntity : class
+            {
+                public abstract System.Type ElementType { get; }
+                public abstract System.Linq.Expressions.Expression Expression { get; }
+                public abstract System.Linq.IQueryProvider Provider { get; }
+                public abstract System.Collections.Generic.IEnumerator<TEntity> GetEnumerator();
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+                public void Add(TEntity entity) { }
+            }
+
+            public static class RelationalEntityTypeBuilderExtensions { }
+
+            public static class EF
+            {
+                public static System.Func<TContext, TResult> CompileQuery<TContext, TResult>(
+                    System.Linq.Expressions.Expression<System.Func<TContext, TResult>> query) where TContext : DbContext => null;
+            }
 
             public class DatabaseFacade
             {
@@ -33,6 +49,7 @@ public class EntityConfigurationTests
                 public DbContext() { }
                 public DbContext(object options) { }
                 public DatabaseFacade Database => null;
+                public DbSet<TEntity> Set<TEntity>() where TEntity : class => null;
                 protected virtual void OnModelCreating(ModelBuilder modelBuilder) { }
             }
 
@@ -129,7 +146,7 @@ public class EntityConfigurationTests
         """;
 
     private static readonly Lazy<Task<MetadataReference>> EntityFramework = new(async () =>
-        AnalyzerTest.Compile("EntityFrameworkStubs", [EntityFrameworkStubs], [.. await AnalyzerTest.BaseReferences.Value, await AnalyzerTest.Framework.Value]));
+        AnalyzerTest.Compile("Microsoft.EntityFrameworkCore.Stubs", [EntityFrameworkStubs], [.. await AnalyzerTest.BaseReferences.Value, await AnalyzerTest.Framework.Value]));
 
     /// <summary>A shop's entities, in the context's namespace.</summary>
     private const string Entities = """
@@ -327,6 +344,7 @@ public class EntityConfigurationTests
             .WithArguments(
                 "ShopContext",
                 1,
+                0,
                 "; left in place: Order uses the context's '_tenantId', Product is configured inside a larger statement"));
 
         await test.RunAsync(CancellationToken.None);
@@ -1482,7 +1500,7 @@ public class EntityConfigurationTests
         test.TestState.Sources.Add(Entities);
         test.TestState.ExpectedDiagnostics.Add(new DiagnosticResult(Diagnostics.EntityConfigurationCanMove)
             .WithSpan(7, 29, 7, 44)
-            .WithArguments("ShopContext", 1, "; left in place: Customer is configured through a local variable"));
+            .WithArguments("ShopContext", 1, 0, "; left in place: Customer is configured through a local variable"));
 
         test.FixedState.Sources.Add("""
             using Microsoft.EntityFrameworkCore;
@@ -1514,6 +1532,530 @@ public class EntityConfigurationTests
                 public void Configure(EntityTypeBuilder<Order> builder)
                 {
                     builder.ToTable("orders");
+                }
+            }
+
+            """));
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task DbSetProperties_BecomeExtensionPropertiesOfDbContext_AndTheirEntitiesClassesSayWhatTheySaid()
+    {
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal sealed class ShopContext : DbContext
+            {
+                /// <summary>The orders.</summary>
+                public DbSet<Order> Orders { get; set; }
+
+                public DbSet<Customer> Customers => Set<Customer>();
+
+                public DbSet<Tag> Tag { get; set; } = null!;
+
+                protected override void {|MOD0016:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    base.OnModelCreating(modelBuilder);
+                    modelBuilder.HasDefaultSchema("shop");
+                    modelBuilder.Entity<Order>(e => e.HasKey(o => o.Id));
+                    modelBuilder.Entity<Customer>().ToTable("customers");
+                }
+
+                public int Count() => Orders.Count();
+            }
+
+            internal sealed class Reports
+            {
+                public static readonly System.Func<ShopContext, int> Compiled = EF.CompileQuery((ShopContext c) => c.Orders.Count());
+
+                public IQueryable<Order> WithCustomers(ShopContext context) =>
+                    context.Orders.Where(o => context.Customers.Any(c => c.Id == o.CustomerId));
+            }
+            """);
+        test.TestState.Sources.Add(Entities);
+
+        // The entity that had a property and nothing else is applied first: it was in the model from
+        // the start. Inside an expression tree a set is read as Set<T>(), which is what EF Core reads.
+        test.FixedState.Sources.Add("""
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal sealed class ShopContext : DbContext
+            {
+                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new TagConfiguration());
+                    base.OnModelCreating(modelBuilder);
+                    modelBuilder.HasDefaultSchema("shop");
+                    modelBuilder.ApplyConfiguration(new OrderConfiguration());
+                    modelBuilder.ApplyConfiguration(new CustomerConfiguration());
+                }
+
+                public int Count() => this.Orders.Count();
+            }
+
+            internal sealed class Reports
+            {
+                public static readonly System.Func<ShopContext, int> Compiled = EF.CompileQuery((ShopContext c) => c.Set<Order>().Count());
+
+                public IQueryable<Order> WithCustomers(ShopContext context) =>
+                    context.Orders.Where(o => context.Set<Customer>().Any(c => c.Id == o.CustomerId));
+            }
+            """);
+        test.FixedState.Sources.Add(Entities);
+
+        // Orders named the table; Customers' is named by its configuration; Tag is the type's name anyway.
+        test.FixedState.Sources.Add(("/0/OrderConfiguration.cs", Class("Order", "e", "e.ToTable(\"Orders\");\n        e.HasKey(o => o.Id);")));
+        test.FixedState.Sources.Add(("/0/CustomerConfiguration.cs", Class("Customer", "builder", "builder.ToTable(\"customers\");")));
+        test.FixedState.Sources.Add(("/0/TagConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data;
+
+            internal sealed class TagConfiguration : IEntityTypeConfiguration<Tag>
+            {
+                public void Configure(EntityTypeBuilder<Tag> builder)
+                {
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/ShopContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal static class ShopContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    /// <summary>The orders.</summary>
+                    public DbSet<Order> Orders => context.Set<Order>();
+                    public DbSet<Customer> Customers => context.Set<Customer>();
+                    public DbSet<Tag> Tag => context.Set<Tag>();
+                }
+            }
+
+            """));
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task BeforeCSharp14_TheSetsAreExtensionMethods_AndEveryUseGetsItsParentheses()
+    {
+        var test = await FixTestAsync();
+        test.SolutionTransforms.Add((solution, _) =>
+        {
+            foreach (var id in solution.ProjectIds)
+            {
+                solution = solution.WithProjectParseOptions(
+                    id, ((Microsoft.CodeAnalysis.CSharp.CSharpParseOptions)solution.GetProject(id)!.ParseOptions!).WithLanguageVersion(Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp12));
+            }
+
+            return solution;
+        });
+
+        const string Uses = """
+            using System.Linq;
+            using Shop.Data;
+
+            namespace Shop.Web
+            {
+                internal static class Queries
+                {
+                    public static int Count(DiscountContext context) => context.Coupons.Count();
+
+                    public static bool Any(DiscountContext context) => context.Coupons.Any(c => context.Coupons.Count() > c.Id);
+                }
+            }
+            """;
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data
+            {
+                public class Coupon
+                {
+                    public int Id { get; set; }
+                }
+
+                public class {|MOD0016:DiscountContext|} : DbContext
+                {
+                    public DbSet<Coupon> Coupons { get; set; }
+                }
+            }
+            """);
+        test.TestState.Sources.Add(Uses);
+
+        // A context that had no OnModelCreating gets one, which applies what the property said.
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data
+            {
+                public class Coupon
+                {
+                    public int Id { get; set; }
+                }
+
+                public class DiscountContext : DbContext
+                {
+                    protected override void OnModelCreating(ModelBuilder modelBuilder)
+                    {
+                        modelBuilder.ApplyConfiguration(new CouponConfiguration());
+                    }
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Uses
+            .Replace("context.Coupons.Count();", "context.Coupons().Count();")
+            .Replace("context.Coupons.Any(c => context.Coupons.Count()", "context.Coupons().Any(c => context.Set<Coupon>().Count()"));
+        test.FixedState.Sources.Add(("/0/CouponConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data
+            {
+                internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
+                {
+                    public void Configure(EntityTypeBuilder<Coupon> builder)
+                    {
+                        builder.ToTable("Coupons");
+                    }
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/DiscountContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data
+            {
+                public static class DiscountContextExtensions
+                {
+                    public static DbSet<Coupon> Coupons(this DbContext context) => context.Set<Coupon>();
+                }
+            }
+
+            """));
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task TheMessageCountsTheProperties_AndSaysWhichStayAndWhy()
+    {
+        var test = await AnalyzerTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal interface IShopContext
+            {
+                DbSet<Order> Orders { get; }
+            }
+
+            internal class ShopContext : DbContext, IShopContext
+            {
+                public DbSet<Order> Orders { get; set; }
+                public virtual DbSet<Customer> Customers { get; set; }
+                public DbSet<Product> Products { get; set; }
+                public DbSet<Tag> Tags { get; set; }
+
+                protected override void {|#0:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+                    {
+                        entityType.SetTableName("x");
+                    }
+
+                    modelBuilder.Entity<Product>().HasKey(p => p.Id);
+                }
+            }
+            """);
+        test.TestState.Sources.Add(Entities);
+        test.ExpectedDiagnostics.Add(new DiagnosticResult(Diagnostics.EntityConfigurationCanMove)
+            .WithLocation(0)
+            .WithArguments(
+                "ShopContext",
+                1,
+                1,
+                "; left in place: property Orders implements IShopContext.Orders, property Customers is static or can be overridden, " +
+                "property Products would come into the model after a statement that may read its entity types"));
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task APropertyThatIsAssignedOrNamed_Stays_AndTheOthersGo()
+    {
+        const string Uses = """
+            using Shop.Data;
+
+            internal static class Uses
+            {
+                public static string Name(ShopContext context) => nameof(context.Orders);
+
+                public static void Replace(ShopContext context, ShopContext other) => context.Customers = other.Customers;
+            }
+            """;
+
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal sealed class {|MOD0016:ShopContext|} : DbContext
+            {
+                public DbSet<Order> Orders { get; set; }
+                public DbSet<Customer> Customers { get; set; }
+                public DbSet<Product> Product { get; set; }
+            }
+            """);
+        test.TestState.Sources.Add(Uses);
+        test.TestState.Sources.Add(Entities);
+
+        // How a property is used only the fix reads, so the two it left are still reported.
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal sealed class ShopContext : DbContext
+            {
+                public DbSet<Order> Orders { get; set; }
+                public DbSet<Customer> Customers { get; set; }
+
+                protected override void {|MOD0016:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new ProductConfiguration());
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Uses);
+        test.FixedState.Sources.Add(Entities);
+        test.FixedState.Sources.Add(("/0/ProductConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data;
+
+            internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
+            {
+                public void Configure(EntityTypeBuilder<Product> builder)
+                {
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/ShopContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal static class ShopContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Product> Product => context.Set<Product>();
+                }
+            }
+
+            """));
+        test.FixedState.MarkupHandling = MarkupMode.Allow;
+        test.NumberOfIncrementalIterations = 2;
+        test.NumberOfFixAllIterations = 2;
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task AClassTheContextApplies_SaysTheTableName_AndADerivedEntitySharesItsBasesTable()
+    {
+        const string Accounts = """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data;
+
+            internal class Account
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class PremiumAccount : Account
+            {
+            }
+
+            internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+            {
+                public void Configure(EntityTypeBuilder<Order> builder)
+                {
+                    builder.HasKey(o => o.Id);
+                }
+            }
+            """;
+
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal abstract class AuditedContext : DbContext
+            {
+            }
+
+            internal sealed class ShopContext : AuditedContext
+            {
+                public DbSet<Order> Orders { get; set; }
+
+                public DbSet<Account> Accounts { get; set; }
+
+                public DbSet<PremiumAccount> PremiumAccounts { get; set; }
+
+                protected override void {|MOD0016:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new OrderConfiguration());
+                }
+            }
+            """);
+        test.TestState.Sources.Add(Accounts);
+        test.TestState.Sources.Add(Entities);
+
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal abstract class AuditedContext : DbContext
+            {
+            }
+
+            internal sealed class ShopContext : AuditedContext
+            {
+                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new AccountConfiguration());
+                    modelBuilder.ApplyConfiguration(new PremiumAccountConfiguration());
+                    modelBuilder.ApplyConfiguration(new OrderConfiguration());
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Accounts.Replace(
+            "        builder.HasKey(o => o.Id);",
+            "        builder.HasKey(o => o.Id);\n        builder.ToTable(\"Orders\");"));
+        test.FixedState.Sources.Add(Entities);
+        test.FixedState.Sources.Add(("/0/AccountConfiguration.cs", Class("Account", "builder", "builder.ToTable(\"Accounts\");")));
+        test.FixedState.Sources.Add(("/0/PremiumAccountConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data;
+
+            internal sealed class PremiumAccountConfiguration : IEntityTypeConfiguration<PremiumAccount>
+            {
+                public void Configure(EntityTypeBuilder<PremiumAccount> builder)
+                {
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/ShopContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal static class ShopContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Order> Orders => context.Set<Order>();
+                    public DbSet<Account> Accounts => context.Set<Account>();
+                    public DbSet<PremiumAccount> PremiumAccounts => context.Set<PremiumAccount>();
+                }
+            }
+
+            """));
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task AContextWithoutOnModelCreating_OverABaseOfItsOwn_AppliesItsClassesBeforeTheBasesModel()
+    {
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal abstract class AuditedContext : DbContext
+            {
+            }
+
+            internal sealed class {|MOD0016:ShopContext|} : AuditedContext
+            {
+                public DbSet<Tag> Tag { get; set; }
+            }
+            """);
+        test.TestState.Sources.Add(Entities);
+
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal abstract class AuditedContext : DbContext
+            {
+            }
+
+            internal sealed class ShopContext : AuditedContext
+            {
+                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new TagConfiguration());
+                    base.OnModelCreating(modelBuilder);
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Entities);
+        test.FixedState.Sources.Add(("/0/TagConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Data;
+
+            internal sealed class TagConfiguration : IEntityTypeConfiguration<Tag>
+            {
+                public void Configure(EntityTypeBuilder<Tag> builder)
+                {
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/ShopContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            internal static class ShopContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Tag> Tag => context.Set<Tag>();
                 }
             }
 

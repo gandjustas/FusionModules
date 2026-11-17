@@ -8,7 +8,8 @@ namespace FusionModules.Analyzers;
 
 /// <summary>
 /// A context whose <c>OnModelCreating</c> configures entities that could each have an
-/// <c>IEntityTypeConfiguration&lt;T&gt;</c> class (MOD0016).
+/// <c>IEntityTypeConfiguration&lt;T&gt;</c> class, or whose <c>DbSet</c> properties could be
+/// extension members of <c>DbContext</c> (MOD0016).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,10 +19,12 @@ namespace FusionModules.Analyzers;
 /// the context is what keeps an entity from moving into its module.
 /// </para>
 /// <para>
-/// Reported on <c>OnModelCreating</c>, once per context, and only when at least one entity's
-/// configuration can move without the model changing; the message names what stays and why.
-/// Nothing is read but methods named <c>OnModelCreating</c>, and nothing at all in a project
-/// without EF Core.
+/// Reported on <c>OnModelCreating</c> — on the context's name when it has none — once per context,
+/// and only when something can move without the model changing; the message names what stays and
+/// why. Nothing is read but classes that declare an <c>OnModelCreating</c> or a <c>DbSet</c>
+/// property, and nothing at all in a project without EF Core. How a property is used is not read
+/// here — that would bind the whole project — but by the fix, which leaves a property that is
+/// assigned or named by <c>nameof</c>.
 /// </para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -48,18 +51,19 @@ public sealed class EntityConfigurationAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(
             nodeContext =>
             {
-                var method = (MethodDeclarationSyntax)nodeContext.Node;
-                if (EntityConfigurations.MightApply(method) &&
-                    EntityConfigurations.Analyze(nodeContext.SemanticModel, method, types, nodeContext.CancellationToken) is { } plan)
+                var type = (ClassDeclarationSyntax)nodeContext.Node;
+                if (EntityConfigurations.MightApply(type) &&
+                    EntityConfigurations.Analyze(nodeContext.SemanticModel, type, types, nodeContext.CancellationToken) is { } plan)
                 {
                     nodeContext.ReportDiagnostic(Diagnostic.Create(
                         Diagnostics.EntityConfigurationCanMove,
-                        method.Identifier.GetLocation(),
+                        plan.Identifier.GetLocation(),
                         plan.Context.Name,
                         plan.Moves.Count,
+                        plan.MovableProperties,
                         plan.StaysText()));
                 }
             },
-            SyntaxKind.MethodDeclaration);
+            SyntaxKind.ClassDeclaration);
     }
 }
