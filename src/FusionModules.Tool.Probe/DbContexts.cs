@@ -77,6 +77,7 @@ internal static class DbContexts
                 context.Error = $"{error.Type}: {error.Message}";
             }
 
+            DbContextModels.Read(type, services, context);
             result.DbContexts.Add(context);
         }
     }

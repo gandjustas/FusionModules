@@ -133,6 +133,8 @@ internal static class Comparison
             }
         }
 
+        Models(host, before, after, merged);
+
         // The application's hosted services start in registration order, and a module registers
         // before the program does: the same ones in another order are a difference of their own.
         if (!merged)
@@ -146,6 +148,110 @@ internal static class Comparison
         }
 
         return host;
+    }
+
+    /// <summary>
+    /// The models of the contexts both sides have, entity type by entity type, in EF Core's own
+    /// description of them: a table, a column's type or length, a key, an index, a relationship, a
+    /// query filter, a seed row. An entity type that came or went is one line; one that changed is
+    /// a line for each thing that did. In a merge the host's context has what any of the services'
+    /// had — a context composed from modules is the union of theirs. A model that was not read on
+    /// one side — an inventory taken by an earlier version, a context that could not be created —
+    /// is a note: nothing is known about it either way.
+    /// </summary>
+    private static void Models(HostComparison host, IReadOnlyList<HostInfo> before, HostInfo after, bool merged)
+    {
+        foreach (var context in (after.Runtime!.DbContexts ?? []).OrderBy(context => context.Type, StringComparer.Ordinal))
+        {
+            var sources = before.SelectMany(source => source.Runtime!.DbContexts ?? []).Where(source => source.Type == context.Type).ToList();
+            if (sources.Count == 0)
+            {
+                continue;
+            }
+
+            if (context.Model is null || sources.Any(source => source.Model is null))
+            {
+                if (context.Model is not null || sources.Any(source => source.Model is not null))
+                {
+                    var why = context.Model is null ? context.ModelError : sources.First(source => source.Model is null).ModelError;
+                    host.Notes.Add($"model of {context.Type} not compared: not read {(context.Model is null ? "after" : "before")}{(why is null ? "" : $" ({why})")}");
+                }
+
+                continue;
+            }
+
+            var was = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var (entity, lines) in sources.SelectMany(source => ModelLines(source.Model!)))
+            {
+                if (!was.TryGetValue(entity, out var known))
+                {
+                    was.Add(entity, known = new(StringComparer.Ordinal));
+                }
+
+                known.UnionWith(lines);
+            }
+
+            var now = ModelLines(context.Model).ToDictionary(pair => pair.Entity, pair => pair.Lines, StringComparer.Ordinal);
+            foreach (var entity in was.Keys.Union(now.Keys).Order(StringComparer.Ordinal))
+            {
+                var what = entity.Length == 0 ? $"model {context.Type}" : $"model {context.Type}: {entity}";
+                if (!now.TryGetValue(entity, out var current))
+                {
+                    host.Differences.Add($"- {what}");
+                }
+                else if (!was.TryGetValue(entity, out var earlier))
+                {
+                    // A host that took services in has their entities; one of its own beside them is a note.
+                    (merged ? host.Notes : host.Differences).Add($"+ {what}");
+                }
+                else
+                {
+                    host.Differences.AddRange(earlier.Except(current).Order(StringComparer.Ordinal).Select(line => $"- {what}: {line}"));
+                    host.Differences.AddRange(current.Except(earlier).Order(StringComparer.Ordinal).Select(line => $"+ {what}: {line}"));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A model's lines by entity type — the model's own under an empty name — each with the
+    /// headings it stands under, so that an annotation says whose it is:
+    /// <c>Properties / Price / Annotations / Relational:ColumnType: numeric(18,2)</c>.
+    /// </summary>
+    internal static IEnumerable<(string Entity, HashSet<string> Lines)> ModelLines(ProbeDbModel model)
+    {
+        if (model.Lines.Count > 0)
+        {
+            yield return (string.Empty, Flatten(model.Lines));
+        }
+
+        foreach (var entity in model.Entities)
+        {
+            yield return (entity.Name, Flatten(entity.Lines));
+        }
+    }
+
+    private static HashSet<string> Flatten(List<string> lines)
+    {
+        var flat = new HashSet<string>(StringComparer.Ordinal);
+        var path = new List<(int Indent, string Name)>();
+        foreach (var line in lines)
+        {
+            var text = line.TrimStart();
+            var indent = line.Length - text.Length;
+            while (path.Count > 0 && path[^1].Indent >= indent)
+            {
+                path.RemoveAt(path.Count - 1);
+            }
+
+            flat.Add(string.Concat(path.Select(part => part.Name + " / ")) + text);
+
+            // A heading is named by its first word: "Price (decimal) Required" is Price, whatever else it says.
+            var end = text.IndexOfAny([' ', ':']);
+            path.Add((indent, end < 0 ? text : text[..end]));
+        }
+
+        return flat;
     }
 
     private static List<string> StartOrder(ProbeOutput runtime) =>

@@ -118,6 +118,86 @@ public class ComparisonTests
         await Assert.That(Comparison.Compare(before, after).Same).IsTrue();
     }
 
+    [Test]
+    public async Task AModelThatChanged_IsADifferenceForEachThingThatDid_AndTheSameModelIsNone()
+    {
+        var before = Document(WithContext("shop", Model(
+            ["Annotations:", "  Relational:DefaultSchema: shop"],
+            ("Shop.Order", ["EntityType: Order", "  Properties:", "    Id (int) Required PK", "    Total (decimal) Required", "      Annotations:", "        Precision: 18", "  Seed: Id=1"]),
+            ("Shop.Customer", ["EntityType: Customer", "  Properties:", "    Id (int) Required PK"]))));
+        var same = Document(WithContext("shop", before.Hosts[0].Runtime!.DbContexts![0].Model!));
+        var after = Document(WithContext("shop", Model(
+            ["Annotations:", "  Relational:DefaultSchema: store"],
+            ("Shop.Order", ["EntityType: Order", "  Properties:", "    Id (int) Required PK", "    Total (decimal) Required", "      Annotations:", "        Precision: 10", "  QueryFilter: o => o.Total > 0"]),
+            ("Shop.Product", ["EntityType: Product"]))));
+
+        await Assert.That(Comparison.Compare(before, same).Same).IsTrue();
+        await Assert.That(Comparison.Compare(before, after).Hosts.Single().Differences).IsEquivalentTo(
+        [
+            "- model Shop.ShopContext: Annotations / Relational:DefaultSchema: shop",
+            "+ model Shop.ShopContext: Annotations / Relational:DefaultSchema: store",
+            "- model Shop.ShopContext: Shop.Customer",
+            "- model Shop.ShopContext: Shop.Order: EntityType / Properties / Total / Annotations / Precision: 18",
+            "- model Shop.ShopContext: Shop.Order: EntityType / Seed: Id=1",
+            "+ model Shop.ShopContext: Shop.Order: EntityType / Properties / Total / Annotations / Precision: 10",
+            "+ model Shop.ShopContext: Shop.Order: EntityType / QueryFilter: o => o.Total > 0",
+            "+ model Shop.ShopContext: Shop.Product",
+        ]);
+    }
+
+    [Test]
+    public async Task AModelNotReadOnOneSide_IsANote_NotADifference()
+    {
+        // An inventory taken before models were read, against one taken now.
+        var before = Document(WithContext("shop", model: null));
+        var after = Document(WithContext("shop", Model([], ("Shop.Order", ["EntityType: Order"]))));
+        var failed = Document(WithContext("shop", model: null));
+        failed.Hosts[0].Runtime!.DbContexts![0].ModelError = "System.InvalidOperationException: no tenant";
+
+        var result = Comparison.Compare(before, after);
+        await Assert.That(result.Same).IsTrue();
+        await Assert.That(result.Hosts.Single().Notes).IsEquivalentTo(["model of Shop.ShopContext not compared: not read before"]);
+        await Assert.That(Comparison.Compare(after, failed).Hosts.Single().Notes).IsEquivalentTo(
+            ["model of Shop.ShopContext not compared: not read after (System.InvalidOperationException: no tenant)"]);
+        await Assert.That(Comparison.Compare(before, failed).Hosts.Single().Notes).IsEmpty();
+    }
+
+    [Test]
+    public async Task AHostThatTookServicesIn_HasInOneContextWhatTheirsHad()
+    {
+        // A context composed from modules: each service had its own entities in a context of that type.
+        var orders = WithContext("orders", Model([], ("Shop.Order", ["EntityType: Order", "  Keys:", "    Id PK"])));
+        var customers = WithContext("customers", Model([], ("Shop.Customer", ["EntityType: Customer"])));
+        var host = WithContext("webapp", Model([],
+            ("Shop.Order", ["EntityType: Order", "  Keys:", "    Id PK"]),
+            ("Shop.Customer", ["EntityType: Customer"]),
+            ("Shop.Audit", ["EntityType: Audit"])));
+        var lost = WithContext("webapp", Model([], ("Shop.Order", ["EntityType: Order", "  Keys:", "    Number PK"])));
+
+        var whole = Comparison.CompareMerged(Document(orders, customers), ["orders", "customers"], Document(host), "webapp");
+        await Assert.That(whole.Same).IsTrue();
+        await Assert.That(whole.Hosts.Single().Notes).Contains("+ model Shop.ShopContext: Shop.Audit");
+        await Assert.That(Comparison.CompareMerged(Document(orders, customers), ["orders", "customers"], Document(lost), "webapp").Hosts.Single().Differences).IsEquivalentTo(
+        [
+            "- model Shop.ShopContext: Shop.Customer",
+            "- model Shop.ShopContext: Shop.Order: EntityType / Keys / Id PK",
+            "+ model Shop.ShopContext: Shop.Order: EntityType / Keys / Number PK",
+        ]);
+    }
+
+    private static HostInfo WithContext(string service, ProbeDbModel? model)
+    {
+        var host = Host(service, []);
+        host.Runtime!.DbContexts = [new() { Type = "Shop.ShopContext", Provider = "Npgsql", ConnectionString = "Database=shop", Lifetime = "Scoped", Model = model }];
+        return host;
+    }
+
+    private static ProbeDbModel Model(string[] lines, params (string Name, string[] Lines)[] entities) => new()
+    {
+        Lines = [.. lines],
+        Entities = [.. entities.Select(entity => new ProbeDbEntity { Name = entity.Name, Lines = [.. entity.Lines] })],
+    };
+
     private static HostInfo Converted(string factory, string? module)
     {
         var host = Host("catalog", []);
