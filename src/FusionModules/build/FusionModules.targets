@@ -171,12 +171,15 @@
     namespace has a Module already — only at the project's root, only when one is there twice, and
     keeping the first item's metadata: any other duplicate is still the SDK's to report. The line
     itself can be deleted; nothing depends on it.
+
+    MOD0016's fix adds a file per entity the same way, OrderConfiguration.cs, beside the context or
+    where the project keeps its configuration classes: the names it gives, in any folder.
   -->
   <Target Name="FusionModulesDeduplicateModuleFile"
           BeforeTargets="CheckForDuplicateItems"
           Condition="'$(EnableDefaultItems)' == 'true' and '$(EnableDefaultCompileItems)' == 'true' and '$(FusionModulesDeduplicateModuleFile)' != 'false'">
     <ItemGroup>
-      <_FusionModulesModuleFile Include="@(Compile)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\w*Module\d*\.cs$'))" />
+      <_FusionModulesModuleFile Include="@(Compile)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^(\w*Module\d*|(.*[\\/])?\w+Configuration\d*)\.cs$'))" />
     </ItemGroup>
     <ItemGroup Condition="@(_FusionModulesModuleFile->Count()) != @(_FusionModulesModuleFile->Distinct()->Count())">
       <Compile Remove="@(_FusionModulesModuleFile)" />
