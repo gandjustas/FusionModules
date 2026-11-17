@@ -98,6 +98,36 @@ more code — and Razor's generated code is code — pays more for the cheap ans
 shows up in it, again for the second; measure such a host with the script above, one project at a
 time.
 
+### MOD0016's analyzer
+
+[MOD0016](rules/MOD0016.md)'s analyzer, added after 0.4.0, looks up three EF Core types when a
+compilation starts and registers nothing in a project without them. With them it is called for every
+method declaration and reads only those named `OnModelCreating` that override one; what it needs of
+the whole compilation — its configuration classes, another context that scans the assembly — it asks
+only for a context that has entity configuration to move.
+
+17 November 2026, .NET SDK 10.0.404, the machine and the method above; `release/0.4` at `a25791e`
+against the same with the rule. The compiler charges, over `samples/Samples.slnx` (52 compilations,
+46 with the package's analyzers; sample 03's are the ones with EF Core):
+
+| | Before | After |
+|---|---|---|
+| The package's analyzers, all | 0.163 s | 0.132 s |
+| `EntityConfigurationAnalyzer` | — | 0.023 s |
+| `ProgramConversionAnalyzer`, `ModuleAnalyzer`, `SlimBuilderAnalyzer`, each | 0.023–0.025 s | 0.023 s |
+
+0.023 s over 46 compilations is half a millisecond each: what the compiler charges any analyzer
+that registers and returns. The totals of the two runs differ by more than that in the other
+direction (`ControllerDiscoveryAnalyzer` was charged 0.057 s in one and 0.027 s in the other), which
+is the noise of one run. Over `BillingModule.csproj`, two runs of five pairs each side: the package's
+analyzers were charged 0.039 s and 0.029 s before, 0.041 s and 0.029 s after, the new one 0.004 s of
+it; `Csc` took 1.7–2.9 s per build with the analyzers on either side, on a machine that was building
+other things, so the pairs say nothing either way.
+
+On a context that has something to move — ten entities configured in `OnModelCreating` and two
+helpers, EF Core 10 — the compiler charges the analyzer 0.001 s in that project's compilation, the
+resolution of its report.
+
 Solutions outside this repository — the ones the package was first measured on during the 0.2.0
 previews — are not measured here.
 

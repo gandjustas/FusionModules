@@ -269,6 +269,8 @@ cat > "$work/consumer/NoModules/NoModules.csproj" <<XML
     <!-- What dotnet format writes for the file MOD0015's fix adds, here under the name it takes when
          Module.cs is someone else's: the default glob has it too, and the package drops the duplicate. -->
     <Compile Include="Module2.cs" />
+    <!-- And for the files MOD0016's fix adds, one per entity, wherever the project keeps them. -->
+    <Compile Include="Data\OrderConfiguration.cs" />
   </ItemGroup>
 </Project>
 XML
@@ -279,6 +281,10 @@ await app.RunAsync();
 CS
 cat > "$work/consumer/NoModules/Module2.cs" <<'CS'
 internal static class ListedTwice { }
+CS
+mkdir -p "$work/consumer/NoModules/Data"
+cat > "$work/consumer/NoModules/Data/OrderConfiguration.cs" <<'CS'
+internal static class AlsoListedTwice { }
 CS
 
 # MOD0013 says the runtime package is missing, so the project has to have the analyzer without it.
@@ -587,7 +593,7 @@ fi
 
 log "A web project without modules builds clean"
 if dotnet build "$work/consumer/NoModules" --nologo -v q > "$work/nomodules.log" 2>&1; then
-    pass "builds, with Module2.cs listed in the project file as well (no NETSDK1022)"
+    pass "builds, with Module2.cs and Data/OrderConfiguration.cs listed in the project file as well (no NETSDK1022)"
     if grep -q "MOD" "$work/nomodules.log"; then fail "unexpected diagnostics:"; grep "MOD" "$work/nomodules.log"; else pass "no diagnostics"; fi
 else
     fail "did not build"; cat "$work/nomodules.log"

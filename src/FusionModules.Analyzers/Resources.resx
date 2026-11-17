@@ -212,4 +212,13 @@
   <data name="MOD0015_Description" xml:space="preserve">
     <value>Not a defect: the first step of turning a service into a module. The fix creates Module.cs in this project with the registrations and endpoint mappings that name the project's own code, and leaves the framework's and the shared libraries' registrations, middleware and everything else in the program. The program keeps running as before, because ASP.NET Core runs the entry assembly's hosting startup by itself. Run it with: dotnet format analyzers &lt;project&gt; --diagnostics MOD0015 --severity info.</value>
   </data>
+  <data name="MOD0016_Title" xml:space="preserve">
+    <value>Entity configuration written in OnModelCreating can move into IEntityTypeConfiguration classes</value>
+  </data>
+  <data name="MOD0016_Message" xml:space="preserve">
+    <value>'{0}' configures {1} entity type(s) in OnModelCreating that can move into IEntityTypeConfiguration&lt;T&gt; classes{2}</value>
+  </data>
+  <data name="MOD0016_Description" xml:space="preserve">
+    <value>Not a defect: a step of taking a context apart. A model composed from modules is made of IEntityTypeConfiguration&lt;T&gt; classes, which each module keeps beside its entities and ApplyModuleConfigurations finds; configuration written in OnModelCreating cannot move with its entity. The fix writes one class per entity, in a file of its own, and leaves in OnModelCreating what belongs to no single entity. Where the context already composes its model from this assembly - ApplyModuleConfigurations in a module, ApplyConfigurationsFromAssembly - the classes are found by that call; otherwise each is applied with ApplyConfiguration where the entity's configuration stood. Configuration that reads the context, the model builder or a local of the method, or whose order against what stays cannot be kept, is left in place. Run it with: dotnet format analyzers &lt;project&gt; --diagnostics MOD0016 --severity info.</value>
+  </data>
 </root>

@@ -109,6 +109,7 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0013](docs/rules/MOD0013.md) | The FusionModules package is not referenced |
 | [MOD0014](docs/rules/MOD0014.md) | Two modules register one service with different implementations |
 | [MOD0015](docs/rules/MOD0015.md) | This program's own registrations can move into a module |
+| [MOD0016](docs/rules/MOD0016.md) | Entity configuration written in OnModelCreating can move into IEntityTypeConfiguration classes |
 
 A host and a test project also get `KnownModules`, generated from their references: every module,
 by name. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes
