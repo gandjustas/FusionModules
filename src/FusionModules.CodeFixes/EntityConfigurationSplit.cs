@@ -132,6 +132,12 @@ internal static class EntityConfigurationSplit
             move.Table = null;
         }
 
+        if (sets.Properties.Count == 0 && !plan.Moves.Any())
+        {
+            // Only properties, and the solution's code keeps every one: nothing is written.
+            return null;
+        }
+
         var targets = new List<Target>();
         foreach (var move in plan.Moves)
         {
