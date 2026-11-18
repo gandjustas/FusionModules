@@ -601,6 +601,11 @@ through by hand without the same comparison:
   `modelBuilder.Model.GetEntityTypes()` sees the entities configured before it and not those after.
 - **A property an interface asks for** (`IApplicationDbContext`), a `virtual` one, one that is
   assigned or named by `nameof`.
+- **A property whose name another context's member already has** — two contexts in two namespaces
+  with a `Players` each. The members are on `DbContext`, so a file that imports both namespaces
+  could not say which it means (CS9339). The first context reached gets its member and the second
+  keeps its property, where some read would see both. The message does not say this one: only the
+  fix reads the uses, and the context is still reported afterwards.
 
 A context the rule says nothing about has nothing to move, and that is common in a codebase that
 was already tidy: `OnModelCreating` applies configuration classes by name, or calls only `base`.
