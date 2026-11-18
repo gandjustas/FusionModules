@@ -1882,6 +1882,302 @@ public class EntityConfigurationTests
     }
 
     [Test]
+    public async Task ASetAnotherNamespaceHasAMemberFor_Stays_WhereSomeCodeWouldFindBoth()
+    {
+        const string Uses = """
+            using Shop.Auth;
+            using Shop.Common;
+
+            namespace Shop.Web;
+
+            internal static class Queries
+            {
+                public static object Players(AuthContext context) => context.Players;
+
+                public static object Partners(AuthContext context) => context.Partners;
+
+                public static object Common(CommonContext context) => context.Players;
+            }
+            """;
+
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class {|MOD0016:CommonContext|} : DbContext
+            {
+                public DbSet<Player> Players { get; set; }
+            }
+            """);
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Auth;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            public class Partner
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class {|MOD0016:AuthContext|} : DbContext
+            {
+                public DbSet<Player> Players { get; set; }
+                public DbSet<Partner> Partners { get; set; }
+            }
+            """);
+        test.TestState.Sources.Add(Uses);
+
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class CommonContext : DbContext
+            {
+                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new PlayerConfiguration());
+                }
+            }
+            """);
+
+        // Two extension members of DbContext named Players, in two namespaces a file imports, are
+        // ambiguous there (CS9339). The second context keeps its property, and is still reported.
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+            using Shop.Common;
+
+            namespace Shop.Auth;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            public class Partner
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class AuthContext : DbContext
+            {
+                public DbSet<Player> Players { get; set; }
+
+                protected override void {|MOD0016:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new PartnerConfiguration());
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Uses);
+        test.FixedState.Sources.Add(("/0/PlayerConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Common;
+
+            internal sealed class PlayerConfiguration : IEntityTypeConfiguration<Player>
+            {
+                public void Configure(EntityTypeBuilder<Player> builder)
+                {
+                    builder.ToTable("Players");
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/CommonContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            internal static class CommonContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Player> Players => context.Set<Player>();
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/PartnerConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+            using Shop.Auth;
+
+            namespace Shop.Common;
+
+            internal sealed class PartnerConfiguration : IEntityTypeConfiguration<Partner>
+            {
+                public void Configure(EntityTypeBuilder<Partner> builder)
+                {
+                    builder.ToTable("Partners");
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/AuthContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Auth;
+
+            internal static class AuthContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Partner> Partners => context.Set<Partner>();
+                }
+            }
+
+            """));
+        test.FixedState.MarkupHandling = MarkupMode.Allow;
+        test.NumberOfIncrementalIterations = 3;
+        test.NumberOfFixAllIterations = 2;
+        test.NumberOfFixAllInDocumentIterations = 3;
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task ASetOfTheSameName_StaysToo_WhereAReadOfTheOtherMemberWouldFindTheNewOne()
+    {
+        // The other way round: the member that is there already is read where the new one would be found.
+        const string Existing = """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Auth
+            {
+                public class Player
+                {
+                    public int Id { get; set; }
+                }
+
+                internal static class AuthSets
+                {
+                    extension(DbContext context)
+                    {
+                        public DbSet<Player> Players => context.Set<Player>();
+                    }
+                }
+            }
+
+            namespace Shop.Web
+            {
+                using Shop.Auth;
+                using Shop.Common;
+
+                internal static class Queries
+                {
+                    public static object Players(DbContext context) => context.Players;
+
+                    public static object Tags(CommonContext context) => context.Tags;
+                }
+            }
+            """;
+
+        var test = await FixTestAsync();
+        test.TestState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            public class Tag
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class {|MOD0016:CommonContext|} : DbContext
+            {
+                public DbSet<Player> Players { get; set; }
+                public DbSet<Tag> Tags { get; set; }
+            }
+            """);
+        test.TestState.Sources.Add(Existing);
+
+        test.FixedState.Sources.Add("""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            public class Player
+            {
+                public int Id { get; set; }
+            }
+
+            public class Tag
+            {
+                public int Id { get; set; }
+            }
+
+            internal sealed class CommonContext : DbContext
+            {
+                public DbSet<Player> Players { get; set; }
+
+                protected override void {|MOD0016:OnModelCreating|}(ModelBuilder modelBuilder)
+                {
+                    modelBuilder.ApplyConfiguration(new TagConfiguration());
+                }
+            }
+            """);
+        test.FixedState.Sources.Add(Existing);
+        test.FixedState.Sources.Add(("/0/TagConfiguration.cs", """
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+            namespace Shop.Common;
+
+            internal sealed class TagConfiguration : IEntityTypeConfiguration<Tag>
+            {
+                public void Configure(EntityTypeBuilder<Tag> builder)
+                {
+                    builder.ToTable("Tags");
+                }
+            }
+
+            """));
+        test.FixedState.Sources.Add(("/0/CommonContextExtensions.cs", """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Common;
+
+            internal static class CommonContextExtensions
+            {
+                extension(DbContext context)
+                {
+                    public DbSet<Tag> Tags => context.Set<Tag>();
+                }
+            }
+
+            """));
+        test.FixedState.MarkupHandling = MarkupMode.Allow;
+        test.NumberOfIncrementalIterations = 2;
+        test.NumberOfFixAllIterations = 2;
+
+        await test.RunAsync(CancellationToken.None);
+    }
+
+    [Test]
     public async Task AClassTheContextApplies_SaysTheTableName_AndADerivedEntitySharesItsBasesTable()
     {
         const string Accounts = """

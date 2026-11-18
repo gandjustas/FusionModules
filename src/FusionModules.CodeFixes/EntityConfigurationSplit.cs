@@ -360,23 +360,6 @@ internal static class EntityConfigurationSplit
             solution = await AddUsingsAsync(solution, id, wanted, cancellationToken).ConfigureAwait(false);
         }
 
-        // The context names the new classes; and no longer needs the usings only the moved code did.
-        var applying = new List<string>();
-        if (targets.Any(target => target.Apply && target.Existing is null) && place.Namespace.Length > 0 && !Encloses(place.Namespace, contextNamespace))
-        {
-            applying.Add($"using {place.Namespace};");
-        }
-
-        if (plan.Method is null && prefix.Count > 0)
-        {
-            applying.Add($"using {EntityFrameworkCore};");
-        }
-
-        if (applying.Count > 0)
-        {
-            solution = await AddUsingsAsync(solution, document.Id, applying, cancellationToken, prune: true).ConfigureAwait(false);
-        }
-
         // The new classes, each in its own file.
         var fileScoped = FileScoped(plan.Type, root);
         foreach (var target in targets.Where(target => target.Existing is null))
@@ -393,6 +376,24 @@ internal static class EntityConfigurationSplit
                 place.PathPrefix is null ? null : place.PathPrefix + fileName);
             var unused = await UnusedUsingsAsync(draft, cancellationToken).ConfigureAwait(false);
             solution = draft.WithText(SourceText.From(Class(wanted.Where(directive => !unused.Contains(directive))), text.Encoding)).Project.Solution;
+        }
+
+        // The context names the new classes, which are there to be found by now; and no longer needs
+        // the usings only the moved code did.
+        var applying = new List<string>();
+        if (targets.Any(target => target.Apply && target.Existing is null) && place.Namespace.Length > 0 && !Encloses(place.Namespace, contextNamespace))
+        {
+            applying.Add($"using {place.Namespace};");
+        }
+
+        if (plan.Method is null && prefix.Count > 0)
+        {
+            applying.Add($"using {EntityFrameworkCore};");
+        }
+
+        if (applying.Count > 0)
+        {
+            solution = await AddUsingsAsync(solution, document.Id, applying, cancellationToken, prune: true).ConfigureAwait(false);
         }
 
         // The properties go last: by now the model does not need them.

@@ -29,8 +29,10 @@ namespace FusionModules.CodeFixes;
 /// </para>
 /// <para>
 /// A property that is assigned, named by <c>nameof</c> or reached through <c>base</c> stays: an
-/// extension member can be none of those. How a property is used is read here, across the solution,
-/// and not by the analyzer.
+/// extension member can be none of those. So does one whose name another namespace has given to an
+/// extension member of <c>DbContext</c> already — a second context's <c>Players</c> — where some
+/// code would find both: the language calls that ambiguous. How a property is used is read here,
+/// across the solution, and not by the analyzer.
 /// </para>
 /// </remarks>
 internal static class EntityConfigurationProperties
@@ -60,6 +62,37 @@ internal static class EntityConfigurationProperties
         public bool Import { get; } = import;
     }
 
+    /// <summary>An extension member of <c>DbContext</c> that the solution declares.</summary>
+    private sealed class Rival(ISymbol symbol, string ns)
+    {
+        public ISymbol Symbol { get; } = symbol;
+
+        public string Namespace { get; } = ns;
+
+        public string Assembly { get; } = symbol.ContainingAssembly.Identity.Name;
+
+        /// <summary>Whether code at the position finds the member: its assembly, its accessibility, its namespace.</summary>
+        public bool SeenAt(SemanticModel model, int position, CancellationToken cancellationToken)
+        {
+            var compilation = model.Compilation;
+            var own = compilation.Assembly.Identity.Name == Assembly;
+            if (!own && !compilation.SourceModule.ReferencedAssemblySymbols.Any(assembly => assembly.Identity.Name == Assembly))
+            {
+                return false;
+            }
+
+            for (ISymbol? symbol = Symbol; symbol is not null and not INamespaceSymbol; symbol = symbol.ContainingSymbol)
+            {
+                if (!own && symbol.DeclaredAccessibility is not (Accessibility.Public or Accessibility.NotApplicable))
+                {
+                    return false;
+                }
+            }
+
+            return Namespace.Length == 0 || Sees(model, position, Namespace, cancellationToken);
+        }
+    }
+
     /// <summary>The entity as the property's declaration names it.</summary>
     public static string EntityText(PropertyDeclarationSyntax declaration)
     {
@@ -73,16 +106,23 @@ internal static class EntityConfigurationProperties
     {
         var sets = new Sets { Methods = !Modern(document.Project) };
         var ns = Namespace(plan.Context);
-        foreach (var property in plan.Properties.Where(property => property.Left is null))
+        var candidates = plan.Properties.Where(property => property.Left is null).ToList();
+        var solution = document.Project.Solution;
+        var rivals = await RivalsAsync(
+            solution, new HashSet<string>(candidates.Select(property => property.Symbol.Name), System.StringComparer.Ordinal), ns, plan.Context.ContainingAssembly.Identity.Name, cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var property in candidates)
         {
-            if (Member(plan.Context.ContainingAssembly, property.Symbol.Name, cancellationToken) is { } member &&
+            if (Member(plan.Context.ContainingAssembly, property.Symbol.Name, ns, cancellationToken) is { } member &&
                 !SymbolEqualityComparer.Default.Equals(member.Entity, property.Entity))
             {
                 // The namespace has an extension member of that name for something else.
                 continue;
             }
 
-            if (await UsesAsync(document.Project.Solution, property.Symbol, property.Entity, ns, methods: false, cancellationToken).ConfigureAwait(false) is { } uses)
+            var named = rivals.Where(rival => rival.Symbol.Name == property.Symbol.Name).ToList();
+            if (await UsesAsync(solution, property.Symbol, property.Entity, ns, methods: false, named, cancellationToken).ConfigureAwait(false) is { } uses &&
+                !await CrossesAsync(solution, document.Project, plan.Context, ns, named, cancellationToken).ConfigureAwait(false))
             {
                 sets.Methods |= uses.Any(use => !use.InTree && !Modern(use.Document.Project));
                 sets.Properties.Add(property);
@@ -133,7 +173,7 @@ internal static class EntityConfigurationProperties
                 (property.Type as INamedTypeSymbol)?.TypeArguments.FirstOrDefault() is not INamedTypeSymbol entity ||
                 await property.DeclaringSyntaxReferences[0].GetSyntaxAsync(cancellationToken).ConfigureAwait(false) is not PropertyDeclarationSyntax declaration ||
                 solution.GetDocument(declaration.SyntaxTree) is not { } home ||
-                await UsesAsync(solution, property, entity, ns, sets.Methods, cancellationToken).ConfigureAwait(false) is not { } uses)
+                await UsesAsync(solution, property, entity, ns, sets.Methods, [], cancellationToken).ConfigureAwait(false) is not { } uses)
             {
                 continue;
             }
@@ -155,7 +195,7 @@ internal static class EntityConfigurationProperties
             }
 
             removed = true;
-            if (Member(context.ContainingAssembly, name, cancellationToken) is { } member &&
+            if (Member(context.ContainingAssembly, name, ns, cancellationToken) is { } member &&
                 SymbolEqualityComparer.Default.Equals(member.Entity, entity) && member.Method == sets.Methods)
             {
                 // Another context of the namespace had the same set, and its member serves this one too.
@@ -205,23 +245,16 @@ internal static class EntityConfigurationProperties
     }
 
     /// <summary>
-    /// An extension member of <c>DbContext</c> of that name that the project declares already: the
-    /// entity its set is of, and whether it is a method.
+    /// An extension member of <c>DbContext</c> of that name that the project declares already in the
+    /// context's namespace: the entity its set is of, and whether it is a method.
     /// </summary>
-    private static (ITypeSymbol? Entity, bool Method)? Member(IAssemblySymbol assembly, string name, CancellationToken cancellationToken)
+    private static (ITypeSymbol? Entity, bool Method)? Member(IAssemblySymbol assembly, string name, string ns, CancellationToken cancellationToken)
     {
-        foreach (var type in Types(assembly.GlobalNamespace).Where(type => type.IsStatic))
+        foreach (var type in Types(assembly.GlobalNamespace).Where(type => type.IsStatic && Namespace(type) == ns))
         {
-            foreach (var member in type.GetMembers(name).Concat(type.GetTypeMembers().SelectMany(nested => nested.GetMembers(name))))
+            foreach (var member in Named(type, name))
             {
-                var syntax = member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(cancellationToken);
-                var set = member switch
-                {
-                    IMethodSymbol { IsExtensionMethod: true, Parameters: { Length: 1 } parameters } method when parameters[0].Type.Name == "DbContext" => method.ReturnType,
-                    IPropertySymbol property when syntax?.Parent is TypeDeclarationSyntax block && block.Kind().ToString().StartsWith("Extension", System.StringComparison.Ordinal) => property.Type,
-                    _ => null,
-                };
-                if (set is not null)
+                if (SetOf(member, cancellationToken) is { } set)
                 {
                     return ((set as INamedTypeSymbol)?.TypeArguments.FirstOrDefault(), member is IMethodSymbol);
                 }
@@ -229,9 +262,101 @@ internal static class EntityConfigurationProperties
         }
 
         return null;
+    }
 
-        static IEnumerable<INamedTypeSymbol> Types(INamespaceSymbol ns) =>
-            ns.GetTypeMembers().Concat(ns.GetNamespaceMembers().SelectMany(Types));
+    private static IEnumerable<INamedTypeSymbol> Types(INamespaceSymbol ns) =>
+        ns.GetTypeMembers().Concat(ns.GetNamespaceMembers().SelectMany(Types));
+
+    /// <summary>The members of that name a static class declares, in its extension blocks too.</summary>
+    private static IEnumerable<ISymbol> Named(INamedTypeSymbol type, string name) =>
+        type.GetMembers(name).Concat(type.GetTypeMembers().SelectMany(nested => nested.GetMembers(name)));
+
+    /// <summary>What an extension member of <c>DbContext</c> returns; null for any other member.</summary>
+    private static ITypeSymbol? SetOf(ISymbol member, CancellationToken cancellationToken) =>
+        member switch
+        {
+            IMethodSymbol { IsExtensionMethod: true, Parameters: { Length: 1 } parameters } method when parameters[0].Type.Name == "DbContext" => method.ReturnType,
+            IPropertySymbol property when member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(cancellationToken).Parent is TypeDeclarationSyntax block &&
+                                          block.Kind().ToString().StartsWith("Extension", System.StringComparison.Ordinal) => property.Type,
+            _ => null,
+        };
+
+    /// <summary>
+    /// The extension members of <c>DbContext</c> with one of the names that the solution declares
+    /// anywhere but in the context's namespace of the context's project: a member of the context's
+    /// own would be found beside each of them wherever both namespaces are.
+    /// </summary>
+    private static async Task<List<Rival>> RivalsAsync(Solution solution, HashSet<string> names, string ns, string assembly, CancellationToken cancellationToken)
+    {
+        var rivals = new List<Rival>();
+        if (names.Count == 0)
+        {
+            return rivals;
+        }
+
+        foreach (var project in solution.Projects)
+        {
+            if (project.Language != LanguageNames.CSharp ||
+                await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false) is not { } compilation)
+            {
+                continue;
+            }
+
+            foreach (var type in Types(compilation.Assembly.GlobalNamespace).Where(type => type.IsStatic))
+            {
+                var home = Namespace(type);
+                if (home == ns && compilation.Assembly.Identity.Name == assembly)
+                {
+                    continue;
+                }
+
+                foreach (var name in type.MemberNames.Concat(type.GetTypeMembers().SelectMany(nested => nested.MemberNames)).Where(names.Contains).Distinct().ToList())
+                {
+                    rivals.AddRange(Named(type, name).Where(member => SetOf(member, cancellationToken) is not null).Select(member => new Rival(member, home)));
+                }
+            }
+        }
+
+        return rivals;
+    }
+
+    /// <summary>
+    /// Whether some code reads one of the other members where it would find the context's too: the
+    /// other side of what <see cref="Classify"/> asks of the property's own uses.
+    /// </summary>
+    private static async Task<bool> CrossesAsync(
+        Solution solution, Project home, INamedTypeSymbol context, string ns, List<Rival> rivals, CancellationToken cancellationToken)
+    {
+        if (rivals.Count == 0)
+        {
+            return false;
+        }
+
+        var graph = solution.GetProjectDependencyGraph();
+        var open = context.DeclaredAccessibility == Accessibility.Public;
+        foreach (var rival in rivals)
+        {
+            foreach (var reference in await SymbolFinder.FindReferencesAsync(rival.Symbol, solution, cancellationToken).ConfigureAwait(false))
+            {
+                foreach (var location in reference.Locations)
+                {
+                    var project = location.Document.Project;
+                    if (project.Id != home.Id && !(open && graph.GetProjectsThatThisProjectTransitivelyDependsOn(project.Id).Contains(home.Id)))
+                    {
+                        continue;
+                    }
+
+                    if (ns.Length == 0 ||
+                        await location.Document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false) is not { } model ||
+                        Sees(model, location.Location.SourceSpan.Start, ns, cancellationToken))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void Add<T>(Dictionary<DocumentId, List<T>> map, DocumentId id, T value)
@@ -289,7 +414,7 @@ internal static class EntityConfigurationProperties
     /// member; null when one of them cannot be said that way, and the property stays.
     /// </summary>
     private static async Task<List<Use>?> UsesAsync(
-        Solution solution, IPropertySymbol property, INamedTypeSymbol entity, string ns, bool methods, CancellationToken cancellationToken)
+        Solution solution, IPropertySymbol property, INamedTypeSymbol entity, string ns, bool methods, List<Rival> rivals, CancellationToken cancellationToken)
     {
         var uses = new List<Use>();
         var seen = new HashSet<(DocumentId, TextSpan)>();
@@ -308,6 +433,12 @@ internal static class EntityConfigurationProperties
                     await location.Document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false) is not { } model ||
                     Classify(location.Document, model, root.FindNode(location.Location.SourceSpan, findInsideTrivia: true, getInnermostNodeForTie: true), entity, ns, methods, cancellationToken) is not { } use)
                 {
+                    return null;
+                }
+
+                if (!use.InTree && rivals.Any(rival => rival.SeenAt(model, location.Location.SourceSpan.Start, cancellationToken)))
+                {
+                    // Another namespace has an extension member of that name, and this place finds it.
                     return null;
                 }
 
