@@ -6,7 +6,7 @@
       feature provider are the two places where the framework's own shape differs across them, so
       running here on net8.0 is the only thing that exercises it outside sample 01.
     -->
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>FusionModules.Tests</RootNamespace>
   </PropertyGroup>

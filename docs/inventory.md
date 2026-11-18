@@ -41,7 +41,7 @@ to the `nuget.config` with a mapping for `FusionModules*` instead, and install w
 ```
 
 The tool targets `net10.0` and rolls forward onto any later runtime. The applications it reads may
-target `net8.0`, `net9.0` or `net10.0` and run in their own runtime, which must be installed, as it
+target `net8.0`, `net9.0`, `net10.0` or `net11.0` and run in their own runtime, which must be installed, as it
 would be to run them. An application on `net5.0` to `net7.0` (or `netcoreapp3.x`) is probed rolled
 forward onto the newest runtime installed — see [the probe](#the-probe). A .NET Framework
 application is static information only.

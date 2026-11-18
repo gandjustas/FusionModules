@@ -31,7 +31,7 @@ public class EndToEndTests
         await Assert.That(document.Errors).IsEmpty();
         var runtime = document.Hosts.Single().Runtime!;
         await Assert.That(runtime.Status).IsEqualTo("started");
-        await Assert.That(runtime.Runtime).StartsWith(".NET 10");
+        await Assert.That(runtime.Runtime).StartsWith(".NET 11");
         await Assert.That(runtime.HostingStartupAssemblies).IsEquivalentTo(["WeatherModule", "GreetingModule"]);
 
         // Each endpoint is owned by the assembly that mapped it: the host's own, or a module's.
@@ -53,15 +53,17 @@ public class EndToEndTests
     }
 
     [Test]
-    public async Task Sample01_OnNet8_RunsInTheNet8Runtime()
+    [Arguments("net8.0", ".NET 8")]
+    [Arguments("net10.0", ".NET 10")]
+    public async Task Sample01_OnAnEarlierFramework_RunsInThatRuntime(string framework, string runtimeName)
     {
         var host = Path.Combine(Fixture.RepositoryRoot, "samples", "01-minimal-api", "Host", "Host.csproj");
 
-        var document = await Run(host, "sample01", "--framework", "net8.0", "--env", "HOSTINGSTARTUPASSEMBLIES=WeatherModule");
+        var document = await Run(host, "sample01", "--framework", framework, "--env", "HOSTINGSTARTUPASSEMBLIES=WeatherModule");
 
         var runtime = document.Hosts.Single().Runtime!;
         await Assert.That(runtime.Status).IsEqualTo("started");
-        await Assert.That(runtime.Runtime).StartsWith(".NET 8");
+        await Assert.That(runtime.Runtime).StartsWith(runtimeName);
         await Assert.That(runtime.Endpoints!.Select(e => e.Assembly!)).IsEquivalentTo(["Host", "WeatherModule"]);
     }
 
@@ -165,7 +167,7 @@ public class EndToEndTests
     private const string TwoFrameworks = """
         <Project Sdk="Microsoft.NET.Sdk.Web">
           <PropertyGroup>
-            <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+            <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
             <ImplicitUsings>enable</ImplicitUsings>
             <Nullable>enable</Nullable>
           </PropertyGroup>
@@ -173,10 +175,11 @@ public class EndToEndTests
         """;
 
     /// <summary>
-    /// Hosts that stop on the way to Run(), each differently, on net8 and net10 — the WebApplication
+    /// Hosts that stop on the way to Run(), each differently, on net8, net10 and net11 — the WebApplication
     /// is reached through framework internals that must hold on both.
     /// </summary>
     [Test]
+    [Arguments("net11.0")]
     [Arguments("net10.0")]
     [Arguments("net8.0")]
     public async Task HostsThatStopBeforeRun_StillReportTheirEndpoints(string framework)

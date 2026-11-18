@@ -31,7 +31,19 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.33" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
+    <!--
+      No Npgsql.EntityFrameworkCore.PostgreSQL here: its newest release for EF Core 11 is
+      11.0.0-rc.3, which depends on EF Core 11.0.0-rc.3 exactly and does not restore beside the
+      released 11.0.0. Only sample 03 uses it, and sample 03 stops at net10.0 until there is one.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0' and '$(TargetFramework)' != 'net11.0'">
     <!--
       One version for every EF package the sample touches. Left to transitive resolution, the
       host (which references the Design package) and its test project end up with different
@@ -63,7 +75,8 @@
       because the package is.
     -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.33" Condition="'$(TargetFramework)' == 'net8.0'" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" Condition="'$(TargetFramework)' != 'net8.0'" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" Condition="'$(TargetFramework)' == 'net11.0'" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" Condition="'$(TargetFramework)' != 'net8.0' and '$(TargetFramework)' != 'net11.0'" />
     <PackageVersion Include="TUnit" Version="1.81.10" />
     <!-- Sample 04 connects a real client to a hub: a proxy that cannot be generated is the point. -->
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.14" />

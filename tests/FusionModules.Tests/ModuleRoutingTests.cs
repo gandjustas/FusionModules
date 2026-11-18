@@ -46,7 +46,13 @@ public class ModuleRoutingTests
         // before the program's pipeline, so before this routing, where no endpoint is chosen yet.
         var status = await RequestSecureAsync(app => app.UseRouting());
 
+#if NET11_0_OR_GREATER
+        // ASP.NET Core 11 no longer fails here: the endpoint is reached and refused as it should be.
+        // UseModuleRouting stays correct on it, and is still needed for net8.0 and net10.0.
+        await Assert.That(status).IsEqualTo(HttpStatusCode.Unauthorized);
+#else
         await Assert.That(status).IsEqualTo(HttpStatusCode.InternalServerError);
+#endif
     }
 
     private static async Task<HttpStatusCode> RequestSecureAsync(Action<WebApplication> configure)

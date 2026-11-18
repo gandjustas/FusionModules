@@ -30,7 +30,7 @@ public class ProjectEvaluationTests
         ("Api/Api.csproj", """
             <Project Sdk="Microsoft.NET.Sdk.Web">
               <PropertyGroup>
-                <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+                <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
                 <AssemblyName>Shop.Api</AssemblyName>
                 <UserSecretsId>shop-api</UserSecretsId>
               </PropertyGroup>
@@ -38,7 +38,7 @@ public class ProjectEvaluationTests
                 <PackageReference Include="Polly" />
                 <PackageReference Include="Dapper" VersionOverride="2.1.66" />
               </ItemGroup>
-              <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+              <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
                 <PackageReference Include="Humanizer.Core" />
               </ItemGroup>
             </Project>
@@ -61,13 +61,13 @@ public class ProjectEvaluationTests
         await Assert.That(api.Sdk).IsEqualTo("Microsoft.NET.Sdk.Web");
         await Assert.That(api.Kind).IsEqualTo("web");
         await Assert.That(api.OutputType).IsEqualTo("Exe");
-        await Assert.That(api.TargetFrameworks).IsEquivalentTo(["net8.0", "net10.0"]);
+        await Assert.That(api.TargetFrameworks).IsEquivalentTo(["net8.0", "net10.0", "net11.0"]);
         await Assert.That(api.Properties!["UserSecretsId"]).IsEqualTo("shop-api");
 
         var packages = api.PackageReferences.Where(p => p.Implicit is null).ToDictionary(p => p.Id, p => p.Requested);
         await Assert.That(packages["Polly"]).IsEqualTo("8.5.0");
         await Assert.That(packages["Dapper"]).IsEqualTo("2.1.66");
-        // Conditioned on net10.0: there because the highest framework is the one evaluated.
+        // Conditioned on net11.0: there because the highest framework is the one evaluated.
         await Assert.That(packages["Humanizer.Core"]).IsEqualTo("2.14.1");
     }
 
@@ -115,6 +115,7 @@ public class ProjectEvaluationTests
     }
 
     [Test]
+    [Arguments(new[] { "net8.0", "net10.0", "net11.0" }, null, "net11.0")]
     [Arguments(new[] { "net8.0", "net10.0" }, null, "net10.0")]
     [Arguments(new[] { "net10.0", "net9.0" }, null, "net10.0")]
     [Arguments(new[] { "net8.0", "net10.0" }, "net8.0", "net8.0")]

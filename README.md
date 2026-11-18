@@ -45,7 +45,7 @@ monolith:  { environment: { HOSTINGSTARTUPASSEMBLIES: "Orders.Entities;Customers
 dotnet add package FusionModules
 ```
 
-That is the whole dependency. The analyzers come with it. `net8.0` and `net10.0`.
+That is the whole dependency. The analyzers come with it. `net8.0`, `net10.0` and `net11.0`.
 
 A host whose one EF Core context is composed from its modules' entity configurations can also take
 `FusionModules.EntityFrameworkCore` — `UseModules` on the context's options,
