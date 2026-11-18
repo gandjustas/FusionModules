@@ -9,7 +9,7 @@
 #
 # Built from the repository root, because the sample consumes FusionModules by project reference.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 
 # The sample multi-targets so that net8.0 is exercised by its tests; the image needs one runtime

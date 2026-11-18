@@ -35,6 +35,7 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+            11.0.x
 
       # Restore is most of a cold job's first minutes, and the package set only moves with the
       # project files. Not setup-dotnet's own cache, which needs lock files this repository does
@@ -76,7 +77,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          # skillgen targets net10.0; global.json wants the 11 SDK.
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - run: dotnet run --project tools/skillgen
 
@@ -148,6 +152,7 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+            11.0.x
 
       - run: bash eng/pack-validate.sh
 

@@ -47,7 +47,8 @@ for expected in \
     "analyzers/dotnet/cs/FusionModules.CodeFixes.dll" \
     "buildTransitive/FusionModules.targets" \
     "lib/net8.0/FusionModules.dll" \
-    "lib/net10.0/FusionModules.dll"
+    "lib/net10.0/FusionModules.dll" \
+    "lib/net11.0/FusionModules.dll"
 do
     if grep -qx "$expected" <<<"$contents"; then pass "$expected"; else fail "missing $expected"; fi
 done
@@ -58,7 +59,7 @@ done
 # patch Directory.Packages.props pins for the tests: a pinned floor raised a consumer on EF 10.0.7 to
 # EF Core 10.0.14 beside its own 10.0.7 provider.
 check_companion() {
-    local id="$1" dependency="$2" net8="$3" net10="$4" path entries nuspec groups tfm floor
+    local id="$1" dependency="$2" net8="$3" net10="$4" net11="$5" path entries nuspec groups tfm floor
     path="$feed/$id.$version.nupkg"
     if [ ! -f "$path" ]; then
         fail "no $id.$version.nupkg: the packages were packed at different versions"
@@ -66,7 +67,7 @@ check_companion() {
     fi
     path="$(native "$path")"
     entries="$(pwsh -NoProfile -Command "[IO.Compression.ZipFile]::OpenRead('$path').Entries.FullName" | tr -d '\r')"
-    for expected in "lib/net8.0/$id.dll" "lib/net10.0/$id.dll"; do
+    for expected in "lib/net8.0/$id.dll" "lib/net10.0/$id.dll" "lib/net11.0/$id.dll"; do
         if grep -qx "$expected" <<<"$entries"; then pass "$id: $expected"; else fail "$id: missing $expected"; fi
     done
     nuspec="$(pwsh -NoProfile -Command "\$z = [IO.Compression.ZipFile]::OpenRead('$path'); \$e = \$z.GetEntry('$id.nuspec'); (New-Object IO.StreamReader(\$e.Open())).ReadToEnd()" | tr -d '\r')"
@@ -77,8 +78,8 @@ check_companion() {
     fi
     # One line per <group>, so a dependency is read with the target framework it belongs to.
     groups="$(tr -d '\n' <<<"$nuspec" | sed 's/<group /\n<group /g')"
-    for tfm in net8.0 net10.0; do
-        [ "$tfm" = net8.0 ] && floor="$net8" || floor="$net10"
+    for tfm in net8.0 net10.0 net11.0; do
+        case "$tfm" in net8.0) floor="$net8" ;; net10.0) floor="$net10" ;; *) floor="$net11" ;; esac
         if grep "targetFramework=\"$tfm\"" <<<"$groups" | grep -q "id=\"$dependency\" version=\"$floor\""; then
             pass "$id depends on $dependency >= $floor on $tfm"
         else
@@ -89,8 +90,8 @@ check_companion() {
 
 # The floors: the lowest versions each package supports (see the two csproj files for why EF Core 8's
 # is 8.0.10).
-check_companion FusionModules.EntityFrameworkCore Microsoft.EntityFrameworkCore 8.0.10 10.0.0
-check_companion FusionModules.Testing Microsoft.AspNetCore.Mvc.Testing 8.0.0 10.0.0
+check_companion FusionModules.EntityFrameworkCore Microsoft.EntityFrameworkCore 8.0.10 10.0.0 11.0.0
+check_companion FusionModules.Testing Microsoft.AspNetCore.Mvc.Testing 8.0.0 10.0.0 11.0.0
 
 # A stranger does not have our global packages folder, and that is not a detail here: NuGet serves
 # a PackageReference out of it whenever that id and version are already extracted there, and never
@@ -593,6 +594,29 @@ if dotnet build "$work/consumer/Net8Module" --nologo -v q > "$work/net8.log" 2>&
     pass "net8.0 module builds"
 else
     fail "net8.0 did not build"; cat "$work/net8.log"
+fi
+
+log "net11.0 consumers restore and build"
+# The same, for the newest target framework: the package carries lib/net11.0 and nothing in its
+# targets or analyzers is tied to a framework, so this is where a mismatch would show.
+mkdir -p "$work/consumer/Net11Module"
+sed 's|net10.0|net11.0|' <<XML > "$work/consumer/Net11Module/Net11Module.csproj"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FusionModules" Version="$version" />
+  </ItemGroup>
+</Project>
+XML
+cp "$work/consumer/Net8Module/Module.cs" "$work/consumer/Net11Module/Module.cs"
+if dotnet build "$work/consumer/Net11Module" --nologo -v q > "$work/net11.log" 2>&1; then
+    pass "net11.0 module builds"
+else
+    fail "net11.0 did not build"; cat "$work/net11.log"
 fi
 
 log "A web project without modules builds clean"

@@ -7,8 +7,8 @@ choice a deployment makes through `HOSTINGSTARTUPASSEMBLIES` — and reads back 
 dotnet add package FusionModules.Testing
 ```
 
-It targets `net8.0` and `net10.0`, depends on `FusionModules` of the same version and on
-`Microsoft.AspNetCore.Mvc.Testing` 8.0.0 or 10.0.0 and later respectively — the first release of
+It targets `net8.0`, `net10.0` and `net11.0`, depends on `FusionModules` of the same version and on
+`Microsoft.AspNetCore.Mvc.Testing` 8.0.0, 10.0.0 or 11.0.0 and later respectively — the first release of
 each, so the package raises nothing in a test project that references a later patch — and works
 with any test framework: it has no opinion about TUnit, xUnit, NUnit or MSTest. Everything below is
 in the `FusionModules.Testing` namespace.

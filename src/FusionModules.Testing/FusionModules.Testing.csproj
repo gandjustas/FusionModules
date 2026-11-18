@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
     <PackageId>FusionModules.Testing</PackageId>
     <AssemblyName>FusionModules.Testing</AssemblyName>
     <RootNamespace>FusionModules.Testing</RootNamespace>
@@ -23,7 +23,8 @@
   -->
   <PropertyGroup>
     <MvcTestingFloor Condition="'$(TargetFramework)' == 'net8.0'">8.0.0</MvcTestingFloor>
-    <MvcTestingFloor Condition="'$(TargetFramework)' != 'net8.0'">10.0.0</MvcTestingFloor>
+    <MvcTestingFloor Condition="'$(TargetFramework)' == 'net10.0'">10.0.0</MvcTestingFloor>
+    <MvcTestingFloor Condition="'$(TargetFramework)' == 'net11.0'">11.0.0</MvcTestingFloor>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

@@ -24,6 +24,7 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+            11.0.x
 
       - run: dotnet build FusionModules.slnx -c Release -warnaserror
       - run: dotnet build samples/Samples.slnx -c Release -warnaserror
@@ -119,7 +120,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
 
       - name: The publishing identity is configured
         # An unset NUGET_USER is how this job fails the first time somebody tags a release, and the

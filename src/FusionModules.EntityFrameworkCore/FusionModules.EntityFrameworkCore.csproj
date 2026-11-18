@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
     <PackageId>FusionModules.EntityFrameworkCore</PackageId>
     <AssemblyName>FusionModules.EntityFrameworkCore</AssemblyName>
     <RootNamespace>FusionModules.EntityFrameworkCore</RootNamespace>
@@ -21,14 +21,15 @@
     anything here runs: the tests and the samples reference EF themselves, at the pinned version.
     eng/pack-validate.sh checks the floors in the nuspec.
 
-    10.0.0 on net10.0. 8.0.10 rather than 8.0.0 on net8.0: EF Core 8.0.0 to 8.0.8 depend on
+    10.0.0 on net10.0, 11.0.0 on net11.0. 8.0.10 rather than 8.0.0 on net8.0: EF Core 8.0.0 to 8.0.8 depend on
     Microsoft.Extensions.Caching.Memory 8.0.0, which has an advisory (GHSA-qj66-m88j-hmgj), and NuGet
     audit fails the build on it; 8.0.10 is the first that depends on the fixed 8.0.1, and there is no
     8.0.9. An application still on EF 8.0.8 or older runs that vulnerable package anyway.
   -->
   <PropertyGroup>
     <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' == 'net8.0'">8.0.10</EntityFrameworkCoreFloor>
-    <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' != 'net8.0'">10.0.0</EntityFrameworkCoreFloor>
+    <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' == 'net10.0'">10.0.0</EntityFrameworkCoreFloor>
+    <EntityFrameworkCoreFloor Condition="'$(TargetFramework)' == 'net11.0'">11.0.0</EntityFrameworkCoreFloor>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FusionModules\FusionModules.csproj" />

@@ -22,7 +22,8 @@ namespace FusionModules;
 /// does not add them — at the very start of the pipeline, before the program's own middleware.
 /// With routing implicit that is after routing; with an explicit <c>UseRouting()</c> it is before
 /// it, where no endpoint has been chosen yet, and every endpoint that requires authorization fails
-/// with a 500. This adds them after routing, as <c>WebApplication</c> would have.
+/// with a 500 (on .NET 8 and 10; ASP.NET Core 11 does not fail here). This adds them after routing,
+/// as <c>WebApplication</c> would have.
 /// </para>
 /// </remarks>
 public static class ModuleRouting

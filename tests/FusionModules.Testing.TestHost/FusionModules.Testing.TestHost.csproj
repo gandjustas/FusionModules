@@ -6,7 +6,7 @@
     so the module is built and copied with it; whether it runs is the tests' choice.
   -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
     <RootNamespace>FusionModules.Testing.TestHost</RootNamespace>
     <!-- tests/Directory.Build.props makes everything under tests/ a test project; this is a host. -->
     <IsTestProject>false</IsTestProject>

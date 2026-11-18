@@ -296,6 +296,7 @@ public class DiscoveryTests
     [Arguments("net5.0", "Microsoft.AspNetCore.App", null, "net5.0")]
     [Arguments("netcoreapp3.1", "Microsoft.AspNetCore.App", null, "netcoreapp3.1")]
     [Arguments("net8.0", "Microsoft.AspNetCore.App", null, null)]
+    [Arguments("net11.0", "Microsoft.AspNetCore.App", null, null)]
     [Arguments("net10.0", "Microsoft.NETCore.App", "does not use Microsoft.Extensions.Hosting", null)]
     public async Task AnOlderHost_IsProbedRolledForward_NotSkipped(string tfm, string framework, string? whyNot, string? rollForwardFrom)
     {
@@ -321,6 +322,7 @@ public class DiscoveryTests
     [Arguments("net48", true)]
     [Arguments("net472", true)]
     [Arguments("net8.0", false)]
+    [Arguments("net11.0", false)]
     [Arguments("netcoreapp3.1", false)]
     [Arguments("netstandard2.0", false)]
     public async Task DotNetFramework_IsTheOnlyRuntimeThatCannotBeProbed(string tfm, bool expected) =>

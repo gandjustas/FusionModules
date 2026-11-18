@@ -9,8 +9,8 @@ and cache one model per set of modules.
 dotnet add package FusionModules.EntityFrameworkCore
 ```
 
-It targets `net8.0` and `net10.0`, like `FusionModules`, and depends on `FusionModules` of the same
-version and on `Microsoft.EntityFrameworkCore` 8.0.10 or 10.0.0 and later respectively. Those are
+It targets `net8.0`, `net10.0` and `net11.0`, like `FusionModules`, and depends on `FusionModules` of the same
+version and on `Microsoft.EntityFrameworkCore` 8.0.10, 10.0.0 or 11.0.0 and later respectively. Those are
 floors, not what it asks you to run: the package raises nothing in an application that references a
 later EF Core, so the application's provider and EF Core stay at one version. (8.0.10 rather than
 8.0.0: earlier EF Core 8 releases depend on a `Microsoft.Extensions.Caching.Memory` with a security
