@@ -32,7 +32,26 @@ prefer when both are on the table.
 
 **Microservices → modules.** Start a new empty host rather than promoting one of the services:
 it inherits no references, so MOD0004 is green from the first build. Then convert services
-lowest-fan-in first.
+lowest-fan-in first. Each service becomes a module inside its own project before it joins anything:
+MOD0015's fix writes the `Module.cs`, and the service keeps running alone
+([Modules](references/modules.md)). MOD0016's does the same for a `DbContext`
+([Data](references/data.md)).
+
+The order that has held up on real solutions, each step leaving everything green:
+
+1. `dotnet modules inventory` before any edit, and its facts frozen into tests.
+2. MOD0015 on every service, each still an executable with its own `Program.cs`; `compare`.
+3. `dotnet modules topology` on that inventory: what one host would fail on is the work list.
+4. The services into the host, **still calling each other over the network** — point each
+   client's address at the host itself. Removing a hop and moving a service in one step leaves two
+   suspects for every failure.
+5. Projects become libraries; MOD0001 and its neighbours arrive now, all at once.
+6. In-process contracts in place of the loopback calls, one edge at a time.
+7. `compare --merged`: every difference explained, no endpoint lost.
+
+Move the service that owns authentication first. Nearly every runtime failure of a merge comes
+with it — default schemes, cookies, issuer addresses — and they are cheaper to meet while it is the
+only thing that moved.
 
 **New system.** Start from [samples/01-minimal-api](https://github.com/gandjustas/FusionModules/tree/HEAD/samples/01-minimal-api)
 and skip the assessment.
