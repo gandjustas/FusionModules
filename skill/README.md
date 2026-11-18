@@ -91,7 +91,7 @@ codex plugin add fusion-modules@fusion-modules
 ```
 
 The directory beats the flattened file wherever skills are supported: the agent reads the
-description up front and a reference when a phase needs it, instead of carrying 70 KB into every
+description up front and a reference when a phase needs it, instead of carrying 125 KB into every
 turn.
 
 A tool without skills takes [`dist/SKILL.md`](dist/SKILL.md) as an instruction file, or

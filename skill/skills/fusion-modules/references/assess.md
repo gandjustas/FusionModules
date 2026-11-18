@@ -47,8 +47,62 @@ Three things to know before trusting it:
   loads both; `sharedHandler: true` marks the ones a shared library maps everywhere (`/health`),
   which the host should map once rather than resolve. Confirm before raising.
 
-It does not see middleware order, the call sites behind an HTTP or queue edge, or a type that
-crosses an assembly boundary by reflection. Those are what the reading below is for.
+- **`built` is the ordinary status** of a host that migrates or seeds between `Build()` and
+  `Run()` with no database to reach, and the run still exits 0. On a solution where most services
+  do that, most hosts are `built`. But look at `runtime.endpoints` of each: where it is null — a
+  gRPC-only service that migrates in `Startup.Configure` — a later `topology` has nothing to compare
+  for that host, and its "nothing" is not a clean result.
+- **Every web project should be among `hosts`.** One can be missing: a gateway whose compose
+  service has another name, a host that reads a relative path and fails under the probe.
+  `deployment.notes` says where the deployment was read from — an AppHost that does not build makes
+  the tool fall back to compose files, and the environment in the snapshot is then theirs.
+- **Check the target frameworks first.** The package has nothing for a project below .NET 8, and a
+  worker on `Host.CreateApplicationBuilder` runs no hosting startup. Both are services that stay
+  out, whatever else is decided.
+- **`git status` afterwards.** The tool writes nothing, but building the solution can: generated
+  gRPC clients with other line endings, an OpenAPI document. Restore them.
+- **Name the file and restore the tool.** A folder with both a `.slnx` and a `.slnf` needs the one
+  you mean. With a tool manifest, `dotnet tool restore` first: without it the command prints a hint
+  to run it, and a redirected output file is left empty.
+- **It probes in Development** unless the deployment says otherwise, so it lists what only
+  Development serves — `/health`, an API reference UI, a redirect from `/`. Take a second one with
+  `--environment Production` when the tests you will freeze it into run there, and compare like
+  with like.
+
+Then ask it what one host would fail on, before there is one:
+
+```bash
+dotnet modules topology fusion-modules-inventory.json --pairs
+dotnet modules topology fusion-modules-inventory.json catalog-api basket-api ordering-api
+```
+
+The first says which pairs merge cleanly, which is where to start. The second is the work list for
+a host composing those services: the service two of them register differently (startup would
+fail), the routes more than one maps, the configuration keys with two values. Put it in the
+assessment as it is; exit code 2 means the host would not start.
+
+What it reports has nearly always been real. Three kinds of entry are worth a second look before
+they go into the plan: a route "mapped twice" that API versioning tells apart, a health check name
+that shared service defaults register in every service (the host ends up with one), and "modules
+add to one sequence" for a handler or validator interface before the services are converted — run
+it again after MOD0015.
+
+"Nothing collides" is not a pass, and neither is exit code 0. It does not see middleware order,
+the call sites behind an HTTP or queue edge, a type that crosses an assembly boundary by
+reflection, or what a service assumed about being the process — the entry assembly, the content
+root, the default authentication scheme ([modules.md](modules.md)). Nor, among things that have
+broken real merges:
+
+- **what options say**: a JWT `Audience` per service, `NameClaimType` (`name` in two services,
+  `sub` in four), a global MVC filter, Swagger document names, health check names;
+- **`Kestrel:EndpointDefaults:Protocols`** set in one service only;
+- **registrations made inside a library's factory** — two default document stores, two buses — and
+  singletons registered as instances;
+- **static state**, such as a change to the default inbound claim type map;
+- **a configuration key whose name ends in `key`**: its value is masked and it drops out of the
+  printed collisions. Read `collisions.configurationKeys` in the JSON.
+
+Those are what the reading below is for.
 
 ## What the assessment must contain
 

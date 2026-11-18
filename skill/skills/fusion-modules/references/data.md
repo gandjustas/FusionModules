@@ -66,6 +66,18 @@ of `GetLoadedModules` on the context, an `IModelCacheKeyFactory` that includes i
 `ReplaceService<IModelCacheKeyFactory, …>()` on the options, and `ApplyConfigurationsFromAssembly`
 for each module in `GetLoadedModules` order.
 
+## One scoped context where there were several
+
+Services that each had a context per request now share one per scope, and two habits break on it:
+
+- **Calls that used to be separate HTTP requests** and are now method calls made in parallel from
+  one page hit one context: "A second operation was started on this context instance". An
+  in-process implementation of a contract creates a scope per call.
+- **A service that disposes the context it was given** disposes everyone's.
+
+More than twenty context types in one process trips EF Core's `ManyServiceProvidersCreatedWarning`;
+it is a warning about options built per context, not about modules.
+
 ## Where entities go
 
 Into the module that owns them, with their `IEntityTypeConfiguration<T>` beside them. A schema
@@ -76,9 +88,74 @@ Split entity modules from feature modules when a topology might want the tables 
 endpoints — a replica that reads a table it does not serve, say. If nothing would ever want that,
 one module is fine; do not manufacture the split.
 
-Replace `MyDbContext.Orders` with `db.Set<Order>()`. The trade is real and worth stating: you
-lose `DbSet` properties and context-level conventions, and gain a module that can be deployed
-without the application it was written for.
+A module reaches its tables through `DbContext`: `db.Set<Order>()`, or an extension member that
+reads the same as the property did (below). The trade is real and worth stating: you lose
+context-level conventions and the context's own list of what it holds, and gain a module that can
+be deployed without the application it was written for.
+
+## Taking a context apart: MOD0016
+
+A service's context usually configures its entities in `OnModelCreating` and names each in a
+`DbSet<T>` property. Neither can move with an entity: configuration written in a context belongs to
+that context, and a property on the host's shared context is a use of a module's type (MOD0004).
+MOD0016 (Info) marks such a context and its fix does the split:
+
+```bash
+dotnet modules inventory Shop.slnx -o before.json
+dotnet format analyzers Shop.slnx --diagnostics MOD0016 --severity info
+dotnet modules inventory Shop.slnx -o after.json --compare before.json
+```
+
+- Each entity's configuration becomes `internal sealed class OrderConfiguration :
+  IEntityTypeConfiguration<Order>` in a file of its own — the form `ApplyModuleConfigurations`
+  finds — and `OnModelCreating` applies it where the configuration stood
+  (`modelBuilder.ApplyConfiguration(new OrderConfiguration())`), so the order between entities is
+  kept. A context that already scans its assembly, or composes from modules in a module's assembly,
+  gets nothing added: the scan finds the classes.
+- Each `DbSet<Order> Orders` becomes an extension member of `DbContext` in
+  `<Context>Extensions.cs`, and the entity's class gets `ToTable("Orders")` — the property was what
+  named the table. On C# 14 `context.Orders` stays as written; before it, every use becomes
+  `context.Orders()`. Inside an expression tree it is rewritten to `context.Set<Order>()` either
+  way.
+
+Give it the **solution**, as for MOD0015 and for a stronger reason: the properties are read by
+projects that reference the context's, and before C# 14 those uses have to be rewritten.
+`--severity info` is required here too.
+
+The comparison is the gate. The inventory records every context's model, entity type by entity type
+— table, properties, keys, indexes, relationships, query filters, seed data — and every host "the
+same" means the fix changed none of it. Do not accept the result on a green build alone.
+
+The message says what stays and why; all of it is deliberate, and none of it should be forced
+through by hand without the same comparison:
+
+- **A filter or condition that reads the context** — a tenant filter on `_tenantId`,
+  `Database.IsSqlite()`. EF Core evaluates the filter against the context of each query; handed to a
+  class's constructor the value would be read once and cached with the model. Written as a statement
+  of its own it stays and the rest of the entity moves.
+- **Configuration inside an `if` or a loop**, through a local variable, or among `#if`.
+- **Anything that would cross a statement that stays** — a loop over
+  `modelBuilder.Model.GetEntityTypes()` sees the entities configured before it and not those after.
+- **A property an interface asks for** (`IApplicationDbContext`), a `virtual` one, one that is
+  assigned or named by `nameof`.
+
+A context the rule says nothing about has nothing to move, and that is common in a codebase that
+was already tidy: `OnModelCreating` applies configuration classes by name, or calls only `base`.
+Silence is not a failure of the run.
+
+What the fix cannot see, so check it: `.cshtml` and `.razor` files that read the property (before
+C# 14 they need their parentheses by hand), reflection over the context's `DbSet` properties, and
+code outside the solution compiled against a public context.
+
+**One consequence to decide before running it in a module.** Anything that scans the assembly finds
+the new classes. A module that keeps a private context of its own, in a host whose shared context
+calls `ApplyModuleConfigurations`, will have its entities appear in the shared model as well. That
+is where playbook A is heading and it is wrong for playbook B (below) — there, leave the module's
+context as it is, or keep its configuration out of a module assembly.
+
+The classes are then ready for the step this section is about: move `OrderConfiguration.cs` and
+`Order` to the module that owns them, and when the last one has left, the context's
+`OnModelCreating` is `modelBuilder.ApplyModuleConfigurations(this)`.
 
 ## Relationships across modules
 
@@ -146,6 +223,11 @@ array, or its tables are missing from the migration.
 
 Check the generated migration before going further: if `Up` is empty, no module was named.
 
+`dotnet ef` pointed at a module that became a library finds no way to create its context
+("Unable to resolve service for type 'DbContextOptions…'"): the registration is in a module, and
+nothing ran it. Point it at the host (`--startup-project`), or give the module's context a
+design-time factory of its own while it keeps one.
+
 Exactly one replica should run migrations. The others take the database as they find it —
 `Database__Migrate: "false"` in the compose file, or whatever switch the host uses.
 
@@ -154,6 +236,13 @@ Exactly one replica should run migrations. The others take the database as they 
 A service that checked its own schema, or seeded reference data, before `RunAsync` has nowhere
 obvious to put that once it is a module. `ModuleBase`'s overrides are all synchronous, and they run
 while the container is still being assembled — too early to resolve anything from it.
+
+The methods that did this work usually take `this WebApplication`. Retype them to `IHost` or
+`IServiceProvider` — and note that a method several services share changes for all of them. What
+was synchronous over asynchronous stays so unless you change it; a `.GetAwaiter()` without
+`GetResult()` was already fire-and-forget. Register the work first in the module, before services
+whose constructors read the tables. And before blaming the move for a pending-model-changes
+warning, run the original service against an empty database: it may be the solution's own.
 
 `AddHostedService` is closer than it looks, and it is worth being accurate about why it is still
 not the answer. A module's hosted services are registered before `GenericWebHostService` is, so
@@ -210,6 +299,11 @@ if they ever share a database. Often the right answer, and always the least risk
 **C — Adopt one history as canonical.** Only when one database is clearly the survivor and the
 others are being folded into it. Append new migrations to that history.
 
+With a schema per module on an existing database, never point a module at the old database before
+its data has moved: the migrations history is looked up in the module's schema, is not found, and
+the tables are created again beside the old ones. Under Aspire, `WaitFor` on a migration resource
+waits for it to start; `WaitForCompletion` waits for it to finish.
+
 If data has to move between physical databases, produce the plan — dump, transform, load,
 verification queries — and, if downtime is not acceptable, the dual-write plus backfill plus
 cutover sequence. Write it; do not run it.
@@ -217,6 +311,8 @@ cutover sequence. Write it; do not run it.
 ## Gate
 
 - Model snapshot per topology (`ctx.Model.ToDebugString()`) reviewed and stored as a golden file.
+- After any change to `OnModelCreating` — MOD0016's fix or a hand-made one — the inventory compared
+  with the one taken before: every host "the same".
 - `dotnet ef migrations has-pending-model-changes` clean against the union.
 - Integration tests boot each topology and assert its table set.
 - Migration scripts reviewed by a human before any database sees them.

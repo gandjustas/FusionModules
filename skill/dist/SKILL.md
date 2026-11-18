@@ -32,7 +32,26 @@ prefer when both are on the table.
 
 **Microservices → modules.** Start a new empty host rather than promoting one of the services:
 it inherits no references, so MOD0004 is green from the first build. Then convert services
-lowest-fan-in first.
+lowest-fan-in first. Each service becomes a module inside its own project before it joins anything:
+MOD0015's fix writes the `Module.cs`, and the service keeps running alone
+([Modules](#phase-2-into-modules)). MOD0016's does the same for a `DbContext`
+([Data](#phase-3-data)).
+
+The order that has held up on real solutions, each step leaving everything green:
+
+1. `dotnet modules inventory` before any edit, and its facts frozen into tests.
+2. MOD0015 on every service, each still an executable with its own `Program.cs`; `compare`.
+3. `dotnet modules topology` on that inventory: what one host would fail on is the work list.
+4. The services into the host, **still calling each other over the network** — point each
+   client's address at the host itself. Removing a hop and moving a service in one step leaves two
+   suspects for every failure.
+5. Projects become libraries; MOD0001 and its neighbours arrive now, all at once.
+6. In-process contracts in place of the loopback calls, one edge at a time.
+7. `compare --merged`: every difference explained, no endpoint lost.
+
+Move the service that owns authentication first. Nearly every runtime failure of a merge comes
+with it — default schemes, cookies, issuer addresses — and they are cheaper to meet while it is the
+only thing that moved.
 
 **New system.** Start from [samples/01-minimal-api](https://github.com/gandjustas/FusionModules/tree/HEAD/samples/01-minimal-api)
 and skip the assessment.
@@ -140,8 +159,62 @@ Three things to know before trusting it:
   loads both; `sharedHandler: true` marks the ones a shared library maps everywhere (`/health`),
   which the host should map once rather than resolve. Confirm before raising.
 
-It does not see middleware order, the call sites behind an HTTP or queue edge, or a type that
-crosses an assembly boundary by reflection. Those are what the reading below is for.
+- **`built` is the ordinary status** of a host that migrates or seeds between `Build()` and
+  `Run()` with no database to reach, and the run still exits 0. On a solution where most services
+  do that, most hosts are `built`. But look at `runtime.endpoints` of each: where it is null — a
+  gRPC-only service that migrates in `Startup.Configure` — a later `topology` has nothing to compare
+  for that host, and its "nothing" is not a clean result.
+- **Every web project should be among `hosts`.** One can be missing: a gateway whose compose
+  service has another name, a host that reads a relative path and fails under the probe.
+  `deployment.notes` says where the deployment was read from — an AppHost that does not build makes
+  the tool fall back to compose files, and the environment in the snapshot is then theirs.
+- **Check the target frameworks first.** The package has nothing for a project below .NET 8, and a
+  worker on `Host.CreateApplicationBuilder` runs no hosting startup. Both are services that stay
+  out, whatever else is decided.
+- **`git status` afterwards.** The tool writes nothing, but building the solution can: generated
+  gRPC clients with other line endings, an OpenAPI document. Restore them.
+- **Name the file and restore the tool.** A folder with both a `.slnx` and a `.slnf` needs the one
+  you mean. With a tool manifest, `dotnet tool restore` first: without it the command prints a hint
+  to run it, and a redirected output file is left empty.
+- **It probes in Development** unless the deployment says otherwise, so it lists what only
+  Development serves — `/health`, an API reference UI, a redirect from `/`. Take a second one with
+  `--environment Production` when the tests you will freeze it into run there, and compare like
+  with like.
+
+Then ask it what one host would fail on, before there is one:
+
+```bash
+dotnet modules topology fusion-modules-inventory.json --pairs
+dotnet modules topology fusion-modules-inventory.json catalog-api basket-api ordering-api
+```
+
+The first says which pairs merge cleanly, which is where to start. The second is the work list for
+a host composing those services: the service two of them register differently (startup would
+fail), the routes more than one maps, the configuration keys with two values. Put it in the
+assessment as it is; exit code 2 means the host would not start.
+
+What it reports has nearly always been real. Three kinds of entry are worth a second look before
+they go into the plan: a route "mapped twice" that API versioning tells apart, a health check name
+that shared service defaults register in every service (the host ends up with one), and "modules
+add to one sequence" for a handler or validator interface before the services are converted — run
+it again after MOD0015.
+
+"Nothing collides" is not a pass, and neither is exit code 0. It does not see middleware order,
+the call sites behind an HTTP or queue edge, a type that crosses an assembly boundary by
+reflection, or what a service assumed about being the process — the entry assembly, the content
+root, the default authentication scheme ([modules.md](#phase-2-into-modules)). Nor, among things that have
+broken real merges:
+
+- **what options say**: a JWT `Audience` per service, `NameClaimType` (`name` in two services,
+  `sub` in four), a global MVC filter, Swagger document names, health check names;
+- **`Kestrel:EndpointDefaults:Protocols`** set in one service only;
+- **registrations made inside a library's factory** — two default document stores, two buses — and
+  singletons registered as instances;
+- **static state**, such as a change to the default inbound claim type map;
+- **a configuration key whose name ends in `key`**: its value is masked and it drops out of the
+  printed collisions. Read `collisions.configurationKeys` in the JSON.
+
+Those are what the reading below is for.
 
 ### What the assessment must contain
 
@@ -456,6 +529,18 @@ of `GetLoadedModules` on the context, an `IModelCacheKeyFactory` that includes i
 `ReplaceService<IModelCacheKeyFactory, …>()` on the options, and `ApplyConfigurationsFromAssembly`
 for each module in `GetLoadedModules` order.
 
+### One scoped context where there were several
+
+Services that each had a context per request now share one per scope, and two habits break on it:
+
+- **Calls that used to be separate HTTP requests** and are now method calls made in parallel from
+  one page hit one context: "A second operation was started on this context instance". An
+  in-process implementation of a contract creates a scope per call.
+- **A service that disposes the context it was given** disposes everyone's.
+
+More than twenty context types in one process trips EF Core's `ManyServiceProvidersCreatedWarning`;
+it is a warning about options built per context, not about modules.
+
 ### Where entities go
 
 Into the module that owns them, with their `IEntityTypeConfiguration<T>` beside them. A schema
@@ -466,9 +551,74 @@ Split entity modules from feature modules when a topology might want the tables 
 endpoints — a replica that reads a table it does not serve, say. If nothing would ever want that,
 one module is fine; do not manufacture the split.
 
-Replace `MyDbContext.Orders` with `db.Set<Order>()`. The trade is real and worth stating: you
-lose `DbSet` properties and context-level conventions, and gain a module that can be deployed
-without the application it was written for.
+A module reaches its tables through `DbContext`: `db.Set<Order>()`, or an extension member that
+reads the same as the property did (below). The trade is real and worth stating: you lose
+context-level conventions and the context's own list of what it holds, and gain a module that can
+be deployed without the application it was written for.
+
+### Taking a context apart: MOD0016
+
+A service's context usually configures its entities in `OnModelCreating` and names each in a
+`DbSet<T>` property. Neither can move with an entity: configuration written in a context belongs to
+that context, and a property on the host's shared context is a use of a module's type (MOD0004).
+MOD0016 (Info) marks such a context and its fix does the split:
+
+```bash
+dotnet modules inventory Shop.slnx -o before.json
+dotnet format analyzers Shop.slnx --diagnostics MOD0016 --severity info
+dotnet modules inventory Shop.slnx -o after.json --compare before.json
+```
+
+- Each entity's configuration becomes `internal sealed class OrderConfiguration :
+  IEntityTypeConfiguration<Order>` in a file of its own — the form `ApplyModuleConfigurations`
+  finds — and `OnModelCreating` applies it where the configuration stood
+  (`modelBuilder.ApplyConfiguration(new OrderConfiguration())`), so the order between entities is
+  kept. A context that already scans its assembly, or composes from modules in a module's assembly,
+  gets nothing added: the scan finds the classes.
+- Each `DbSet<Order> Orders` becomes an extension member of `DbContext` in
+  `<Context>Extensions.cs`, and the entity's class gets `ToTable("Orders")` — the property was what
+  named the table. On C# 14 `context.Orders` stays as written; before it, every use becomes
+  `context.Orders()`. Inside an expression tree it is rewritten to `context.Set<Order>()` either
+  way.
+
+Give it the **solution**, as for MOD0015 and for a stronger reason: the properties are read by
+projects that reference the context's, and before C# 14 those uses have to be rewritten.
+`--severity info` is required here too.
+
+The comparison is the gate. The inventory records every context's model, entity type by entity type
+— table, properties, keys, indexes, relationships, query filters, seed data — and every host "the
+same" means the fix changed none of it. Do not accept the result on a green build alone.
+
+The message says what stays and why; all of it is deliberate, and none of it should be forced
+through by hand without the same comparison:
+
+- **A filter or condition that reads the context** — a tenant filter on `_tenantId`,
+  `Database.IsSqlite()`. EF Core evaluates the filter against the context of each query; handed to a
+  class's constructor the value would be read once and cached with the model. Written as a statement
+  of its own it stays and the rest of the entity moves.
+- **Configuration inside an `if` or a loop**, through a local variable, or among `#if`.
+- **Anything that would cross a statement that stays** — a loop over
+  `modelBuilder.Model.GetEntityTypes()` sees the entities configured before it and not those after.
+- **A property an interface asks for** (`IApplicationDbContext`), a `virtual` one, one that is
+  assigned or named by `nameof`.
+
+A context the rule says nothing about has nothing to move, and that is common in a codebase that
+was already tidy: `OnModelCreating` applies configuration classes by name, or calls only `base`.
+Silence is not a failure of the run.
+
+What the fix cannot see, so check it: `.cshtml` and `.razor` files that read the property (before
+C# 14 they need their parentheses by hand), reflection over the context's `DbSet` properties, and
+code outside the solution compiled against a public context.
+
+**One consequence to decide before running it in a module.** Anything that scans the assembly finds
+the new classes. A module that keeps a private context of its own, in a host whose shared context
+calls `ApplyModuleConfigurations`, will have its entities appear in the shared model as well. That
+is where playbook A is heading and it is wrong for playbook B (below) — there, leave the module's
+context as it is, or keep its configuration out of a module assembly.
+
+The classes are then ready for the step this section is about: move `OrderConfiguration.cs` and
+`Order` to the module that owns them, and when the last one has left, the context's
+`OnModelCreating` is `modelBuilder.ApplyModuleConfigurations(this)`.
 
 ### Relationships across modules
 
@@ -536,6 +686,11 @@ array, or its tables are missing from the migration.
 
 Check the generated migration before going further: if `Up` is empty, no module was named.
 
+`dotnet ef` pointed at a module that became a library finds no way to create its context
+("Unable to resolve service for type 'DbContextOptions…'"): the registration is in a module, and
+nothing ran it. Point it at the host (`--startup-project`), or give the module's context a
+design-time factory of its own while it keeps one.
+
 Exactly one replica should run migrations. The others take the database as they find it —
 `Database__Migrate: "false"` in the compose file, or whatever switch the host uses.
 
@@ -544,6 +699,13 @@ Exactly one replica should run migrations. The others take the database as they 
 A service that checked its own schema, or seeded reference data, before `RunAsync` has nowhere
 obvious to put that once it is a module. `ModuleBase`'s overrides are all synchronous, and they run
 while the container is still being assembled — too early to resolve anything from it.
+
+The methods that did this work usually take `this WebApplication`. Retype them to `IHost` or
+`IServiceProvider` — and note that a method several services share changes for all of them. What
+was synchronous over asynchronous stays so unless you change it; a `.GetAwaiter()` without
+`GetResult()` was already fire-and-forget. Register the work first in the module, before services
+whose constructors read the tables. And before blaming the move for a pending-model-changes
+warning, run the original service against an empty database: it may be the solution's own.
 
 `AddHostedService` is closer than it looks, and it is worth being accurate about why it is still
 not the answer. A module's hosted services are registered before `GenericWebHostService` is, so
@@ -600,6 +762,11 @@ if they ever share a database. Often the right answer, and always the least risk
 **C — Adopt one history as canonical.** Only when one database is clearly the survivor and the
 others are being folded into it. Append new migrations to that history.
 
+With a schema per module on an existing database, never point a module at the old database before
+its data has moved: the migrations history is looked up in the module's schema, is not found, and
+the tables are created again beside the old ones. Under Aspire, `WaitFor` on a migration resource
+waits for it to start; `WaitForCompletion` waits for it to finish.
+
 If data has to move between physical databases, produce the plan — dump, transform, load,
 verification queries — and, if downtime is not acceptable, the dual-write plus backfill plus
 cutover sequence. Write it; do not run it.
@@ -607,6 +774,8 @@ cutover sequence. Write it; do not run it.
 ### Gate
 
 - Model snapshot per topology (`ctx.Model.ToDebugString()`) reviewed and stored as a golden file.
+- After any change to `OnModelCreating` — MOD0016's fix or a hand-made one — the inventory compared
+  with the one taken before: every host "the same".
 - `dotnet ef migrations has-pending-model-changes` clean against the union.
 - Integration tests boot each topology and assert its table set.
 - Migration scripts reviewed by a human before any database sees them.
@@ -824,6 +993,34 @@ Keep the gRPC port on `Http2` unless something genuinely calls it over HTTP/1.1 
 on the same port is the usual reason, and which services relied on that is worth knowing before you
 take it away.
 
+`Kestrel:EndpointDefaults:Protocols` set to `Http2` in a gRPC service's own `appsettings.json` does
+not come along with the module. Without it gRPC works only over TLS, where ALPN negotiates, and an
+HTTP launch profile or a CI job without certificates fails every call. A gRPC client also does not
+resolve Aspire's `https+http://` scheme — give it one concrete scheme.
+
+### An existing application as the host
+
+Sometimes the answer to "which host" is the front end the services stood behind. Then the host is
+not empty, and three things it already does now apply to every module:
+
+- **Its default authentication scheme.** A storefront signs in with cookies; the APIs expected
+  bearer tokens. Pin the host's defaults explicitly and give module endpoints a named policy
+  ([modules.md](#phase-2-into-modules)).
+- **An identity provider moved into it** takes the default schemes over on registration
+  (`AddIdentity`). Pin `DefaultAuthenticateScheme` and `DefaultSignInScheme` back, tell the
+  provider which cookie scheme is the application's, and give its pages a route prefix and their
+  own cookie paths so they do not sit on the storefront's `/`. Discovery and token endpoints stay
+  at the root: clients have their addresses. The issuer becomes the host's address — every client
+  and every `ValidIssuers` list changes with it.
+- **`ValidateOnBuild` in Development.** A front end that now consumes a module's contract cannot
+  be built without that module, and Development validates the container at startup. A topology that
+  leaves the module out fails there and passes in Production, which is where topology tests usually
+  run. Decide what the front end does without the module and test that in both environments.
+
+The order of `HOSTINGSTARTUPASSEMBLIES` is the order hosted services and startup work run in. Where
+the deployment said "wait for the ordering service before starting the worker", that is now the
+order of two names in one variable — write the reason next to it.
+
 ### Cross-cutting concerns, reconciled once
 
 Phase 0 produced a diff table of middleware order and cross-cutting configuration across the
@@ -832,6 +1029,43 @@ it later means re-testing every module that has already moved.
 
 The order of the host pipeline applies to every module. Where two services disagreed, one of them
 is going to change behaviour — decide which, deliberately.
+
+#### Once per process
+
+Some calls configure one thing the process has one of. Each service made them for itself; the host
+makes each **once**, and the widest variant any service used. Left in the modules they do not
+fail at build, and most do not fail at startup:
+
+| Called by every module | What happens |
+|---|---|
+| The message bus (`AddMassTransit`, a shared event bus) | Startup throws, or one configuration wins. One `SubscriptionClientName` is one queue for what were six. An EF outbox per context on one bus leaves one outbox registered. The host owns the bus and modules contribute consumers; where each needs its own outbox it is several buses, and a design decision. |
+| `AddCarter()` and other "map everything found" calls | Every module maps every module's endpoints: several hundred where there were seventy, each route many times over. |
+| A document store or cache under its default registration (`AddMarten`, a Redis cache) | The second module reads the first one's store. Register a store per module, by its own interface or key. |
+| `AddAuthentication().AddJwtBearer(…)` | One scheme, one `Audience`. Listing every service's audience in `ValidAudiences` makes it start and gives up the isolation between them — a decision for the user, as is anything that builds policies from the audience. |
+| `AddSwaggerGen` with the same document name | `An item with the same key has already been added. Key: v1`, on nearly every request. Two DTOs with one short name break `swagger.json` alone, while the UI page still answers 200. |
+| Health checks without a `name:` | `Duplicate health checks were registered with the name(s): npgsql, npgsql` at the first `/health` — or only the first chain survives and `/health` says Healthy. Name each (`basket-npgsql`) and read the entries, not the status. |
+| Service defaults | The host calls the widest variant; a module that relied on a wider one than the host chose fails to resolve `IHttpClientFactory`. And a wide call already contains what others call separately — a second `MapHealthChecks` makes `/alive` ambiguous. |
+| A global MVC filter (`AuthorizeFilter`) | It does not come along unless someone moves it. Dropped, the controllers are open: the symptom was a 500 from the database where a 401 should have been. Put `[Authorize]` on the controllers. |
+
+A duplicate **endpoint name** (`WithName("GetProductById")` copied between two services) is the
+worst of this family: the host builds and starts, and then every request answers 500, `/health`
+included — endpoint names are unique per process.
+
+#### What stays out, and what nothing updates
+
+Left out of the first merge on every real solution so far, and rightly: gateways (their terminal
+middleware and catch-all routes belong to a process of their own), the front end unless it is the
+host, and a service's separate gRPC or worker host built from the same infrastructure project as
+its API.
+
+And nothing rewrites the deployment for you: the Aspire AppHost still adds each service as a
+project (it wants one resource with `HOSTINGSTARTUPASSEMBLIES`), the gateway's cluster addresses,
+Dockerfiles, compose files, solution filters, and every `dotnet ef --startup-project` in a script.
+A host started with `--no-launch-profile`, or by anything else that does not set the variable,
+loads no module and answers 404 to everything. A relative path in configuration — a SQLite
+`Data Source=discountdb` — now resolves against the host's folder and quietly creates a new, empty
+database there. Named `Kestrel:Endpoints` replace `ASPNETCORE_URLS`: once one is named, name them
+all.
 
 From here on the host checks what its modules register, every time it starts: two modules
 registering one service with different implementations fail startup, and two modules mapping one
@@ -957,6 +1191,125 @@ Middleware the service ran for itself goes at the top of `Configure`, before `Us
 Middleware that was really cross-cutting goes to the host — but only after reconciling it with
 the other services, which was Phase 1's job.
 
+### Let MOD0015 write the first draft
+
+Do not do that move by hand for a whole service. MOD0015 (Info) marks a program whose own
+registrations and endpoint mappings can become a module **in the same project**, and its fix writes
+`Module.cs`. The project stays an executable and runs as before — ASP.NET Core runs the entry
+assembly's own `[assembly: HostingStartup]` without it being named anywhere — so the service can be
+converted, built, inventoried and committed before any host exists.
+
+```bash
+dotnet restore
+dotnet format analyzers Shop.slnx --diagnostics MOD0015 --severity info --include src/Ordering.API/
+```
+
+- **`--severity info`**, or the rule is skipped: a suggestion is below the default `warn`.
+- **The solution, not the project.** With the solution loaded, a project only this service
+  references (its Application, its Infrastructure) counts as its own code and its registrations
+  move; a library other programs share does not. Given the project alone, only its own source
+  counts and less moves.
+- **Restore first.** A project with a stale `obj` loads without the analyzer and is skipped without
+  a word; `dotnet restore --force` when a project you expected is untouched.
+- From Git Bash on Windows pass the path in Windows form. Given `/c/...`, `dotnet format` matches
+  no document and changes nothing, without an error.
+- It rewrites each converted project file (a redundant `<Compile Include="Module.cs" />`, a
+  byte-order mark, blank lines). Nothing in it matters to the build; `git checkout -- '*.csproj'`
+  after the fix keeps the diff to the code — commit the `PackageReference` first.
+
+**What moves:** registrations whose every call is the project's own or names its own types;
+mappings of its own endpoints, into `UseEndpoints`; the locals only they use; an `if` without `else`
+on the environment or configuration around them; the own calls out of a chain on the service
+collection.
+
+**What stays in `Program.cs`, on purpose:** the framework's and shared libraries' registrations,
+and everything that shapes the whole application even when its options name the service's types —
+authentication, authorization, Identity, MVC, CORS, OpenAPI, the message bus, schedulers, service
+defaults; middleware; migrations and seeding; `MapControllers`, `MapRazorComponents`, fallbacks,
+health checks; anything order-sensitive (`Replace`, `Remove…`, a registration of someone else's
+contract after a statement that stays); anything in a loop, an `if`/`else` or `#if`. That remainder
+is the list to reconcile with the host in Phase 1 — read it as the fix's answer to "what of this
+service belongs to the application", not as work it failed to do.
+
+When endpoints move and the program is left with no routing of its own, the fix adds
+`app.UseModuleRouting()` after `Build()`. Keep it rather than replacing it with `UseRouting()`:
+`WebApplication` adds authentication, authorization and antiforgery by itself *before* an explicit
+`UseRouting()`, where no endpoint is chosen yet, and every endpoint that requires authorization then
+answers 500. `UseModuleRouting()` adds routing and then those three, as `WebApplication` would have.
+
+Then read what moved, with one thing in mind: **a module's `ConfigureServices` runs before every
+statement of `Program.cs`**. The fix holds back what it can see depends on order. What it cannot
+see is a contract of the project's own that the framework or a shared library also registers, and a
+`TryAdd` that used to lose and now wins. A hosted service that moved starts before the port opens.
+Compare the inventory from before (`dotnet modules inventory … --compare before.json`,
+[verify.md](#verification)) — it shows which registration wins and the order hosted services start in —
+and run the service once.
+
+When the service joins the host, the rest is a project-file change: `Microsoft.NET.Sdk.Web` becomes
+`Microsoft.NET.Sdk`, `OutputType` goes, `Program.cs` is deleted after the host has taken what it
+needs of it once, and the host references the project. Running the fix again is safe; it adds to
+the module the project already has. Once done, `dotnet_diagnostic.MOD0015.severity = none` in the
+project's `.editorconfig` silences a diagnostic that stays because a shared project's methods cannot
+be read from a build.
+
+**When it moves nothing.** A layered service whose `Program.cs` is one chain of the solution's own
+methods — `AddApplicationServices().AddInfrastructureServices().AddApiServices()`, then
+`app.UseApi()` — may have nothing the fix can take: the methods mix the service's registrations
+with the application's. `dotnet format` then says the fix "did not return a Fix All action", once
+per project. That is not an error. The work is to split those methods by hand — the service's own
+registrations stay in the method and the method moves; authentication, the bus, OpenAPI go up to
+the program — and it is real work: tens of files on a solution of nine such services. A program
+that only calls `AddControllers` and `AddOpenApi` gets no diagnostic at all; write its module by
+hand, empty if need be.
+
+**The package reference is yours to add**, before the fix: `dotnet format` does not. Under central
+package management that is a `PackageVersion` in `Directory.Packages.props` and a reference without
+a version. If you script it, do not insert "after the last `<PackageReference`": one that spans
+lines, with a `PrivateAssets` child, takes the new element inside itself (MSB4066), restore fails
+for the whole solution, and unrelated projects report CS0246.
+
+Things that keep their meaning only where they are written. The fix holds back the ones it
+recognises; check them all the same, and apply the same list to anything moved by hand:
+
+- **A registration that overrides another** by coming last: `AddTransient<IProfileService,
+  ProfileService>()` after `AddIdentityServer().AddAspNetIdentity<…>()`. In the module it comes
+  first and loses. Keep it after the call it overrides.
+- **A registration that needs an earlier one**: a call that decorates what `AddIdentity`
+  registered throws when it runs before it; a method that asks "is a health checker registered
+  already?" quietly takes the other branch and four background services are never added.
+- **A hosted service after the bus it uses.** Hosted services start in registration order. The
+  order of log lines is not evidence — a bus logs from another thread; the inventory's start order
+  is.
+- **`Assembly.GetExecutingAssembly()`** in a statement that changes assembly: a consumer scan
+  handed the wrong assembly builds, starts, and consumes nothing. Write
+  `typeof(SomethingThere).Assembly`.
+- **A local** every statement that uses it must stay with (CS0103 otherwise), and one that moved
+  without its users is dead code.
+- **An early `return` or `else`** in a method being split: `if (IsBuild()) { …; return; }` at the
+  top guarded everything below it, and statements lifted out now run unconditionally.
+- **A type named `Module` or `ModuleBase`** in the service's namespace (CS0115).
+
+What usually has to be finished by hand, and is worth doing right after the fix rather than at the
+merge:
+
+- **A chain that starts with a shared library's call** stays whole even though the rest names the
+  service's types: `builder.AddRabbitMqEventBus("eventbus").AddSubscription<OrderPaid, OrderPaidHandler>()`.
+  Leave the first call in the program and write the subscriptions in the module.
+- **An `if … else`** around registrations (one AI provider or the other) blocks them. Decide by
+  hand; the condition usually reads configuration and moves as it is.
+- **A `private` helper** a moved statement calls has to become `internal`.
+- **Uniformity.** After the pass every service should look alike: a thin `Program.cs` of
+  application-wide calls and a `Module.cs`. One that kept its wiring in `Program.cs` was skipped or
+  held back by something — find out which before going on.
+
+Do not copy what stayed into each module to make the module "complete". `AddDefaultAuthentication`,
+`AddProblemDetails`, API versioning, OpenAPI and service defaults belong to the program now and to
+the host later, once. A module that needs a marker to make such a call idempotent is telling you
+the call is in the wrong place.
+
+It is not reported for a worker on `Host.CreateApplicationBuilder` (a hosting startup runs only
+under the web host), for a project on .NET 7 or older, or in a host that already composes modules.
+
 ### The builder is the module's view of the host
 
 `ConfigureServices` takes an `IHostApplicationBuilder`, the same type `Program.cs` had, so the
@@ -1010,6 +1363,78 @@ now — leader election, a dedicated worker topology, or leave it out.
 
 **Static and process-wide state.** Static caches, `AppContext` switches, thread culture. Two
 modules disagreeing about these cannot both win.
+
+### What a service assumed about being the process
+
+None of these is a collision between two modules, so neither the startup checks nor
+`dotnet modules topology` report them. Each was true while the service was the entry point and
+stops being true, silently, in a host. Grep for them when a service is converted:
+
+- **`Assembly.GetEntryAssembly()`, `typeof(Program)`.** The entry assembly is the host's now. A
+  type lookup by name over it returns null — an event log that deserializes by event type name
+  throws on the first event — and an assembly scan finds the host's handlers instead of the
+  module's. Name a type of the module (`typeof(Module).Assembly`).
+- **`ContentRootPath`, `WebRootPath`.** The host's. Files the service read from its own folder
+  (seed data, pictures) are copied to the output and read from the module assembly's directory.
+- **`appsettings*.json` and `launchSettings.json` of the service.** Dead once it is a library.
+  Merge the keys into the host's, which is where the configuration-key collisions of Phase 0 get
+  their answers.
+- **Middleware the service added for itself.** In a module's `Configure` it runs for every request
+  of the process, after the host's routing: `UseStatusCodePages()` of an API starts rewriting the
+  storefront's pages. Confine it — `app.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), …)`.
+  Or it does not run at all: when the host maps an endpoint of its own, `WebApplication`'s endpoint
+  middleware sits in the host's pipeline and executes the module's endpoints before the module's
+  middleware is reached. Send a request and look for the middleware's effect; where it must wrap
+  the module's endpoints and nothing else, an endpoint filter on the module's group says so
+  directly.
+  And middleware that had to run *before* routing no longer does: a cookie policy that set
+  `SameSite` for the sign-in cookie stops covering it, and login loops over plain HTTP. Say it in
+  the options of the thing itself instead.
+- **`RequireAuthorization()` with no arguments.** It means the host's default scheme. An API that
+  expected a bearer token, inside a host whose default is a cookie, answers a mobile client with a
+  redirect to the login page instead of 401. Give the module's endpoints a named policy that names
+  its scheme, gRPC services included.
+- **A dictionary keyed by a short type name.** An event bus that maps `nameof(TEvent)` to one
+  handler type worked while each service had its own copy of `OrderPaidIntegrationEvent`. With four
+  assemblies declaring it, the last subscription wins and the other three handlers never run.
+- **`wwwroot`.** Two projects with a `wwwroot/css/site.css` fail the host's build as soon as it
+  references both. Set `StaticWebAssetBasePath` (`_content/<AssemblyName>`) in the module and fix
+  the links in its views.
+- **Build-time tooling that needs an entry point** — OpenAPI document generation at build, for
+  one. It goes, or moves to the host.
+
+### When the project becomes a library
+
+MOD0001, MOD0004 and MOD0005 judge a project by what it is: while a converted service is still an
+executable it is a host, and they are silent. They arrive together at the step that drops
+`OutputType` — a couple of hundred MOD0001 on a mid-sized solution is normal. Do not add a switch to
+silence them in between; there is nothing to silence until then. Do it as a step of its own:
+
+```bash
+dotnet format analyzers src/Ordering.API/Ordering.API.csproj --diagnostics MOD0001 --severity info --no-restore
+```
+
+Then the second wave, which no rule reports and the first build after the fix does not always
+show:
+
+- **Anything that scans the assembly for public types.** FluentValidation's
+  `AddValidatorsFromAssemblyContaining<T>()` skips internal validators unless told
+  `includeInternalTypes: true` — requests then pass unvalidated and no unit test fails.
+  MassTransit's `AddConsumers(assembly)` takes public consumers only, and the message is then
+  simply never handled. The framework's own `AddValidation()` skips internal types; Carter modules
+  and a document database's document types have to stay public. Check every scan — validators,
+  handlers, mapping profiles, consumers — and keep what must stay public with
+  `fusion_modules_allowed_public_types`, each with its reason.
+- **Generated code.** Source-generated partials (a `JsonSerializerContext`) stay as the generator
+  wants them; `Protobuf` items take `Access="Internal"`.
+- **Tests.** `InternalsVisibleTo` for the test project, and for `DynamicProxyGenAssembly2` when it
+  mocks internal types (NSubstitute, Moq). It does not let a public test class name an internal
+  type in a public signature (CS0050, CS0051): a host that builds can sit beside dozens of errors
+  in the test projects.
+- **Code generated from a shared file.** A `.proto` compiled into the module and again into the
+  host as a client gives two copies of the same namespace in one compilation.
+- **Six `Program` classes.** Reference the module projects from the host — and from tests — with
+  an alias until their programs are deleted; see [verify.md](#verification).
 
 ### Visibility
 
@@ -1383,6 +1808,65 @@ MOD0012 says so at build time, and its code fix adds the call. Add it right afte
 created; until then, look at the log for ASP.NET Core's own
 critical message about the first name it could not load.
 
+### Every request answers 500 after a module was added
+
+Something the process has one of was given twice. `Duplicate endpoint name '…'`: two modules use
+one `WithName`. `An item with the same key has already been added. Key: v1`: two `SwaggerDoc`s.
+`AmbiguousMatchException` on one path: two modules, or a module and a shared call the host also
+makes, map it. See "Once per process" in [the host](#phase-1-the-host).
+
+### Every request answers 404, the host's own included or not
+
+No module loaded: the host was started without the launch profile or the variable that names them.
+The `Topology:` line in the log has no `modules:` part.
+
+### `/health` throws, or says Healthy too easily
+
+`Duplicate health checks were registered with the name(s)` — checks registered without a `name:` by
+several modules. If it answers Healthy, count the entries: only one module's chain may have
+survived.
+
+### A message is published and nothing handles it
+
+In order: the consumer became internal and the scan takes public types; the scan was handed
+`Assembly.GetExecutingAssembly()` and now runs in another assembly; the bus is configured once and
+this module's consumers were never contributed to it; or two modules share one queue name and the
+other one took the message.
+
+### An API endpoint redirects to a login page instead of answering 401
+
+The module's endpoints say `RequireAuthorization()` and the host's default scheme is a cookie. Give
+them a named policy that names the bearer scheme — [modules.md](#phase-2-into-modules).
+
+### Login loops after the identity service became a module
+
+In order: the identity registration took over the host's default schemes; the provider does not
+know which cookie scheme is the application's; or a cookie policy that ran before routing in the
+service runs after it in the module, and over plain HTTP the sign-in cookie is dropped for its
+`SameSite`. See [the host](#phase-1-the-host).
+
+### A handler stopped running, or a type cannot be found by name, only in the merged host
+
+`Assembly.GetEntryAssembly()` or `typeof(Program)` in the module or in a library it uses: the entry
+assembly is the host's. Or a registry keyed by a short type name that several modules now share.
+See "What a service assumed about being the process" in [modules.md](#phase-2-into-modules).
+
+### Validation stopped happening after types were made internal
+
+An assembly scan that takes public types only — FluentValidation without
+`includeInternalTypes: true`. Nothing fails; requests pass unvalidated.
+
+### The build cannot write a module's DLL (MSB3021, MSB3027)
+
+Something still runs it: an Aspire AppHost left up, or a build server holding the file. Stop the
+AppHost, `dotnet build-server shutdown`, and give verification builds their own output directory.
+
+### A package was rebuilt under the same version and nothing changed
+
+NuGet restored the copy in its global packages folder. Delete that version's folders there —
+`dotnet nuget locals global-packages --list` says where it is, and `NUGET_PACKAGES` may have moved
+it — then `dotnet restore <solution> --force` and `dotnet tool restore`.
+
 ### Behaviour changed after merging, in a way nobody can pin down
 
 The usual suspects, in order:
@@ -1414,6 +1898,15 @@ The usual suspects, in order:
 | MOD0012 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
 | MOD0013 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 | MOD0014 | Warning, in the host: two modules it references register one service with different implementations, so where they load together one gets the other's. Register keyed, or a type of each module's own; `[MultipleImplementations]` on a contract read as `IEnumerable<T>`; list alternatives no topology loads together in `fusion_modules_allowed_service_collisions`. The startup check catches the same thing at runtime, including registrations made inside libraries. |
+| MOD0015 | Info, not a defect: this program's own registrations and mappings can move into a module in the same project. The fix writes `Module.cs`; run it with `dotnet format analyzers <solution> --diagnostics MOD0015 --severity info`. See [modules.md](#phase-2-into-modules). |
+| MOD0016 | Info, not a defect: entity configuration in `OnModelCreating` can become `IEntityTypeConfiguration<T>` classes and `DbSet` properties extension members of `DbContext`. Same command with `MOD0016`; compare inventories before and after. See [data.md](#phase-3-data). |
+
+MOD0015 and MOD0016 are suggestions, so `dotnet build -warnaserror` does not fail on them and
+"zero MOD diagnostics" does not mean them. If `dotnet format` changed nothing: `--severity info` is
+missing, the path was given in `/c/...` form from Git Bash, or the project's `obj` is stale and it
+loaded without the analyzer (`dotnet restore --force`). If the build then fails with NETSDK1022, the
+project consumes the analyzers without the package's build targets: delete the `<Compile Include>`
+lines `dotnet format` added.
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.
 
@@ -1448,6 +1941,46 @@ after.json --compare before.json` does it for a whole solution, host by host, an
 fail on before it exists. After the conversion the topology
 side can come from `Routes()` (section 4): `Routes().Select(route => $"{route.Method} {route.Pattern}").Distinct().Order(StringComparer.Ordinal)`
 writes the template's lines — one method per line, `*` for any.
+
+Reading a comparison:
+
+- **Exit code 2 means "different", not "failed".** After a step that was meant to change something
+  — a route prefix, a named policy — the differences are the review. Each one gets an explanation
+  or a fix; "about a hundred, all explained, no endpoint lost" is a pass.
+- **`winner` lines are the ones to read first.** `- winner IProfileService -> Shop.ProfileService`
+  after moving registrations into a module means another registration of that service now comes
+  last: the build is green, login works, and the token has different claims.
+- **A count of a framework library's registrations off by one** (`Microsoft.Extensions.Options:
+  111 → 112`) is noise.
+- **Same environment on both sides.** An inventory taken in Development against one taken in
+  Production differs by everything Development maps. The same goes for configuration: a solution's
+  inventory takes connection strings from the AppHost or compose files, a host project probed alone
+  takes its launch profile. Registrations made on a condition (`if` an address is configured)
+  vanish, a `DbContext` comes and goes, or the host fails on `Connection string '…' is required`.
+  Pass the values (`--env ConnectionStrings__orders=…`) or point the deployment at the new host and
+  inventory the solution.
+- **Read each host's status before its differences.** A host that failed to build or start gives a
+  wall of them — hundreds, with the error at the bottom — and "0 hosts compared" means one side
+  has no probed hosts at all. A `DbContext` entry carrying an `error` is not a difference in the
+  model.
+- **Same infrastructure on both sides too.** With a database down, the exception a host reports
+  can differ from run to run (a `SqlException` once, a retry failure the next time). Another
+  exception type at the same place is noise.
+- **Startup work that became a hosted service changes the picture legitimately**: `built →
+  started`, `+ hosted service …`, and the startup error gone. The probe does not start hosted
+  services, so an error gone from there is not an error fixed — run the service against a database
+  to see whether the work still happens.
+- **Every `- registration` is real until explained.** A consumer, a hub, an outbox that is no
+  longer registered leaves a process that builds, starts and answers 200.
+- **For `--merged`, take "before" after the hand preparation**, or most of what it reports is your
+  own edits. A deliberate keyed replacement reads as a `-`/`+` pair, and so does a changed
+  authorization policy on an endpoint.
+
+Freeze the baseline into the test project as constants — routes, own registrations, hosted
+services, event subscriptions, tables — generated once from the "before" inventory and never
+edited. What the migration edits is one small table: for each topology, the entry point, the module
+names and a route prefix. While a service is its own host the comparison is exact; once it is a
+module in someone else's host it is "nothing lost".
 
 Normalise the leading slash. An attribute route is stored without one and a minimal-API route with
 one, so `/orders` and `orders` are the same URL written two ways — and converting a controller to a
@@ -1503,6 +2036,28 @@ reads its endpoints touches none of it.
 
 The answer is not a better inventory. It is that section 4 is this section's peer rather than its
 sequel: boot every topology for real, and put one real request through each module.
+
+Each of these has been green on a broken result, on a real solution:
+
+- the tool's exit code 0, with compile errors in the next build;
+- the host building, with the solution's test projects not — build the whole solution;
+- `started` under the probe, and a crash in `dotnet run` on a file read from the content root;
+- the host starting, and every request answering 500;
+- `/health` answering Healthy, with most of the checks gone;
+- checkout answering 200, and no order created — the consumer was not registered;
+- 401 on a protected route, which proves only that the middleware is there;
+- unit tests of a handler, while the subscription that calls it is gone.
+
+What did catch them: the comparison before and after each move; `--merged`; a build of everything;
+and one fixed script of requests run against the original and against the result with real
+infrastructure, its output diffed. Put in that script an unauthenticated request to every family of
+endpoints — a 500 from a backend where 401 was expected means the request got past authorization —
+and a request with a real token, a message through the bus, and a gRPC call between modules. Those
+three are the ones that get skipped, and the ones a merge breaks. Check state, not status: the
+order row, the migration history, the number of consumers on the queue.
+
+Take a baseline of what was already broken. An endpoint that answered 500 before the migration, or
+a solution that never restored as a whole, is not yours to explain later.
 
 ### 3. Build
 
@@ -1575,6 +2130,16 @@ check — has none, and the startup report does not count it either. Static asse
 an endpoint per file and per fingerprinted copy) are left out unless you ask with
 `Routes(includeStaticAssets: true)`.
 
+An entry point does not have to be made public for this: `InternalsVisibleTo` for the test project
+is enough for `WebApplicationFactory<Program>`, and an alias on the reference tells several
+`Program`s apart (section 1).
+
+Run every test project, and the end-to-end suite if there is one, on **every commit** of the
+migration and not only on its tip — a detached worktree per commit does it. Topology tests make no
+requests, so they stay green on a commit where every functional test fails. And when a result
+depends on the environment, run the topology tests in both: container validation
+(`ValidateOnBuild`) happens in Development only.
+
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is
 worth knowing before a deployment finds out.
@@ -1603,6 +2168,24 @@ module set.
 `ctx.Model.ToDebugString()` per topology, as golden files. Then
 `dotnet ef migrations has-pending-model-changes` against the union.
 
+The inventory of section 1 carries the same thing for every context of every host, plus what the
+debug view leaves out — query filters and seed data — and `--compare` reports a model entity type
+by entity type, under the headings of the debug view:
+
+```text
+ordering-api: 2 differences
+  - model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 18
+  + model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 10
+```
+
+That is the check for any refactoring of `OnModelCreating`, MOD0016's fix included
+([data.md](#phase-3-data)): nothing reported means the model is the same. A filter that moved to another
+class is the same filter. `model of … not compared` is a note, not a pass: one of the two
+inventories has no model for that context — it was taken by an older version of the tool, or the
+context could not be created outside a request (a tenant, say) and `modelError` says why. With
+`--merged`, a context type several services had must have in the host every entity type any of them
+had, each as it was.
+
 ### 7. Collisions
 
 - No configuration key defined twice with different values across modules.
@@ -1624,6 +2207,12 @@ argument for doing this at all is worth checking rather than assuming.
 
 Record hardware, tool version and commit alongside the numbers. Performance claims without them
 rot into folklore.
+
+Three launches per commit at least, alternating the commits, and the median: one launch per side
+has given the opposite conclusion from three. Measure the true starting commit, not a convenient
+middle one. Process count, working set and thread count repeat from launch to launch and can be
+reported as numbers. CPU time and allocations vary several-fold between launches of the same code:
+report them as a tendency or not at all.
 
 ### 10. Containers
 

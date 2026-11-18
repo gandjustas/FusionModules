@@ -28,6 +28,46 @@ fail on before it exists. After the conversion the topology
 side can come from `Routes()` (section 4): `Routes().Select(route => $"{route.Method} {route.Pattern}").Distinct().Order(StringComparer.Ordinal)`
 writes the template's lines — one method per line, `*` for any.
 
+Reading a comparison:
+
+- **Exit code 2 means "different", not "failed".** After a step that was meant to change something
+  — a route prefix, a named policy — the differences are the review. Each one gets an explanation
+  or a fix; "about a hundred, all explained, no endpoint lost" is a pass.
+- **`winner` lines are the ones to read first.** `- winner IProfileService -> Shop.ProfileService`
+  after moving registrations into a module means another registration of that service now comes
+  last: the build is green, login works, and the token has different claims.
+- **A count of a framework library's registrations off by one** (`Microsoft.Extensions.Options:
+  111 → 112`) is noise.
+- **Same environment on both sides.** An inventory taken in Development against one taken in
+  Production differs by everything Development maps. The same goes for configuration: a solution's
+  inventory takes connection strings from the AppHost or compose files, a host project probed alone
+  takes its launch profile. Registrations made on a condition (`if` an address is configured)
+  vanish, a `DbContext` comes and goes, or the host fails on `Connection string '…' is required`.
+  Pass the values (`--env ConnectionStrings__orders=…`) or point the deployment at the new host and
+  inventory the solution.
+- **Read each host's status before its differences.** A host that failed to build or start gives a
+  wall of them — hundreds, with the error at the bottom — and "0 hosts compared" means one side
+  has no probed hosts at all. A `DbContext` entry carrying an `error` is not a difference in the
+  model.
+- **Same infrastructure on both sides too.** With a database down, the exception a host reports
+  can differ from run to run (a `SqlException` once, a retry failure the next time). Another
+  exception type at the same place is noise.
+- **Startup work that became a hosted service changes the picture legitimately**: `built →
+  started`, `+ hosted service …`, and the startup error gone. The probe does not start hosted
+  services, so an error gone from there is not an error fixed — run the service against a database
+  to see whether the work still happens.
+- **Every `- registration` is real until explained.** A consumer, a hub, an outbox that is no
+  longer registered leaves a process that builds, starts and answers 200.
+- **For `--merged`, take "before" after the hand preparation**, or most of what it reports is your
+  own edits. A deliberate keyed replacement reads as a `-`/`+` pair, and so does a changed
+  authorization policy on an endpoint.
+
+Freeze the baseline into the test project as constants — routes, own registrations, hosted
+services, event subscriptions, tables — generated once from the "before" inventory and never
+edited. What the migration edits is one small table: for each topology, the entry point, the module
+names and a route prefix. While a service is its own host the comparison is exact; once it is a
+module in someone else's host it is "nothing lost".
+
 Normalise the leading slash. An attribute route is stored without one and a minimal-API route with
 one, so `/orders` and `orders` are the same URL written two ways — and converting a controller to a
 minimal API would otherwise diff every route it touched while changing none of them. The template
@@ -82,6 +122,28 @@ reads its endpoints touches none of it.
 
 The answer is not a better inventory. It is that section 4 is this section's peer rather than its
 sequel: boot every topology for real, and put one real request through each module.
+
+Each of these has been green on a broken result, on a real solution:
+
+- the tool's exit code 0, with compile errors in the next build;
+- the host building, with the solution's test projects not — build the whole solution;
+- `started` under the probe, and a crash in `dotnet run` on a file read from the content root;
+- the host starting, and every request answering 500;
+- `/health` answering Healthy, with most of the checks gone;
+- checkout answering 200, and no order created — the consumer was not registered;
+- 401 on a protected route, which proves only that the middleware is there;
+- unit tests of a handler, while the subscription that calls it is gone.
+
+What did catch them: the comparison before and after each move; `--merged`; a build of everything;
+and one fixed script of requests run against the original and against the result with real
+infrastructure, its output diffed. Put in that script an unauthenticated request to every family of
+endpoints — a 500 from a backend where 401 was expected means the request got past authorization —
+and a request with a real token, a message through the bus, and a gRPC call between modules. Those
+three are the ones that get skipped, and the ones a merge breaks. Check state, not status: the
+order row, the migration history, the number of consumers on the queue.
+
+Take a baseline of what was already broken. An endpoint that answered 500 before the migration, or
+a solution that never restored as a whole, is not yours to explain later.
 
 ## 3. Build
 
@@ -154,6 +216,16 @@ check — has none, and the startup report does not count it either. Static asse
 an endpoint per file and per fingerprinted copy) are left out unless you ask with
 `Routes(includeStaticAssets: true)`.
 
+An entry point does not have to be made public for this: `InternalsVisibleTo` for the test project
+is enough for `WebApplicationFactory<Program>`, and an alias on the reference tells several
+`Program`s apart (section 1).
+
+Run every test project, and the end-to-end suite if there is one, on **every commit** of the
+migration and not only on its tip — a detached worktree per commit does it. Topology tests make no
+requests, so they stay green on a commit where every functional test fails. And when a result
+depends on the environment, run the topology tests in both: container validation
+(`ValidateOnBuild`) happens in Development only.
+
 Assert that each topology boots: `NoModules`, each module alone, and the full set. A module that
 cannot start alone usually has an undeclared dependency on another module's services, which is
 worth knowing before a deployment finds out.
@@ -182,6 +254,24 @@ module set.
 `ctx.Model.ToDebugString()` per topology, as golden files. Then
 `dotnet ef migrations has-pending-model-changes` against the union.
 
+The inventory of section 1 carries the same thing for every context of every host, plus what the
+debug view leaves out — query filters and seed data — and `--compare` reports a model entity type
+by entity type, under the headings of the debug view:
+
+```text
+ordering-api: 2 differences
+  - model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 18
+  + model Ordering.OrderingContext: Ordering.Order: EntityType / Properties / Total / Annotations / Precision: 10
+```
+
+That is the check for any refactoring of `OnModelCreating`, MOD0016's fix included
+([data.md](data.md)): nothing reported means the model is the same. A filter that moved to another
+class is the same filter. `model of … not compared` is a note, not a pass: one of the two
+inventories has no model for that context — it was taken by an older version of the tool, or the
+context could not be created outside a request (a tenant, say) and `modelError` says why. With
+`--merged`, a context type several services had must have in the host every entity type any of them
+had, each as it was.
+
 ## 7. Collisions
 
 - No configuration key defined twice with different values across modules.
@@ -203,6 +293,12 @@ argument for doing this at all is worth checking rather than assuming.
 
 Record hardware, tool version and commit alongside the numbers. Performance claims without them
 rot into folklore.
+
+Three launches per commit at least, alternating the commits, and the median: one launch per side
+has given the opposite conclusion from three. Measure the true starting commit, not a convenient
+middle one. Process count, working set and thread count repeat from launch to launch and can be
+reported as numbers. CPU time and allocations vary several-fold between launches of the same code:
+report them as a tendency or not at all.
 
 ## 10. Containers
 

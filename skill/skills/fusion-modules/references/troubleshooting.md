@@ -175,6 +175,65 @@ MOD0012 says so at build time, and its code fix adds the call. Add it right afte
 created; until then, look at the log for ASP.NET Core's own
 critical message about the first name it could not load.
 
+## Every request answers 500 after a module was added
+
+Something the process has one of was given twice. `Duplicate endpoint name '…'`: two modules use
+one `WithName`. `An item with the same key has already been added. Key: v1`: two `SwaggerDoc`s.
+`AmbiguousMatchException` on one path: two modules, or a module and a shared call the host also
+makes, map it. See "Once per process" in [the host](host.md).
+
+## Every request answers 404, the host's own included or not
+
+No module loaded: the host was started without the launch profile or the variable that names them.
+The `Topology:` line in the log has no `modules:` part.
+
+## `/health` throws, or says Healthy too easily
+
+`Duplicate health checks were registered with the name(s)` — checks registered without a `name:` by
+several modules. If it answers Healthy, count the entries: only one module's chain may have
+survived.
+
+## A message is published and nothing handles it
+
+In order: the consumer became internal and the scan takes public types; the scan was handed
+`Assembly.GetExecutingAssembly()` and now runs in another assembly; the bus is configured once and
+this module's consumers were never contributed to it; or two modules share one queue name and the
+other one took the message.
+
+## An API endpoint redirects to a login page instead of answering 401
+
+The module's endpoints say `RequireAuthorization()` and the host's default scheme is a cookie. Give
+them a named policy that names the bearer scheme — [modules.md](modules.md).
+
+## Login loops after the identity service became a module
+
+In order: the identity registration took over the host's default schemes; the provider does not
+know which cookie scheme is the application's; or a cookie policy that ran before routing in the
+service runs after it in the module, and over plain HTTP the sign-in cookie is dropped for its
+`SameSite`. See [the host](host.md).
+
+## A handler stopped running, or a type cannot be found by name, only in the merged host
+
+`Assembly.GetEntryAssembly()` or `typeof(Program)` in the module or in a library it uses: the entry
+assembly is the host's. Or a registry keyed by a short type name that several modules now share.
+See "What a service assumed about being the process" in [modules.md](modules.md).
+
+## Validation stopped happening after types were made internal
+
+An assembly scan that takes public types only — FluentValidation without
+`includeInternalTypes: true`. Nothing fails; requests pass unvalidated.
+
+## The build cannot write a module's DLL (MSB3021, MSB3027)
+
+Something still runs it: an Aspire AppHost left up, or a build server holding the file. Stop the
+AppHost, `dotnet build-server shutdown`, and give verification builds their own output directory.
+
+## A package was rebuilt under the same version and nothing changed
+
+NuGet restored the copy in its global packages folder. Delete that version's folders there —
+`dotnet nuget locals global-packages --list` says where it is, and `NUGET_PACKAGES` may have moved
+it — then `dotnet restore <solution> --force` and `dotnet tool restore`.
+
 ## Behaviour changed after merging, in a way nobody can pin down
 
 The usual suspects, in order:
@@ -206,5 +265,14 @@ The usual suspects, in order:
 | MOD0012 | A host that references modules never calls `ValidateModules()`, so a typo in `HOSTINGSTARTUPASSEMBLIES` goes unnoticed. The fix adds the call. |
 | MOD0013 | The FusionModules package is not referenced, so the rules that need `ModuleBase` are inactive and the build is green because nothing is being checked. |
 | MOD0014 | Warning, in the host: two modules it references register one service with different implementations, so where they load together one gets the other's. Register keyed, or a type of each module's own; `[MultipleImplementations]` on a contract read as `IEnumerable<T>`; list alternatives no topology loads together in `fusion_modules_allowed_service_collisions`. The startup check catches the same thing at runtime, including registrations made inside libraries. |
+| MOD0015 | Info, not a defect: this program's own registrations and mappings can move into a module in the same project. The fix writes `Module.cs`; run it with `dotnet format analyzers <solution> --diagnostics MOD0015 --severity info`. See [modules.md](modules.md). |
+| MOD0016 | Info, not a defect: entity configuration in `OnModelCreating` can become `IEntityTypeConfiguration<T>` classes and `DbSet` properties extension members of `DbContext`. Same command with `MOD0016`; compare inventories before and after. See [data.md](data.md). |
+
+MOD0015 and MOD0016 are suggestions, so `dotnet build -warnaserror` does not fail on them and
+"zero MOD diagnostics" does not mean them. If `dotnet format` changed nothing: `--severity info` is
+missing, the path was given in `/c/...` form from Git Bash, or the project's `obj` is stale and it
+loaded without the analyzer (`dotnet restore --force`). If the build then fails with NETSDK1022, the
+project consumes the analyzers without the package's build targets: delete the `<Compile Include>`
+lines `dotnet format` added.
 
 Full text for each: `docs/rules/MOD0001.md` and siblings in the repository.
