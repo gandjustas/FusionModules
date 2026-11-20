@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -7,16 +8,21 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace FusionModules.EntityFrameworkCore;
 
 /// <summary>
-/// MOD0017 at startup: applies each module's configurations in turn, notes which module names which
-/// entity's table, and refuses a model in which a table or an entity has two owning modules.
+/// MOD0017 in the model, where a context asks for it (<c>CheckModuleTableOwners</c>): applies each
+/// module's configurations in turn and notes which module names which entity's table; when EF Core
+/// finalizes the model, refuses it if a table or an entity has two owning modules.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The build's rule sees only <c>ToTable</c> with constant names. The model sees the rest: a table
-/// named by convention, a name read from configuration, the schema a table ends up in. Who named a
-/// table is read from the model as it grows: the table annotations of every entity type before and
-/// after each module's configurations, and a change to an explicitly configured name or schema is
-/// that module naming the table. <c>[Table]</c> is its class's module's. An entity nobody names
+/// named by convention, a name read from configuration, the schema a table ends up in. Two moments,
+/// two questions. Who named a table can only be read while the model grows: the table annotations of
+/// every entity type before and after each module's configurations, and a change to an explicitly
+/// configured name or schema is that module naming the table. Which table that is can only be read
+/// once the model is complete: the context may configure more after <c>ApplyModuleConfigurations</c>
+/// — a default schema, a mapping strategy — and the relational conventions finish their work when
+/// the model is finalized. So the owners are recorded here, against the model, and compared by a
+/// model-finalizing convention, the last of them, with the tables the model ends up with. <c>[Table]</c> is its class's module's. An entity nobody names
 /// belongs, by convention, to the first module that configures it — the module the others build on,
 /// since each module is applied after the modules it references.
 /// </para>
@@ -39,17 +45,22 @@ internal static class ModuleTables
     /// <summary>A module of the model: its name, its assembly, the entities its configuration classes name, and how it configures the model.</summary>
     internal sealed record Contribution(string Name, Assembly? Assembly, IReadOnlyCollection<Type> Entities, Action<ModelBuilder> Apply);
 
+    /// <summary>What <see cref="Apply"/> noted about a model, for <see cref="Check"/> to compare once it is complete.</summary>
+    private sealed record Owners(string Context, IReadOnlyList<Contribution> Modules, Dictionary<string, List<(string Module, string Table)>> Named);
+
+    private static readonly ConditionalWeakTable<IReadOnlyModel, Owners> Recorded = new();
+
     private static readonly Lazy<Func<IReadOnlyEntityType, string?>?> TableName = new(() => Relational("GetTableName"));
     private static readonly Lazy<Func<IReadOnlyEntityType, string?>?> Schema = new(() => Relational("GetSchema"));
 
     /// <summary>
-    /// Applies the modules' configurations in order and, when <paramref name="check"/> is set and the
-    /// application has a relational provider, fails when two modules own one table or one entity.
+    /// Applies the modules' configurations in order and, when <paramref name="record"/> is set and the
+    /// application has a relational provider, notes which module names which entity's table, for
+    /// <see cref="Check"/>.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Two modules own one table or one entity.</exception>
-    public static void Apply(ModelBuilder modelBuilder, IReadOnlyList<Contribution> modules, string context, bool check)
+    public static void Apply(ModelBuilder modelBuilder, IReadOnlyList<Contribution> modules, string context, bool record)
     {
-        if (!check || TableName.Value is null || Schema.Value is null)
+        if (!record || TableName.Value is null || Schema.Value is null)
         {
             foreach (var module in modules)
             {
@@ -82,10 +93,26 @@ internal static class ModuleTables
             }
         }
 
-        var problems = Problems(modelBuilder.Model, modules, named);
+        Recorded.AddOrUpdate(modelBuilder.Model, new Owners(context, modules, named));
+    }
+
+    /// <summary>
+    /// Fails when two modules own one table or one entity of a model <see cref="Apply"/> recorded,
+    /// judged by the tables the model ends up with. Nothing for a model it did not record.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Two modules own one table or one entity.</exception>
+    public static void Check(IReadOnlyModel model)
+    {
+        if (!Recorded.TryGetValue(model, out var owners))
+        {
+            return;
+        }
+
+        Recorded.Remove(model);
+        var problems = Problems(model, owners.Modules, owners.Named);
         if (problems.Count > 0)
         {
-            throw new InvalidOperationException(Describe(context, problems));
+            throw new InvalidOperationException(Describe(owners.Context, problems));
         }
     }
 
@@ -103,7 +130,7 @@ internal static class ModuleTables
         return new Mapping(table?.Value, table?.GetConfigurationSource(), schema?.Value, schema?.GetConfigurationSource());
     }
 
-    private static List<string> Problems(IMutableModel model, IReadOnlyList<Contribution> modules, Dictionary<string, List<(string Module, string Table)>> named)
+    private static List<string> Problems(IReadOnlyModel model, IReadOnlyList<Contribution> modules, Dictionary<string, List<(string Module, string Table)>> named)
     {
         var problems = new List<string>();
         var owned = new List<(string Key, string Table, string Entity, string Module, bool ByConvention)>();

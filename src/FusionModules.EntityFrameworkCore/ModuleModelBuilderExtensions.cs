@@ -18,10 +18,7 @@ public static class ModuleModelBuilderExtensions
     /// <param name="modelBuilder">The model builder of <c>OnModelCreating</c>.</param>
     /// <param name="context">The context whose model is being built: <c>this</c>.</param>
     /// <returns>The same model builder, for chaining.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// The context's options do not name its modules; or two of the modules own one table or one
-    /// entity (MOD0017): both name its table, or each maps an entity of its own onto it.
-    /// </exception>
+    /// <exception cref="InvalidOperationException">The context's options do not name its modules.</exception>
     /// <example>
     /// <code>
     /// protected override void OnModelCreating(ModelBuilder modelBuilder) =>
@@ -35,11 +32,10 @@ public static class ModuleModelBuilderExtensions
     /// still has its configurations applied.
     /// </para>
     /// <para>
-    /// A table and an entity have one owning module, the one that names the table; where two modules
-    /// own one, the model is refused (MOD0017, whose build half sees only constant names; this sees
-    /// tables named by convention and from configuration too). The check runs once per model, which
-    /// is cached per set of modules, and is off where <c>FusionModules:RuntimeTopologyChecks</c> is
-    /// <c>false</c> in the configuration handed to <c>UseModules</c>.
+    /// Where the context's options ask for it
+    /// (<see cref="ModuleDbContextOptionsExtensions.CheckModuleTableOwners(DbContextOptionsBuilder)"/>),
+    /// it also notes which module names which entity's table, and the finished model is refused when
+    /// two modules own one table or one entity (MOD0017).
     /// </para>
     /// <para>
     /// The model's composition is written to the log once per set of modules (category
@@ -68,7 +64,7 @@ public static class ModuleModelBuilderExtensions
                 pair.Module.Entities,
                 pair.Module.Entities.Count > 0 ? model => model.ApplyConfigurationsFromAssembly(pair.Assembly) : static _ => { }))],
             context.GetType().Name,
-            modules.Checks);
+            record: modules.Checks && context.GetService<IDbContextOptions>().FindExtension<TableOwnersOptionsExtension>() is not null);
 
         Report(context, [.. loaded.Select(pair => pair.Module)]);
         return modelBuilder;

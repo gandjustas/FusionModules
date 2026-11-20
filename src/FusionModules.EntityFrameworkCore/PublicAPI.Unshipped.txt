@@ -1,1 +1,3 @@
 #nullable enable
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.CheckModuleTableOwners(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static FusionModules.EntityFrameworkCore.ModuleDbContextOptionsExtensions.CheckModuleTableOwners<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!

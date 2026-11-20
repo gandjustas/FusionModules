@@ -82,6 +82,48 @@ public static class ModuleDbContextOptionsExtensions
         return UseModules(optionsBuilder, registry);
     }
 
+    /// <summary>
+    /// Refuses a model composed from modules in which a table or an entity has two owning modules —
+    /// both name the entity's table, or each maps an entity of its own onto one table (MOD0017). Off
+    /// unless asked for: the host's build reports the same thing for the names written as constants.
+    /// </summary>
+    /// <param name="optionsBuilder">The context's options, which also call <c>UseModules</c>.</param>
+    /// <returns>The same options, for chaining.</returns>
+    /// <example>
+    /// <code>
+    /// options.UseNpgsql(connectionString).UseModules(configuration).CheckModuleTableOwners();
+    /// </code>
+    /// </example>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ModuleModelBuilderExtensions.ApplyModuleConfigurations"/> notes, module by module,
+    /// which module names which entity's table; when EF Core finalizes the model, the tables it ends up
+    /// with are compared, so this sees what the build cannot: tables named by convention, names read
+    /// from configuration, a default schema or mapping the context sets after the modules. The model
+    /// then fails to build with an <see cref="InvalidOperationException"/> that names the table or the
+    /// entity and the modules.
+    /// </para>
+    /// <para>
+    /// Once per model, which is cached per set of modules: nothing per context or query. <c>dotnet ef</c>
+    /// and tests get it from the same options. <c>FusionModules:RuntimeTopologyChecks=false</c> in the
+    /// configuration handed to <c>UseModules</c> turns it off with the host's other startup checks.
+    /// It needs EF Core's relational extensions, which every relational provider brings; without them
+    /// there are no tables to compare.
+    /// </para>
+    /// </remarks>
+    public static DbContextOptionsBuilder CheckModuleTableOwners(this DbContextOptionsBuilder optionsBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(TableOwnersOptionsExtension.Instance);
+        return optionsBuilder;
+    }
+
+    /// <inheritdoc cref="CheckModuleTableOwners(DbContextOptionsBuilder)"/>
+    public static DbContextOptionsBuilder<TContext> CheckModuleTableOwners<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
+        where TContext : DbContext =>
+        (DbContextOptionsBuilder<TContext>)CheckModuleTableOwners((DbContextOptionsBuilder)optionsBuilder);
+
     /// <inheritdoc cref="UseModules(DbContextOptionsBuilder, string[])"/>
     public static DbContextOptionsBuilder<TContext> UseModules<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder, params string[] moduleAssemblyNames)
         where TContext : DbContext =>

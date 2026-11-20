@@ -211,8 +211,9 @@ No default. Tables and entities [MOD0017](rules/MOD0017.md) leaves alone in the 
 modules that are alternatives, never loaded together, each mapping the table. A table is written
 with its schema (`Sales.Payments`) and matched without regard to case; an entity by its type name,
 short or full. The same list can be written in `.editorconfig` under the same name; both are read.
-Passed to the analyzers through `CompilerVisibleProperty`. Nothing of it reaches the runtime: two
-alternatives composed into one model are refused there whatever the list says.
+Passed to the analyzers through `CompilerVisibleProperty`. Nothing of it reaches the runtime: where
+the model's check is on (`CheckModuleTableOwners()`), two alternatives composed into one model are
+refused whatever the list says.
 
 ## `FusionModulesDeduplicateModuleFile`
 

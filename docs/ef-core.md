@@ -108,8 +108,8 @@ loads.
   dependency is not deployed still has its configurations found: the types that load are scanned.
 - Called on a context whose options never got `UseModules`, `ApplyModuleConfigurations` throws an
   `InvalidOperationException` that says so.
-- **A table and an entity have one owning module.** `ApplyModuleConfigurations` refuses a model in
-  which two modules own one table or one entity — see [below](#one-owner-per-table).
+- **`CheckModuleTableOwners()`**, where the options call it, has the finished model refused when
+  two modules own one table or one entity — see [below](#one-owner-per-table).
 
 The package registers nothing in the application's container: the options extension and the cache
 key factory live in EF Core's internal service provider. The startup check for two modules
@@ -120,9 +120,22 @@ registering one service, and MOD0014 in the host's build, have nothing of it to 
 
 A module that maps another module's table — its own copy of `Order` on the Orders module's
 `Sales.Orders`, or the shared `Order` under a `ToTable` of its own — works until the owner changes its
-schema; with one entity, EF Core silently keeps the mapping applied last. So `ApplyModuleConfigurations`
-applies each module's configurations in turn, notes which module names which entity's table, and
-refuses the model with an `InvalidOperationException` when a table or an entity has two owners:
+schema; with one entity, EF Core silently keeps the mapping applied last. The host's build reports
+it as [MOD0017](rules/MOD0017.md) wherever the names are constants, and that is the check to rely
+on. The model can be checked too, for what the build cannot see; it is off unless the context's
+options ask for it:
+
+```csharp
+builder.Services.AddDbContext<AppContext>(options => options
+    .UseNpgsql(builder.Configuration.GetConnectionString("Postgres"))
+    .UseModules(builder.Configuration)
+    .CheckModuleTableOwners());
+```
+
+`ApplyModuleConfigurations` then notes, module by module, which module names which entity's table.
+When EF Core finalizes the model — after the context's whole `OnModelCreating` and the relational
+conventions, with a convention added last — the tables the model ends up with are compared, and the
+model is refused with an `InvalidOperationException` when a table or an entity has two owners:
 
 ```text
 The model of AppContext maps a table or an entity from two modules, and a table and an entity have
@@ -138,21 +151,23 @@ Pick the owner. ...
   the first module that configures it, which the message marks `by convention`. A module that only
   adds to another's entity — a relationship, an index — owns nothing; neither do a derived type and an
   owned type, which live in their root's or owner's table.
-- Tables are compared by schema and name without regard to case, with the schema the model gives
-  them, its default schema included. Several entities of one module on one table — table splitting,
+- Tables are compared by schema and name without regard to case, as the finished model has them: a
+  default schema, a renamed table or a mapping strategy the context sets after the modules counts. Several entities of one module on one table — table splitting,
   a hierarchy — have one owner.
 - It runs once per model: models are cached per set of modules, so it costs nothing per context or
-  per query. `dotnet ef` and a test that composes the model get the same check, from the same
-  `OnModelCreating`.
+  per query. `dotnet ef` and a test that composes the model get the same check where their options
+  call `CheckModuleTableOwners()` too — the design-time factory's as well as the host's.
 - `FusionModules:RuntimeTopologyChecks=false` in the configuration handed to `UseModules` turns it
-  off with the host's other startup checks. `UseModules(params string[])`, for `dotnet ef` and tests,
-  always checks.
+  off with the host's other startup checks. With `UseModules(params string[])`, for `dotnet ef` and
+  tests, `CheckModuleTableOwners()` alone decides.
 - It needs EF Core's relational extensions, which every relational provider brings; they are read by
   reflection, so this package still depends on EF Core alone. Without them there are no tables, and
   nothing to check.
 
 What it cannot see: two contexts, one per module, are two models, each checked alone; and a module
 that names an entity's table exactly as another module already did changes nothing in the model.
+Without `CheckModuleTableOwners()` nothing is noted and nothing is compared: EF Core's own
+validation still refuses two unrelated entity types on one table, in its own words.
 [MOD0017](rules/MOD0017.md) asks the same question in the host's build, of constant names across
 every module the host references, and sees both.
 
