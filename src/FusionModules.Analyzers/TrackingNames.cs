@@ -10,6 +10,9 @@ internal static class TrackingNames
     public const string Module = nameof(Module);
     public const string RegistrationCandidates = nameof(RegistrationCandidates);
     public const string Registrations = nameof(Registrations);
+    public const string TableCandidates = nameof(TableCandidates);
+    public const string TableAttributes = nameof(TableAttributes);
+    public const string OwnedTables = nameof(OwnedTables);
 
     /// <summary><see cref="KnownModulesGenerator"/>: the project kind and whether the list is switched off.</summary>
     public const string KnownModulesSettings = nameof(KnownModulesSettings);

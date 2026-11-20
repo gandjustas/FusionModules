@@ -221,4 +221,13 @@
   <data name="MOD0016_Description" xml:space="preserve">
     <value>Not a defect: a step of taking a context apart. A model composed from modules is made of IEntityTypeConfiguration&lt;T&gt; classes, which each module keeps beside its entities and ApplyModuleConfigurations finds; configuration written in OnModelCreating cannot move with its entity, and a DbSet property makes the context name the entity's type. The fix writes one class per entity, in a file of its own, and leaves in OnModelCreating what belongs to no single entity. Where the context already composes its model from this assembly - ApplyModuleConfigurations in a module, ApplyConfigurationsFromAssembly - the classes are found by that call; otherwise each is applied with ApplyConfiguration where the entity's configuration stood. A DbSet property becomes an extension property of DbContext in the context's namespace (an extension method before C# 14, with its uses rewritten), and its entity's class says the table name the property gave. Configuration that reads the context, the model builder or a local of the method, or whose order against what stays cannot be kept, is left in place; so is a property that an interface asks for, that is assigned, or whose entity would come into the model later than it did. Run it with: dotnet format analyzers &lt;project&gt; --diagnostics MOD0016 --severity info.</value>
   </data>
+  <data name="MOD0017_Title" xml:space="preserve">
+    <value>Two modules map one table or one entity</value>
+  </data>
+  <data name="MOD0017_Message" xml:space="preserve">
+    <value>'{0}' is mapped by modules {1}; a table and an entity have one owning module, the one that names the table</value>
+  </data>
+  <data name="MOD0017_Description" xml:space="preserve">
+    <value>A module that maps another module's table - its own copy of the entity on that table, or the other module's entity under a ToTable of its own - compiles and runs until the owner changes its schema, and with one entity EF Core silently keeps the mapping applied last. Each module's build records the tables it names with ToTable or [Table], with constant names; the host's build reads the records of every module it references and reports a table or an entity with more than one owner. A module that configures another's entity without naming its table (a relationship, an index) does not own it. Read the data through the owner's contract, move the entity to the owner and reference it, or read it through a view (ToView) or a query. Modules that are alternatives and are never loaded together are listed in fusion_modules_allowed_table_collisions. Names read from configuration and tables named by convention are not seen.</value>
+  </data>
 </root>

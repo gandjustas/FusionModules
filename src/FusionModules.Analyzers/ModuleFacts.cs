@@ -66,6 +66,12 @@ internal static class ModuleFacts
     public const string AllowedServiceCollisionsOption = "fusion_modules_allowed_service_collisions";
 
     /// <summary>
+    /// The host's list of tables and entities its modules map as alternatives, one per topology:
+    /// MOD0017 leaves them alone.
+    /// </summary>
+    public const string AllowedTableCollisionsOption = "fusion_modules_allowed_table_collisions";
+
+    /// <summary>
     /// Resolves <c>FusionModules.ModuleBase</c>. Uses the plural lookup because the type can legitimately
     /// appear more than once — from the package and from a vendored copy, say.
     /// </summary>

@@ -28,6 +28,7 @@ internal static class Diagnostics
     public const string ModulesRegisterOneServiceDifferentlyId = "MOD0014";
     public const string ProgramCanBecomeModuleId = "MOD0015";
     public const string EntityConfigurationCanMoveId = "MOD0016";
+    public const string ModulesOwnOneTableId = "MOD0017";
 
     public static readonly DiagnosticDescriptor ModuleMustNotExposePublicTypes =
         Create(ModuleMustNotExposePublicTypesId, DiagnosticSeverity.Error);
@@ -76,6 +77,9 @@ internal static class Diagnostics
 
     public static readonly DiagnosticDescriptor EntityConfigurationCanMove =
         Create(EntityConfigurationCanMoveId, DiagnosticSeverity.Info, UsageCategory);
+
+    public static readonly DiagnosticDescriptor ModulesOwnOneTable =
+        Create(ModulesOwnOneTableId, DiagnosticSeverity.Error, UsageCategory, WellKnownDiagnosticTags.CompilationEnd);
 
     private static DiagnosticDescriptor Create(string id, DiagnosticSeverity severity, string? category = null, params string[] customTags) =>
         new(

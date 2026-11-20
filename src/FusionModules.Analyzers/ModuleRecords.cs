@@ -39,6 +39,51 @@ internal static class ModuleRecords
                 : null;
     }
 
+    /// <summary>
+    /// A table the module's code maps, and the entity it maps there (MOD0017). The table is compared
+    /// as <see cref="TableKey"/>; the entity, when the mapping names one, by its identity, which
+    /// carries the assembly: two modules' own internal <c>Shop.Note</c> are two entities. An owned
+    /// type's table, a table an entity is split into and a builder of no particular type name no
+    /// entity, and leave the last three empty.
+    /// </summary>
+    public record struct OwnedTable(string Schema, string Table, string Entity, string EntityIdentity, string Spellings)
+    {
+        /// <summary>The attribute's constructor parameters, in the order <see cref="Arguments"/> writes them and <see cref="Read"/> reads them.</summary>
+        public const string Parameters = "string schema, string table, string entity, string entityIdentity, string entitySpellings";
+
+        /// <summary>The table as a reader writes it: <c>Sales.Orders</c>, or <c>Orders</c> without a schema.</summary>
+        public readonly string TableName => Schema.Length == 0 ? Table : Schema + "." + Table;
+
+        /// <summary>
+        /// What tables are compared by: the name with its schema, without regard to case — SQL Server
+        /// and SQLite compare them so by default, and on PostgreSQL two names that differ only in case
+        /// are a trap of their own. A table without a schema is not the table of a named schema: which
+        /// schema it ends up in depends on the provider and on <c>HasDefaultSchema</c>.
+        /// </summary>
+        public readonly string TableKey => TableName.ToUpperInvariant();
+
+        /// <summary>The attribute's constructor arguments, as C# literals.</summary>
+        public readonly string Arguments() =>
+            string.Join(", ", new[] { Schema, Table, Entity, EntityIdentity, Spellings }.Select(value => SymbolDisplay.FormatLiteral(value, quote: true)));
+
+        /// <summary>The mapping an attribute records, or null when it is not one of ours.</summary>
+        public static OwnedTable? Read(AttributeData attribute) =>
+            attribute.AttributeClass is { } type &&
+            type.Name == ModuleRecordsGenerator.TableAttributeName &&
+            type.ContainingNamespace?.ContainingNamespace?.ToDisplayString() == ModuleRecordsGenerator.AttributeNamespace &&
+            attribute.ConstructorArguments is { Length: 5 } arguments &&
+            arguments.All(argument => argument.Value is string)
+                ? new OwnedTable((string)arguments[0].Value!, (string)arguments[1].Value!, (string)arguments[2].Value!, (string)arguments[3].Value!, (string)arguments[4].Value!)
+                : null;
+    }
+
+    /// <summary>The tables the module's code maps.</summary>
+    public static IEnumerable<(string Module, OwnedTable Table)> OwnedTables(IAssemblySymbol module) =>
+        module.GetAttributes()
+            .Select(OwnedTable.Read)
+            .Where(table => table is not null)
+            .Select(table => (module.Name, table!.Value));
+
     /// <summary>The services the module's code registers.</summary>
     public static IEnumerable<(string Module, Registration Registration)> Registrations(IAssemblySymbol module) =>
         module.GetAttributes()

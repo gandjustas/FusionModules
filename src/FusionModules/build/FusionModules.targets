@@ -16,6 +16,8 @@
     <CompilerVisibleProperty Include="FusionModulesProjectReferences" />
     <!-- MOD0014's allow-list, so it can be set from a project file as well as from .editorconfig. -->
     <CompilerVisibleProperty Include="fusion_modules_allowed_service_collisions" />
+    <!-- MOD0017's, likewise. -->
+    <CompilerVisibleProperty Include="fusion_modules_allowed_table_collisions" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -122,12 +122,14 @@ internal static class RegistrationTest
     /// <param name="options">Global analyzer options for the host: <c>.editorconfig</c> keys or <c>build_property.</c> ones.</param>
     /// <param name="metadataOnly">Emit the modules as reference assemblies, as a build with <c>ProduceReferenceAssembly</c> hands them to the host.</param>
     /// <param name="hostKind">The host's project kind, as MSBuild would set it.</param>
+    /// <param name="id">The rule whose diagnostics are returned: MOD0014 unless a test of another host rule asks.</param>
     public static async Task<ImmutableArray<Diagnostic>> HostAsync(
         IEnumerable<Module> modules,
         string? contracts = null,
         Dictionary<string, string>? options = null,
         bool metadataOnly = false,
-        string hostKind = "Host")
+        string hostKind = "Host",
+        string id = Diagnostics.ModulesRegisterOneServiceDifferentlyId)
     {
         var references = await ReferencesAsync(contracts);
 
@@ -153,7 +155,7 @@ internal static class RegistrationTest
             .WithAnalyzers([new HostAnalyzer()], new AnalyzerOptions([], new GeneratorTest.Options(globals)))
             .GetAnalyzerDiagnosticsAsync(CancellationToken.None);
 
-        return [.. diagnostics.Where(diagnostic => diagnostic.Id == Diagnostics.ModulesRegisterOneServiceDifferentlyId)];
+        return [.. diagnostics.Where(diagnostic => diagnostic.Id == id)];
     }
 
     /// <summary>The framework, and the contracts library when there is one.</summary>

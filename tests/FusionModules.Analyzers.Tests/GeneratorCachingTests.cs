@@ -78,6 +78,72 @@ public class GeneratorCachingTests
             ModuleRecordsSteps);
 
     [Test]
+    public async Task ModuleRecords_OfTables_InAModule_AreCached() =>
+        // The tables a module maps: a configuration class, a model builder chain and an attribute,
+        // with the module's registrations beside them in the one file.
+        await AssertCachedAsync(
+            new ModuleRecordsGenerator(),
+            CSharpCompilation.Create(
+                "Orders",
+                [
+                    CSharpSyntaxTree.ParseText(OrdersModule, path: "Module.cs"),
+                    CSharpSyntaxTree.ParseText(OrdersTables, path: "Tables.cs"),
+                ],
+                await RegistrationTest.ReferencesAsync(TableOwnershipTests.EntityFrameworkStubs),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)),
+            Options("Module"),
+            expectOutput: true,
+            [.. ModuleRecordsSteps, .. TableSteps]);
+
+    [Test]
+    public async Task ModuleRecords_OfTables_InAHost_WriteNothing_AndAreCached() =>
+        await AssertCachedAsync(
+            new ModuleRecordsGenerator(),
+            CSharpCompilation.Create(
+                "Host",
+                [
+                    CSharpSyntaxTree.ParseText(OrdersTables, path: "Tables.cs"),
+                    CSharpSyntaxTree.ParseText("class Program { static void Main() { } }", path: "Program.cs"),
+                ],
+                await RegistrationTest.ReferencesAsync(TableOwnershipTests.EntityFrameworkStubs),
+                new CSharpCompilationOptions(OutputKind.ConsoleApplication)),
+            Options("Host"),
+            expectOutput: false,
+            [TrackingNames.ProjectKind, TrackingNames.Module, TrackingNames.Registrations, .. TableSteps]);
+
+    private const string OrdersTables = """
+        using Microsoft.EntityFrameworkCore;
+        using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+        namespace Orders
+        {
+            public class Order { public int Id { get; set; } }
+
+            public class Customer { public int Id { get; set; } }
+
+            [System.ComponentModel.DataAnnotations.Schema.Table("Invoices", Schema = "Billing")]
+            public class Invoice { public int Id { get; set; } }
+
+            internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+            {
+                public void Configure(EntityTypeBuilder<Order> entity) => entity.ToTable("Orders", "Sales");
+            }
+
+            internal static class Mappings
+            {
+                public static void Map(ModelBuilder modelBuilder) => modelBuilder.Entity<Customer>(customer => customer.ToTable("Customers"));
+            }
+        }
+        """;
+
+    private static readonly string[] TableSteps =
+    [
+        TrackingNames.TableCandidates,
+        TrackingNames.TableAttributes,
+        TrackingNames.OwnedTables,
+    ];
+
+    [Test]
     public async Task ModuleRecords_InAHost_WriteNothing_AndAreCached()
     {
         // A registration in the host too, so that every step has something to look at and decline.

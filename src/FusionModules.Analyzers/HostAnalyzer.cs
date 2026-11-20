@@ -11,7 +11,8 @@ namespace FusionModules.Analyzers;
 /// use their types (MOD0004) and must not pull them in through Application Part Discovery (MOD0007).
 /// A library that is not a module must not use them either (MOD0005): wherever it goes, the module
 /// goes with it. Modules may use each other; tests may use anything. And two of the host's modules
-/// should not register one service with different implementations (MOD0014).
+/// should not register one service with different implementations (MOD0014), nor map one table or
+/// one entity (MOD0017).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class HostAnalyzer : DiagnosticAnalyzer
@@ -23,6 +24,7 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         Diagnostics.ApplicationPartMustNotNameModule,
         Diagnostics.LibraryMustNotUseModuleTypes,
         Diagnostics.ModulesRegisterOneServiceDifferently,
+        Diagnostics.ModulesOwnOneTable,
     ];
 
     /// <inheritdoc />
@@ -71,6 +73,7 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
         {
             CheckApplicationParts(context, modules);
             CheckRegistrations(context, modules);
+            CheckTables(context, modules);
         }
     }
 
@@ -298,5 +301,81 @@ public sealed class HostAnalyzer : DiagnosticAnalyzer
                 string.Join("; ", byModule.Select(module =>
                     $"{module.Module}: {string.Join(", ", module.Implementations.Select(identity => ambiguous ? identity : display[identity]))}"))));
         }
+    }
+
+    /// <summary>
+    /// A table, or an entity, that two modules map, read from what each module recorded about itself
+    /// (<see cref="ModuleRecords.OwnedTable"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A table has one owner, the module that names it; so does an entity. An entity two modules name
+    /// a table for is reported as the entity, whether the tables are one or two: EF Core keeps the
+    /// mapping applied last, and the other module's table is silently not the entity's any more. A
+    /// table that two modules' different entities are mapped onto is reported as the table — the
+    /// article's Billing, with its own copy of <c>Order</c> on the Orders module's table.
+    /// </para>
+    /// <para>
+    /// Asked of every module the host references, as MOD0014 is: modules that are alternatives, one
+    /// per topology, are listed in <c>fusion_modules_allowed_table_collisions</c>. An error otherwise —
+    /// two owners of one table are never what was meant in one deployment.
+    /// </para>
+    /// </remarks>
+    private static void CheckTables(CompilationAnalysisContext context, List<IAssemblySymbol> modules)
+    {
+        var tables = modules.SelectMany(ModuleRecords.OwnedTables).ToList();
+        if (tables.Count < 2)
+        {
+            return;
+        }
+
+        ImmutableHashSet<string>? allowed = null;
+        ImmutableHashSet<string> Allowed() =>
+            allowed ??= ModuleFacts.ReadListOption(context.Options.AnalyzerConfigOptionsProvider, context.Compilation.SyntaxTrees, ModuleFacts.AllowedTableCollisionsOption);
+
+        foreach (var entity in tables
+                     .Where(entry => entry.Table.EntityIdentity.Length > 0)
+                     .GroupBy(entry => entry.Table.EntityIdentity)
+                     .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            var owners = Owners(entity);
+            if (owners.Count < 2 ||
+                entity.First().Table.Spellings.Split(ModuleRecordsGenerator.SpellingSeparator).Any(Allowed().Contains))
+            {
+                continue;
+            }
+
+            Report(context, entity.First().Table.Entity, owners);
+        }
+
+        foreach (var table in tables.GroupBy(entry => entry.Table.TableKey).OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            var owners = Owners(table);
+            if (owners.Count < 2)
+            {
+                continue;
+            }
+
+            // One entity, which every owner maps here: the entity's collision, reported (or allowed) above.
+            var entities = table.Select(entry => entry.Table.EntityIdentity).Distinct().ToList();
+            if (entities.Count == 1 && entities[0].Length > 0)
+            {
+                continue;
+            }
+
+            var name = table.Select(entry => entry.Table.TableName).OrderBy(spelling => spelling, StringComparer.Ordinal).First();
+            if (Allowed().Any(entry => string.Equals(entry, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            Report(context, name, owners);
+        }
+
+        static List<string> Owners(IEnumerable<(string Module, ModuleRecords.OwnedTable Table)> entries) =>
+            entries.Select(entry => entry.Module).Distinct(StringComparer.Ordinal).OrderBy(module => module, StringComparer.Ordinal).ToList();
+
+        static void Report(CompilationAnalysisContext context, string key, List<string> owners) =>
+            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.ModulesOwnOneTable, Location.None, key, string.Join(", ", owners)));
     }
 }
