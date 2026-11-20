@@ -127,6 +127,14 @@ public sealed partial class ModuleRecordsGenerator
             return null;
         }
 
+        // A shared-type entity — a many-to-many join table, UsingEntity<Dictionary<string, object>> —
+        // is a framework type that every such table shares: the table is the module's, the type is
+        // nobody's entity.
+        if (entity is not null && TopologyConventions.IsFrameworkAssembly(entity.ContainingAssembly?.Name))
+        {
+            entity = null;
+        }
+
         // A builder of a type parameter's entity in a generic helper maps a different entity at every
         // call, and its tables are named by the caller's arguments; nothing is recorded.
         if (builder.TypeArguments.Any(ContainsTypeParameter))

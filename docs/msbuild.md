@@ -202,8 +202,17 @@ message when two of those modules load together after all — see
 [runtime.md](runtime.md#alternatives-the-hosts-build-already-knows).
 
 A module also gets a generated file, `FusionModules.ModuleRecords.g.cs`, when its code registers a
-service: internal assembly attributes that record what it registers, which is how the host's build
-knows. They add nothing to the module's public surface.
+service or maps a table: internal assembly attributes that record what it registers and which tables
+it names, which is how the host's build knows. They add nothing to the module's public surface.
+
+## `fusion_modules_allowed_table_collisions`
+
+No default. Tables and entities [MOD0017](rules/MOD0017.md) leaves alone in the host's build:
+modules that are alternatives, never loaded together, each mapping the table. A table is written
+with its schema (`Sales.Payments`) and matched without regard to case; an entity by its type name,
+short or full. The same list can be written in `.editorconfig` under the same name; both are read.
+Passed to the analyzers through `CompilerVisibleProperty`. Nothing of it reaches the runtime: two
+alternatives composed into one model are refused there whatever the list says.
 
 ## `FusionModulesDeduplicateModuleFile`
 

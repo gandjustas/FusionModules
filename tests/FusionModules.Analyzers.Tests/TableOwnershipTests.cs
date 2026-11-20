@@ -224,6 +224,20 @@ public class TableOwnershipTests
     }
 
     [Test]
+    public async Task TwoModulesJoinTables_AreTwoTables_NotOneEntity()
+    {
+        // A many-to-many join table is a shared-type entity: Dictionary<string, object> in every
+        // module. The tables are each module's; the type is nobody's entity.
+        var diagnostics = await HostAsync(
+        [
+            Mapping("Orders.Entities", """modelBuilder.Entity<System.Collections.Generic.Dictionary<string, object>>().ToTable("OrderTags");"""),
+            Mapping("Customers.Entities", """modelBuilder.Entity<System.Collections.Generic.Dictionary<string, object>>().ToTable("CustomerTags");"""),
+        ]);
+
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
     public async Task RecordsTheTableAttributeOfTheModulesOwnEntity()
     {
         var generated = await GenerateAsync(Mapping(
