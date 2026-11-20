@@ -172,8 +172,10 @@ class with a `ToTable` of its own. Separate processes let that pass; one host do
 - **MOD0017** (error, in the host's build) reports a table or an entity that two modules the host
   references name with constants. Alternatives that no topology loads together are listed in
   `fusion_modules_allowed_table_collisions`.
-- **The model refuses it at startup** (`ApplyModuleConfigurations`), with what the build cannot
-  see: tables named by convention, names read from configuration, the model's default schema.
+- **The model can refuse it too**, where the context's options add `.CheckModuleTableOwners()`
+  after `UseModules`: checked when EF Core finalizes the model, with what the build cannot see —
+  tables named by convention, names read from configuration, the schema the finished model gives a
+  table. Off by default; turn it on in hosts whose tables are not all named with constants.
 
 Decide with the user which module owns the table, then pick one, in this order of preference:
 

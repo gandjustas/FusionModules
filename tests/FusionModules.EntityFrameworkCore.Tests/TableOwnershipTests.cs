@@ -10,9 +10,9 @@ using static FusionModules.EntityFrameworkCore.ModuleTables;
 namespace FusionModules.EntityFrameworkCore.Tests;
 
 /// <summary>
-/// MOD0017 at startup: a model composed from modules in which two modules own one table or one
-/// entity fails to build, with what the build cannot see — tables named by convention, names read
-/// from configuration, the schema the model ends up with.
+/// MOD0017 in the model (<c>CheckModuleTableOwners</c>): a model composed from modules in which two
+/// modules own one table or one entity fails to build, with what the build cannot see — tables named
+/// by convention, names read from configuration, the schema the finished model gives a table.
 /// </summary>
 /// <remarks>
 /// Most cases compose a model from "modules" that are lambdas over one model builder, so that one
@@ -27,19 +27,24 @@ public class TableOwnershipTests
     private static Contribution Of(string name, Action<ModelBuilder> apply, params Type[] entities) =>
         new(name, null, entities, apply);
 
-    /// <summary>Applies the modules in order to a model builder with SQLite's conventions, and checks the result.</summary>
-    private static void Compose(bool check, Action<ModelBuilder>? before, params Contribution[] modules)
+    /// <summary>
+    /// Applies the modules in order to a model builder with SQLite's conventions, lets the "context"
+    /// configure more after them, finalizes the model and checks it — what the convention does, last.
+    /// </summary>
+    private static void Compose(bool check, Action<ModelBuilder>? after, params Contribution[] modules)
     {
         var modelBuilder = SqliteConventionSetBuilder.CreateModelBuilder();
-        before?.Invoke(modelBuilder);
         ModuleTables.Apply(modelBuilder, modules, "ShopContext", check);
+        after?.Invoke(modelBuilder);
+        modelBuilder.FinalizeModel();
+        ModuleTables.Check(modelBuilder.Model);
     }
 
     private static Task<InvalidOperationException?> FailsAsync(params Contribution[] modules) =>
         FailsAsync(null, modules);
 
-    private static async Task<InvalidOperationException?> FailsAsync(Action<ModelBuilder>? before, params Contribution[] modules) =>
-        await Assert.That(() => Compose(check: true, before, modules)).Throws<InvalidOperationException>();
+    private static async Task<InvalidOperationException?> FailsAsync(Action<ModelBuilder>? after, params Contribution[] modules) =>
+        await Assert.That(() => Compose(check: true, after, modules)).Throws<InvalidOperationException>();
 
     private static async Task PassesAsync(params Contribution[] modules) =>
         await Assert.That(() => Compose(check: true, null, modules)).ThrowsNothing();
@@ -102,6 +107,8 @@ public class TableOwnershipTests
     [Test]
     public async Task TheModelsDefaultSchema_IsTheSchemaOfATableWithoutOne()
     {
+        // Set by the context after ApplyModuleConfigurations, as often as before it: the tables are
+        // compared once the model is finished.
         var exception = await FailsAsync(
             model => model.HasDefaultSchema("Sales"),
             Of("Orders.Entities", model => model.Entity<Ownership.Orders.Order>().ToTable("Orders"), typeof(Ownership.Orders.Order)),
@@ -109,6 +116,15 @@ public class TableOwnershipTests
 
         await Assert.That(exception!.Message).Contains("'Sales.Orders' is mapped by Billing");
     }
+
+    [Test]
+    public async Task ATableTheContextRenamesAfterTheModules_IsComparedByItsFinalName() =>
+        // Billing's copy, renamed onto the Orders table by the context itself: the context is not a
+        // module, so Billing still owns the entity, and the table is what the finished model says.
+        await FailsAsync(
+            model => model.Entity<Ownership.Billing.Order>().ToTable("Orders", "Sales"),
+            Of("Orders.Entities", model => model.Entity<Ownership.Orders.Order>().ToTable("Orders", "Sales"), typeof(Ownership.Orders.Order)),
+            Of("Billing", model => model.Entity<Ownership.Billing.Order>().ToTable("BillingOrders"), typeof(Ownership.Billing.Order)));
 
     [Test]
     public async Task TablesAreComparedWithoutRegardToCase()
@@ -205,9 +221,20 @@ public class TableOwnershipTests
     }
 
     [Test]
+    public async Task WithoutCheckModuleTableOwners_NothingIsRecordedOrChecked()
+    {
+        // Off unless asked for: EF Core's own validation is what is left, and it refuses two unrelated
+        // entity types on one table in its own words.
+        using var context = Create<UncheckedByDefaultContext>(options => options.UseModules(Module, LegacyModule));
+
+        var exception = await Assert.That(() => context.Model).Throws<InvalidOperationException>();
+        await Assert.That(exception!.Message).DoesNotContain("MOD0017");
+    }
+
+    [Test]
     public async Task TwoModulesOnOneTable_StopTheModel()
     {
-        using var context = Create<CollidingContext>(options => options.UseModules(Module, LegacyModule));
+        using var context = Create<CollidingContext>(options => options.UseModules(Module, LegacyModule).CheckModuleTableOwners());
 
         var exception = await Assert.That(() => context.Model).Throws<InvalidOperationException>();
         // Modules in order of their names, whichever order the model applied them in.
@@ -219,7 +246,7 @@ public class TableOwnershipTests
     {
         // dotnet ef builds the model with the design-time flag, which is part of the cache key: a
         // model of its own, composed by the same OnModelCreating.
-        using var context = Create<DesignTimeContext>(options => options.UseModules(Module, LegacyModule));
+        using var context = Create<DesignTimeContext>(options => options.UseModules(Module, LegacyModule).CheckModuleTableOwners());
 
         var exception = await Assert.That(() => context.GetService<IDesignTimeModel>().Model).Throws<InvalidOperationException>();
         await Assert.That(exception!.Message).Contains("'Sales.Orders' is mapped by");
@@ -234,7 +261,7 @@ public class TableOwnershipTests
             .AddInMemoryCollection(ModuleBase.CreateModuleRegistry(Module, LegacyModule))
             .AddInMemoryCollection(new Dictionary<string, string?> { ["FusionModules:RuntimeTopologyChecks"] = "false" })
             .Build();
-        using var context = Create<UncheckedContext>(options => options.UseModules(configuration));
+        using var context = Create<UncheckedContext>(options => options.UseModules(configuration).CheckModuleTableOwners());
 
         var exception = await Assert.That(() => context.Model).Throws<InvalidOperationException>();
         await Assert.That(exception!.Message).DoesNotContain("MOD0017");
@@ -260,6 +287,11 @@ internal sealed class CollidingContext(DbContextOptions<CollidingContext> option
 }
 
 internal sealed class DesignTimeContext(DbContextOptions<DesignTimeContext> options) : DbContext(options)
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyModuleConfigurations(this);
+}
+
+internal sealed class UncheckedByDefaultContext(DbContextOptions<UncheckedByDefaultContext> options) : DbContext(options)
 {
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyModuleConfigurations(this);
 }

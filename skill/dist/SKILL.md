@@ -635,8 +635,10 @@ class with a `ToTable` of its own. Separate processes let that pass; one host do
 - **MOD0017** (error, in the host's build) reports a table or an entity that two modules the host
   references name with constants. Alternatives that no topology loads together are listed in
   `fusion_modules_allowed_table_collisions`.
-- **The model refuses it at startup** (`ApplyModuleConfigurations`), with what the build cannot
-  see: tables named by convention, names read from configuration, the model's default schema.
+- **The model can refuse it too**, where the context's options add `.CheckModuleTableOwners()`
+  after `UseModules`: checked when EF Core finalizes the model, with what the build cannot see —
+  tables named by convention, names read from configuration, the schema the finished model gives a
+  table. Off by default; turn it on in hosts whose tables are not all named with constants.
 
 Decide with the user which module owns the table, then pick one, in this order of preference:
 
@@ -1729,10 +1731,11 @@ startup still fails and the message says plainly to load only one of them.
 
 ### The model is refused: "maps a table or an entity from two modules"
 
-`ApplyModuleConfigurations` refuses a model in which two modules own one table or one entity, and
+Where the context's options call `CheckModuleTableOwners()`, EF Core refuses a model in which two
+modules own one table or one entity, and
 names the table or the entity and the modules: both name the entity's table, or each maps an entity
 of its own onto one table — `by convention` when no one called `ToTable` and the class names
-matched. It fires when EF Core builds the model, which in a host that migrates at startup is startup,
+matched. It fires when EF Core finalizes the model, which in a host that migrates at startup is startup,
 and in `dotnet ef` and in topology tests too. Pick the owner and follow "One table, one owner" in
 [data.md](#phase-3-data). If the two modules are alternatives, remove one from
 `HOSTINGSTARTUPASSEMBLIES`. `FusionModules:RuntimeTopologyChecks=false` turns it off with the other
@@ -1945,7 +1948,7 @@ The usual suspects, in order:
 | MOD0014 | Warning, in the host: two modules it references register one service with different implementations, so where they load together one gets the other's. Register keyed, or a type of each module's own; `[MultipleImplementations]` on a contract read as `IEnumerable<T>`; list alternatives no topology loads together in `fusion_modules_allowed_service_collisions`. The startup check catches the same thing at runtime, including registrations made inside libraries. |
 | MOD0015 | Info, not a defect: this program's own registrations and mappings can move into a module in the same project. The fix writes `Module.cs`; run it with `dotnet format analyzers <solution> --diagnostics MOD0015 --severity info`. See [modules.md](#phase-2-into-modules). |
 | MOD0016 | Info, not a defect: entity configuration in `OnModelCreating` can become `IEntityTypeConfiguration<T>` classes and `DbSet` properties extension members of `DbContext`. Same command with `MOD0016`; compare inventories before and after. See [data.md](#phase-3-data). |
-| MOD0017 | Error, in the host: two modules it references map one table, or give one entity a table, with constant names (`ToTable`, `[Table]`). Pick the owner: read through its contract, move the entity to it, or read through a view. List alternatives no topology loads together in `fusion_modules_allowed_table_collisions`. The model's check at startup sees tables named by convention and from configuration too. See "One table, one owner" in [data.md](#phase-3-data). |
+| MOD0017 | Error, in the host: two modules it references map one table, or give one entity a table, with constant names (`ToTable`, `[Table]`). Pick the owner: read through its contract, move the entity to it, or read through a view. List alternatives no topology loads together in `fusion_modules_allowed_table_collisions`. The model's check, `CheckModuleTableOwners()` on the context's options, sees tables named by convention and from configuration too. See "One table, one owner" in [data.md](#phase-3-data). |
 
 MOD0015 and MOD0016 are suggestions, so `dotnet build -warnaserror` does not fail on them and
 "zero MOD diagnostics" does not mean them. If `dotnet format` changed nothing: `--severity info` is

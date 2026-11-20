@@ -25,9 +25,9 @@ and exits, say) runs none of them; validate those topologies in a test that star
 They run once per host however many modules are loaded, and the first failure stops startup with
 an `InvalidOperationException` that names what to change.
 
-One check runs elsewhere: with `FusionModules.EntityFrameworkCore`, the check that a table and an
-entity have one owning module runs when EF Core builds the model — see
-[below](#two-modules-mapping-one-table).
+One check runs elsewhere, and only where it is asked for: with `FusionModules.EntityFrameworkCore`,
+`CheckModuleTableOwners()` has EF Core check, when it builds the model, that a table and an entity
+have one owning module — see [below](#two-modules-mapping-one-table).
 
 Two checks of the module list come before these, and are not configured here either. The generated
 `builder.ValidateModules()` fails startup when a name in `HOSTINGSTARTUPASSEMBLIES` did not load or
@@ -46,8 +46,8 @@ or, without touching the code, `FusionModules:RuntimeTopologyChecks=false` in co
 `HOSTINGSTARTUPASSEMBLIES` that `ValidateModules()` itself makes still runs; what stops is everything
 below that the modules do when the pipeline is built: service and options collisions, route
 collisions, the endpoint counts in the startup report, which says "not read: runtime topology
-checks are off" instead, and the EF Core model's check of table owners when the context's
-`UseModules` is handed the host's configuration ([MOD0017](rules/MOD0017.md#at-startup)). The endpoints are then built on the first request, as ASP.NET Core does
+checks are off" instead, and the EF Core model's check of table owners, where the context asked for
+it and its `UseModules` is handed the host's configuration ([MOD0017](rules/MOD0017.md#in-the-model-optionally)). The endpoints are then built on the first request, as ASP.NET Core does
 without this package.
 
 The checks cost a pass over the registrations before the pipeline is built and building the
@@ -181,13 +181,14 @@ configuration, so a library's type that modules really share is listed in both.
 
 ## Two modules mapping one table
 
-With `FusionModules.EntityFrameworkCore`, the model composed from the modules is refused when two of
-them own one table or one entity: both name an entity's table, or each maps an entity of its own onto
-one table. It runs when EF Core builds the model rather than when the pipeline is built — on the
-host's first use of the context, which in a host that migrates at startup is startup — and sees what
-the build cannot: tables named by convention, names read from configuration, the model's default
-schema. See [ef-core.md](ef-core.md#one-owner-per-table) and its build half,
-[MOD0017](rules/MOD0017.md).
+The host's build reports two modules mapping one table, or giving one entity a table, as
+[MOD0017](rules/MOD0017.md), an error, for the names written as constants. With
+`FusionModules.EntityFrameworkCore` the model can be checked too: where the context's options call
+`CheckModuleTableOwners()`, the model composed from the modules is refused when two of them own one
+table or one entity. It runs when EF Core finalizes the model rather than when the pipeline is built —
+on the host's first use of the context, which in a host that migrates at startup is startup — and
+sees what the build cannot: tables named by convention, names read from configuration, the schema
+the finished model gives a table. See [ef-core.md](ef-core.md#one-owner-per-table).
 
 ## Two modules mapping one route
 
