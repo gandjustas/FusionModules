@@ -90,6 +90,15 @@ would otherwise share the first one's model. Nothing throws; you just get the wr
 `ModelCompositionTests.TopologiesInOneProcessDoNotShareAModel` fails without it. A context that
 replaces `IModelCacheKeyFactory` itself has to include `context.GetModuleSetKey()` in its own key.
 
+**`CheckModuleTableOwners()`.** Each table here has one owning module: `Orders.Entities` names
+`Sales.Orders`, `Customers.Entities` names `Marketing.Customers`, and BillingModule configures the
+orders entity without naming a table, so it owns nothing. A module that mapped another's table — its
+own copy of `Order` on `Sales.Orders` — fails the host's build with
+[MOD0017](../../docs/rules/MOD0017.md). This call adds the same check on the finished model, for what
+the build cannot see: a table named by convention or read from configuration. Both the host and
+[`DesignTimeDbContextFactory`](Host/DesignTimeDbContextFactory.cs) make it, so a migration is never
+generated from a model with two owners of one table.
+
 ## Migrations
 
 Generated against the **union of every module**, and applied whole:

@@ -10,9 +10,14 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     // UseModules: the model is composed from the modules this host activated, and EF Core caches
     // one model per set of modules — hosts with different modules in one process, as in the
     // integration tests, would otherwise share the first one's.
+    //
+    // CheckModuleTableOwners: the finished model is refused when two of those modules own one table
+    // or one entity (MOD0017). The host's build already reports the tables named with constants;
+    // this also sees tables named by convention or from configuration, once per model.
     options
         .UseNpgsql(builder.Configuration.GetConnectionString("Postgres"))
-        .UseModules(builder.Configuration);
+        .UseModules(builder.Configuration)
+        .CheckModuleTableOwners();
 
     // A topology that loads a subset of the modules legitimately has a smaller model than the
     // migrations snapshot, and MigrateAsync treats that as an error by default. Downgraded to a
