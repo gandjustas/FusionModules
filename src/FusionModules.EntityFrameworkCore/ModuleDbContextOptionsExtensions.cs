@@ -40,7 +40,15 @@ public static class ModuleDbContextOptionsExtensions
 
         // One extension per module set: GetLoadedModules hands back the same list for the same registry,
         // and the options are built again for every scope.
-        var extension = Extensions.GetValue(ModuleBase.GetLoadedModules(configuration), static modules => new ModulesOptionsExtension(modules));
+        // The startup checks' switch turns off the model's check of table owners too (MOD0017).
+        var checks = !string.Equals(configuration[TopologyConventions.RuntimeTopologyChecksKey], "false", StringComparison.OrdinalIgnoreCase);
+        var modules = ModuleBase.GetLoadedModules(configuration);
+        var extension = Extensions.GetValue(modules, modules => new ModulesOptionsExtension(modules, checks));
+        if (extension.Checks != checks)
+        {
+            extension = new ModulesOptionsExtension(modules, checks);
+        }
+
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
         return optionsBuilder.ReplaceService<IModelCacheKeyFactory, ModuleModelCacheKeyFactory>();
     }
