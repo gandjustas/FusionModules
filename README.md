@@ -110,6 +110,7 @@ requirement. Razor Pages never had it, and tag helpers cannot be relieved of it 
 | [MOD0014](docs/rules/MOD0014.md) | Two modules register one service with different implementations |
 | [MOD0015](docs/rules/MOD0015.md) | This program's own registrations can move into a module |
 | [MOD0016](docs/rules/MOD0016.md) | Entity configuration and DbSet properties can move out of the DbContext |
+| [MOD0017](docs/rules/MOD0017.md) | Two modules map one table or one entity |
 
 A host and a test project also get `KnownModules`, generated from their references: every module,
 by name. It is what an `IDesignTimeDbContextFactory` needs — `dotnet ef` takes

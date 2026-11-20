@@ -6,3 +6,4 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 MOD0016 | FusionModules.Usage | Info | Entity configuration and DbSet properties can move out of the DbContext
+MOD0017 | FusionModules.Usage | Error | Two modules map one table or one entity
