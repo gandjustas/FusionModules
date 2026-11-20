@@ -11,6 +11,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/FusionModules.Analyzers.Tests/FusionModules.Analyzers.Tests.csproj" />
     <Project Path="tests/FusionModules.EntityFrameworkCore.Tests/FusionModules.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/FusionModules.EntityFrameworkCore.TestModule/FusionModules.EntityFrameworkCore.TestModule.csproj" />
     <Project Path="tests/FusionModules.Testing.TestHost/FusionModules.Testing.TestHost.csproj" />
     <Project Path="tests/FusionModules.Testing.TestModule/FusionModules.Testing.TestModule.csproj" />
     <Project Path="tests/FusionModules.Testing.Tests/FusionModules.Testing.Tests.csproj" />

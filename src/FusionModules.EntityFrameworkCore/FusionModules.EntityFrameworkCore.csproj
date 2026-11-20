@@ -44,6 +44,8 @@
   <!-- The "Model of …" line is written as the host's Topology line is, by the same code. -->
   <ItemGroup>
     <Compile Include="..\Shared\PartsLogLine.cs" Link="Shared\PartsLogLine.cs" />
+    <!-- The startup checks' switch, which turns off the check of table owners too. -->
+    <Compile Include="..\Shared\TopologyConventions.cs" Link="Shared\TopologyConventions.cs" />
   </ItemGroup>
 
 </Project>

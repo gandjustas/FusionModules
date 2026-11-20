@@ -18,7 +18,10 @@ public static class ModuleModelBuilderExtensions
     /// <param name="modelBuilder">The model builder of <c>OnModelCreating</c>.</param>
     /// <param name="context">The context whose model is being built: <c>this</c>.</param>
     /// <returns>The same model builder, for chaining.</returns>
-    /// <exception cref="InvalidOperationException">The context's options do not name its modules.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The context's options do not name its modules; or two of the modules own one table or one
+    /// entity (MOD0017): both name its table, or each maps an entity of its own onto it.
+    /// </exception>
     /// <example>
     /// <code>
     /// protected override void OnModelCreating(ModelBuilder modelBuilder) =>
@@ -30,6 +33,13 @@ public static class ModuleModelBuilderExtensions
     /// A module without configurations is skipped rather than scanned again by EF Core. Configurations
     /// are found among the types that load, so a module whose optional dependency is not deployed
     /// still has its configurations applied.
+    /// </para>
+    /// <para>
+    /// A table and an entity have one owning module, the one that names the table; where two modules
+    /// own one, the model is refused (MOD0017, whose build half sees only constant names; this sees
+    /// tables named by convention and from configuration too). The check runs once per model, which
+    /// is cached per set of modules, and is off where <c>FusionModules:RuntimeTopologyChecks</c> is
+    /// <c>false</c> in the configuration handed to <c>UseModules</c>.
     /// </para>
     /// <para>
     /// The model's composition is written to the log once per set of modules (category
@@ -50,10 +60,15 @@ public static class ModuleModelBuilderExtensions
 
         var loaded = modules.Modules.Select(module => (Assembly: module, Module: ModuleEntities.Of(module))).ToList();
 
-        foreach (var (module, _) in loaded.Where(pair => pair.Module.Entities.Count > 0))
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(module);
-        }
+        ModuleTables.Apply(
+            modelBuilder,
+            [.. loaded.Select(pair => new ModuleTables.Contribution(
+                pair.Module.Name,
+                pair.Assembly,
+                pair.Module.Entities,
+                pair.Module.Entities.Count > 0 ? model => model.ApplyConfigurationsFromAssembly(pair.Assembly) : static _ => { }))],
+            context.GetType().Name,
+            modules.Checks);
 
         Report(context, [.. loaded.Select(pair => pair.Module)]);
         return modelBuilder;

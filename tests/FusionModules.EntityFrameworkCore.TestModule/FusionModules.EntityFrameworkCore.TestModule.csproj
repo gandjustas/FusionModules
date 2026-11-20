@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A second module for FusionModules.EntityFrameworkCore.Tests, whose own assembly is the first: it
+    maps its own copy of an order onto the table the first module's Order owns, so that a model
+    composed from both has a table with two owners (MOD0017's startup half). A model composed from
+    either alone is fine, so the tests that do not name it are unaffected.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
+    <RootNamespace>FusionModules.EntityFrameworkCore.TestModule</RootNamespace>
+    <!-- tests/Directory.Build.props makes everything under tests/ a test project; this is a module. -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Wired up as samples/Directory.Build.props does it: the rules apply to it as to any module. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FusionModules\FusionModules.csproj" />
+    <ProjectReference Include="..\..\src\FusionModules.Analyzers\FusionModules.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <Import Project="..\..\src\FusionModules\build\FusionModules.targets" />
+
+</Project>

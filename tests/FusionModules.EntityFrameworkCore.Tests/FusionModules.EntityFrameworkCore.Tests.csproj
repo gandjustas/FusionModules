@@ -25,6 +25,8 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\FusionModules.EntityFrameworkCore\FusionModules.EntityFrameworkCore.csproj" />
+    <!-- A second module, named only by the tests of a table with two owners. -->
+    <ProjectReference Include="..\FusionModules.EntityFrameworkCore.TestModule\FusionModules.EntityFrameworkCore.TestModule.csproj" />
   </ItemGroup>
 
 </Project>

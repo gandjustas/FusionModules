@@ -9,12 +9,15 @@ namespace FusionModules.EntityFrameworkCore;
 /// model (<see cref="ModuleModelBuilderExtensions.ApplyModuleConfigurations"/>) and the model cache
 /// key (<see cref="ModuleModelCacheKeyFactory"/>) find them.
 /// </summary>
-internal sealed class ModulesOptionsExtension(IReadOnlyList<Assembly> modules) : IDbContextOptionsExtension
+internal sealed class ModulesOptionsExtension(IReadOnlyList<Assembly> modules, bool checks = true) : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
 
     /// <summary>The modules: the host's own first when it is one, then each after the modules it references.</summary>
     public IReadOnlyList<Assembly> Modules { get; } = modules;
+
+    /// <summary>Whether the model is checked for a table or an entity with two owning modules (MOD0017).</summary>
+    public bool Checks { get; } = checks;
 
     /// <summary>The module set as one string: part of the model cache key.</summary>
     public string Fingerprint { get; } = string.Join(';', modules.Select(module => module.GetName().Name));
