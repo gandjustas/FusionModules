@@ -162,6 +162,33 @@ The classes are then ready for the step this section is about: move `OrderConfig
 `Order` to the module that owns them, and when the last one has left, the context's
 `OnModelCreating` is `modelBuilder.ApplyModuleConfigurations(this)`.
 
+## One table, one owner: MOD0017
+
+Every table, and every entity, belongs to the one module that names it with `ToTable` (or `[Table]`).
+When the services move in, look for the places where two of them map one table: a reporting service
+with its own copy of `Order` on `Sales.Orders`, two services each configuring a shared `Order`
+class with a `ToTable` of its own. Separate processes let that pass; one host does not:
+
+- **MOD0017** (error, in the host's build) reports a table or an entity that two modules the host
+  references name with constants. Alternatives that no topology loads together are listed in
+  `fusion_modules_allowed_table_collisions`.
+- **The model refuses it at startup** (`ApplyModuleConfigurations`), with what the build cannot
+  see: tables named by convention, names read from configuration, the model's default schema.
+
+Decide with the user which module owns the table, then pick one, in this order of preference:
+
+1. **The other module reads through the owner's contract** — a service in a contracts library, an
+   endpoint, or a copy kept from the owner's events. Its entity and its `ToTable` go away.
+2. **The entity moves to the owner**, and the other module references the owner's assembly and
+   configures what it adds — a relationship, as below — without naming the table.
+3. **The other module reads through a view or a query**: `ToView("OrderSummaries", "Sales")` or
+   `ToSqlQuery(...)`. A view is not a table it owns; the owner creates it in its migrations and
+   keeps it compatible.
+
+Do not silence it by listing the table: the list is for alternatives, and if they ever load
+together the model is refused anyway. Several services that really write one table are one module,
+or the table is split between them first.
+
 ## Relationships across modules
 
 Do **not** put a navigation property on one module's entity pointing at another's — that couples
