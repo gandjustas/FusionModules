@@ -31,9 +31,12 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<A
             .AddEnvironmentVariables()
             .Build();
 
+        // Every module at once: the model a migration is generated from is the one place every table
+        // meets every other, so it is where two owners of one table would show first.
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(configuration.GetConnectionString("Postgres"))
             .UseModules(KnownModules.Names)
+            .CheckModuleTableOwners()
             .Options;
 
         return new ApplicationDbContext(options);
