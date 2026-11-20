@@ -108,11 +108,53 @@ loads.
   dependency is not deployed still has its configurations found: the types that load are scanned.
 - Called on a context whose options never got `UseModules`, `ApplyModuleConfigurations` throws an
   `InvalidOperationException` that says so.
+- **A table and an entity have one owning module.** `ApplyModuleConfigurations` refuses a model in
+  which two modules own one table or one entity — see [below](#one-owner-per-table).
 
 The package registers nothing in the application's container: the options extension and the cache
 key factory live in EF Core's internal service provider. The startup check for two modules
 registering one service, and MOD0014 in the host's build, have nothing of it to see — and EF Core's
 `DbContextOptions`, which `AddDbContext` registers, is shared by design in both.
+
+## One owner per table
+
+A module that maps another module's table — its own copy of `Order` on the Orders module's
+`Sales.Orders`, or the shared `Order` under a `ToTable` of its own — works until the owner changes its
+schema; with one entity, EF Core silently keeps the mapping applied last. So `ApplyModuleConfigurations`
+applies each module's configurations in turn, notes which module names which entity's table, and
+refuses the model with an `InvalidOperationException` when a table or an entity has two owners:
+
+```text
+The model of AppContext maps a table or an entity from two modules, and a table and an entity have
+one owning module, the one that names the table (MOD0017):
+- 'Sales.Orders' is mapped by Billing (Billing.Order) and Orders.Entities (Orders.Order).
+- 'Shop.Order' is given its table by Billing and Orders.Entities; EF Core keeps the one applied last,
+  'Billing.Orders' (Orders.Entities: 'Sales.Orders', Billing: 'Billing.Orders').
+Pick the owner. ...
+```
+
+- The module that names a table — `ToTable`, with any name, constant or not — owns it and the
+  entity; `[Table]` belongs to the module that declares the class. An entity nobody names belongs to
+  the first module that configures it, which the message marks `by convention`. A module that only
+  adds to another's entity — a relationship, an index — owns nothing; neither do a derived type and an
+  owned type, which live in their root's or owner's table.
+- Tables are compared by schema and name without regard to case, with the schema the model gives
+  them, its default schema included. Several entities of one module on one table — table splitting,
+  a hierarchy — have one owner.
+- It runs once per model: models are cached per set of modules, so it costs nothing per context or
+  per query. `dotnet ef` and a test that composes the model get the same check, from the same
+  `OnModelCreating`.
+- `FusionModules:RuntimeTopologyChecks=false` in the configuration handed to `UseModules` turns it
+  off with the host's other startup checks. `UseModules(params string[])`, for `dotnet ef` and tests,
+  always checks.
+- It needs EF Core's relational extensions, which every relational provider brings; they are read by
+  reflection, so this package still depends on EF Core alone. Without them there are no tables, and
+  nothing to check.
+
+What it cannot see: two contexts, one per module, are two models, each checked alone; and a module
+that names an entity's table exactly as another module already did changes nothing in the model.
+[MOD0017](rules/MOD0017.md) asks the same question in the host's build, of constant names across
+every module the host references, and sees both.
 
 ## What it logs
 

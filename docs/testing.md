@@ -71,7 +71,9 @@ builder
 ```
 
 A topology test asks which modules, routes and model composed, not what they connect to. Building an
-EF Core model needs a provider, not a connection. `UseConnectionStrings` sets each named connection
+EF Core model needs a provider, not a connection — and a test that builds one gets the model's own
+check with it: two of the topology's modules owning one table fail it
+([ef-core.md](ef-core.md#one-owner-per-table)). `UseConnectionStrings` sets each named connection
 string, under `ConnectionStrings`, to the value given, verbatim. Give one that its client parses and
 that nothing answers — port 1 on the loopback address: present, so a module that requires one finds
 it; unreachable, so a test that does connect fails at once rather than finding a server somebody
